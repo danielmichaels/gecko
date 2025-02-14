@@ -1,0 +1,182 @@
+version: '3'
+
+dotenv:
+  - .env
+
+vars:
+  APP_NAME: doublestag
+  DATABASE_TYPE: "postgres"
+  DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?sslmode=${POSTGRES_SSL_MODE}
+  DATABASE_CONTAINER_NAME: db
+  DOCKER_COMPOSE_LOCAL: ./zarf/compose/docker-compose.yml
+  DOCKERFILE: ./zarf/docker/Dockerfile
+
+tasks:
+  default:
+    cmds:
+      - task --list-all
+    silent: true
+
+  serve:
+    desc: Run webserver
+    cmds:
+      - air -c .air.toml -build.bin="./tmp/main serve" {{.CLI_ARGS}}
+
+  worker:
+    desc: Run workers
+    cmds:
+      - air -c .air.toml -build.bin="./tmp/main worker" {{.CLI_ARGS}}
+
+  tidy:
+    desc: go mod tidy
+    cmds:
+      - go mod tidy
+
+  sqlc:
+    desc: Generate models using sqlc
+    env:
+      CGO_ENABLED: 1
+    dir: sql
+    cmds:
+      - env | ag -i cgo
+      - sqlc generate
+
+  compose:up:
+    desc: Run local compose
+    cmds:
+      - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} up  --wait -d
+      - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} exec {{.DATABASE_CONTAINER_NAME}} /bin/sh -c 'until pg_isready; do sleep 1; done'
+      - task: db:migration:up
+      - task: river:migration:up
+#      - task: db:local:seed
+      - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} logs -f
+
+  compose:down:
+    desc: Run a local database for development
+    cmds:
+      - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} down {{.CLI_ARGS}}
+
+  compose:*:*:
+    vars:
+      CMD: "{{index .MATCH 0}}"
+      SVC: "{{index .MATCH 1}}"
+    cmds:
+      - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} {{.CMD}} {{.SVC}} {{.CLI_ARGS}}
+
+  db:local:seed:
+    desc: Seed data into the local development DB
+    cmds:
+      - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} cp ./sql/tests/test-data.sql {{.DATABASE_CONTAINER_NAME}}:/tmp/test-data.sql
+      - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} exec -it {{.DATABASE_CONTAINER_NAME}} psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -f /tmp/test-data.sql
+      - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} exec -it {{.DATABASE_CONTAINER_NAME}} rm -rf /tmp/test-data.sql
+
+  db:local:down:
+    desc: Stop the local database for development
+    cmds:
+      - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} down {{.DATABASE_CONTAINER_NAME}} {{.CLI_ARGS}}
+
+  db:migration:up:
+    desc: Run migrations (all of them)
+    cmds:
+      - goose -dir ./assets/migrations {{.DATABASE_TYPE}} {{.DATABASE_URL}} up
+
+  db:migration:down:
+    desc: Drop all migrations
+    cmds:
+      - goose -dir ./assets/migrations {{.DATABASE_TYPE}} {{.DATABASE_URL}} down
+
+  db:migration:down:to:
+    desc: Run migrations back to a specific version
+    summary: |
+      Rollback to a specific version of the local migrations. Must provide the version
+      as an argument.
+      Example,
+      task db:migration:down:to -- 0001
+    cmds:
+      - goose -dir ./assets/migrations {{.DATABASE_TYPE}} {{.DATABASE_URL}} down-to {{.CLI_ARGS}}
+
+  db:migration:create:
+    desc: Create a new migration. The migration name is the value after --
+    summary: |
+      Create a new migrations file using the following syntax
+      task db:migration:create -- my-new-migration
+    cmds:
+      - goose -dir ./assets/migrations {{.DATABASE_TYPE}} {{.DATABASE_URL}} create {{.CLI_ARGS}} sql
+      - goose -dir ./assets/migrations {{.DATABASE_TYPE}} {{.DATABASE_URL}} fix
+
+  db:migration:redo:
+    desc: Rollback the latest migration, the reapply
+    cmds:
+      - goose -dir ./assets/migrations {{.DATABASE_TYPE}} {{.DATABASE_URL}} redo
+
+  db:migration:status:
+    desc: Get the migration status of the local database
+    summary: |
+      Example usage
+      task db:migration:status
+    cmds:
+      - goose -dir ./assets/migrations {{.DATABASE_TYPE}} {{.DATABASE_URL}} status
+
+  db:testpsql:
+    desc: Drop into the test PG instance
+    cmds:
+      - docker -f {{.DOCKERFILE}}  exec -it {{.TEST_DB_CONTAINER_NAME}} psql {{.DATABASE_URL}}
+
+  db:psql:
+    desc: Drop into the `psql` shell
+    cmds:
+      - docker -f {{.DOCKERFILE}} exec -it {{.DATABASE_CONTAINER_NAME}} psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" {{.CLI_ARGS}}
+  db:bash:
+    desc: Drop into PG with bash
+    cmds:
+      - docker -f {{.DOCKERFILE}}  exec -it {{.DB_CONTAINER_NAME}} bash {{.CLI_ARGS}}
+  river:migration:up:
+    desc: Run river migrations (all of them)
+    cmds:
+      - river migrate-up --line=main --database-url="{{.DATABASE_URL}}"
+  river:migration:down:
+    desc: Drop all river migrations
+    cmds:
+      - river migrate-down --line=main --database-url="{{.DATABASE_URL}}" --max-steps=10
+  river:migration:list:
+    desc: List river migrations
+    cmds:
+      - river migrate-list --line=main --database-url="{{.DATABASE_URL}}"
+  test:
+    desc: Run all tests
+    cmds:
+      - go test -race -v -cover ./...
+
+  audit:
+    desc: Run linters and betteralign
+    cmds:
+      - betteralign -apply ./...
+      - task: golines
+      - golangci-lint run ./... {{.CLI_ARGS}}
+
+  golines:
+    desc: run golines
+    cmds:
+      - golines . -w --ignore-generated --no-reformat-tags --base-formatter=gofumpt
+
+  install_bins:
+    desc: Install all required go binaries
+    cmds:
+      - go install github.com/pressly/goose/v3/cmd/goose@latest
+      - go install github.com/air-verse/air@latest
+      - go install github.com/go-task/task/v3/cmd/task@latest
+      - go install github.com/segmentio/golines@latest
+      - go install github.com/dkorunic/betteralign/cmd/betteralign@latest
+      - go install mvdan.cc/gofumpt@latest
+      - go install github.com/riverqueue/river/cmd/river@latest
+
+  api:domain:*:
+    desc: Add a new domain via the API
+    summary: |
+      This is only for development and should be retired in the future
+    vars:
+      ARG_1: "{{index .MATCH 0}}"
+    cmds:
+      - |
+        curlie :9090/domains domain="{{.ARG_1}}" -H "X-API-Key: changeme" -v
+

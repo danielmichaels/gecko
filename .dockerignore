@@ -1,0 +1,9 @@
+.git
+.env*
+tmp
+Taskfile.yml
+zarf/
+.air.toml
+README.md
+sql/
+.github/
