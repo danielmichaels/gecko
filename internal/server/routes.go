@@ -1,4 +1,4 @@
-package webserver
+package server
 
 import (
 	"github.com/danielmichaels/doublestag/assets"
@@ -16,12 +16,12 @@ import (
 	"github.com/go-chi/httplog/v2"
 )
 
-func (app *Application) routes() http.Handler {
+func (app *Server) routes() http.Handler {
 	router := chi.NewMux()
 	router.Use(middleware.Recoverer)
 	router.Use(middleware.RealIP)
 	router.Use(middleware.Compress(5))
-	router.Use(httplog.RequestLogger(httpLogger(app.Config)))
+	router.Use(httplog.RequestLogger(httpLogger(app.Conf)))
 
 	cfg := huma.DefaultConfig("Doublestag", version.Get())
 	cfg.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
@@ -42,7 +42,7 @@ func (app *Application) routes() http.Handler {
 	return router
 }
 
-func (app *Application) registerEndpoints(api huma.API) {
+func (app *Server) registerEndpoints(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID:   "healthz",
 		Method:        http.MethodGet,
@@ -57,7 +57,7 @@ func (app *Application) registerEndpoints(api huma.API) {
 		OperationID: "version",
 		Method:      http.MethodGet,
 		Path:        "/version",
-		Summary:     "Application version information",
+		Summary:     "Server version information",
 		Description: "Return the version of the application.",
 		Tags:        []string{"Monitoring"},
 	}, app.handleVersionGet)
@@ -75,7 +75,7 @@ func (app *Application) registerEndpoints(api huma.API) {
 	}, app.handleDomainCreate)
 }
 
-func (app *Application) handleScalarDocsGet(w http.ResponseWriter, r *http.Request) {
+func (app *Server) handleScalarDocsGet(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	_, _ = w.Write([]byte(`<!doctype html>
 <html>

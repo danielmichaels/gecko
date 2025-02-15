@@ -1,4 +1,4 @@
-package webserver
+package server
 
 import (
 	"context"
@@ -9,7 +9,7 @@ const (
 	genericServerError = "An internal server error occurred"
 )
 
-func (app *Application) handleHealthzGet(_ context.Context, _ *struct{}) (*struct{}, error) {
+func (app *Server) handleHealthzGet(_ context.Context, _ *struct{}) (*struct{}, error) {
 	return nil, nil
 }
 
@@ -19,7 +19,7 @@ type VersionOutput struct {
 	}
 }
 
-func (app *Application) handleVersionGet(_ context.Context, _ *struct{}) (*VersionOutput, error) {
+func (app *Server) handleVersionGet(_ context.Context, _ *struct{}) (*VersionOutput, error) {
 	v := version.Get()
 	resp := &VersionOutput{}
 	resp.Body.Version = v
@@ -37,7 +37,7 @@ type DomainOutput struct {
 	}
 }
 
-func (app *Application) handleDomainCreate(
+func (app *Server) handleDomainCreate(
 	ctx context.Context,
 	i *DomainInput,
 ) (*DomainOutput, error) {

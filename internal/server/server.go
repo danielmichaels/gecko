@@ -1,10 +1,11 @@
-package webserver
+package server
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"github.com/danielmichaels/doublestag/internal/config"
+	"github.com/danielmichaels/doublestag/internal/jobs/riverjobs"
 	"github.com/danielmichaels/doublestag/internal/store"
 	"github.com/danielmichaels/doublestag/internal/version"
 	"io"
@@ -19,10 +20,15 @@ import (
 	"github.com/go-chi/httplog/v2"
 )
 
-type Application struct {
-	Config *config.Conf
-	Logger *slog.Logger
-	Db     *store.Queries
+type Server struct {
+	Conf *config.Conf
+	Log  *slog.Logger
+	Db   *store.Queries
+	RC   *riverjobs.Client
+}
+
+func New(c *config.Conf, l *slog.Logger, db *store.Queries, RC *riverjobs.Client) *Server {
+	return &Server{Conf: c, Log: l, Db: db, RC: RC}
 }
 
 func httpLogger(cfg *config.Conf) *httplog.Logger {
@@ -48,15 +54,15 @@ func httpLogger(cfg *config.Conf) *httplog.Logger {
 	return logger
 }
 
-func (app *Application) Serve(ctx context.Context) error {
+func (app *Server) Serve(ctx context.Context) error {
 	srv := &http.Server{
-		Addr:         fmt.Sprintf(":%d", app.Config.Server.APIPort),
+		Addr:         fmt.Sprintf(":%d", app.Conf.Server.APIPort),
 		Handler:      app.routes(),
-		IdleTimeout:  app.Config.Server.TimeoutIdle,
-		ReadTimeout:  app.Config.Server.TimeoutRead,
-		WriteTimeout: app.Config.Server.TimeoutWrite,
+		IdleTimeout:  app.Conf.Server.TimeoutIdle,
+		ReadTimeout:  app.Conf.Server.TimeoutRead,
+		WriteTimeout: app.Conf.Server.TimeoutWrite,
 	}
-	app.Logger.Info("HTTP server listening", "port", app.Config.Server.APIPort)
+	app.Log.Info("HTTP server listening", "port", app.Conf.Server.APIPort)
 	wg := sync.WaitGroup{}
 	shutdownError := make(chan error)
 	go func() {
@@ -64,7 +70,7 @@ func (app *Application) Serve(ctx context.Context) error {
 		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 		s := <-quit
 
-		app.Logger.Warn("signal caught", "signal", s.String())
+		app.Log.Warn("signal caught", "signal", s.String())
 
 		// Allow processes to finish with a ten-second window
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -73,7 +79,7 @@ func (app *Application) Serve(ctx context.Context) error {
 		if err != nil {
 			shutdownError <- err
 		}
-		app.Logger.Warn("web-server", "addr", srv.Addr, "msg", "completing background tasks")
+		app.Log.Warn("web-server", "addr", srv.Addr, "msg", "completing background tasks")
 		// Call wait so that the wait group can decrement to zero.
 		wg.Wait()
 		shutdownError <- nil
@@ -85,7 +91,7 @@ func (app *Application) Serve(ctx context.Context) error {
 	}
 	err = <-shutdownError
 	if err != nil {
-		app.Logger.Warn("web-server shutdown err", "addr", srv.Addr, "msg", "stopped server")
+		app.Log.Warn("web-server shutdown err", "addr", srv.Addr, "msg", "stopped server")
 		return err
 	}
 	return nil

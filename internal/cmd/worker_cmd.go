@@ -2,9 +2,10 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"github.com/danielmichaels/doublestag/internal/config"
+	"github.com/danielmichaels/doublestag/internal/jobs/riverjobs"
 	"github.com/danielmichaels/doublestag/internal/store"
-	"github.com/danielmichaels/doublestag/internal/workers"
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
@@ -38,7 +39,7 @@ func (w *WorkerCmd) Run() error {
 
 	// setup example riverqueue
 	rw := river.NewWorkers()
-	river.AddWorker(rw, &workers.SendEmailWorker{
+	river.AddWorker(rw, &riverjobs.SendEmailWorker{
 		Logger: *logger,
 		DB:     dbtx,
 	})
@@ -60,8 +61,25 @@ func (w *WorkerCmd) Run() error {
 	// create example insert
 	// we use transactions to ensure the insert is atomic
 	tx, err := db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		logger.Error("failed to start transaction", "error", err)
+		return err
+	}
 	defer tx.Rollback(ctx)
-	_, err = rc.InsertTx(ctx, tx, workers.SendEmailArgs{
+	for i := range [10]int{} {
+		_, err = rc.InsertTx(ctx, tx, riverjobs.SendEmailArgs{
+			To:      "foo@bar.com",
+			From:    "Megaman",
+			Subject: "I never lose " + fmt.Sprintf("%d", i),
+			Body:    "Howdy",
+		}, nil)
+		if err != nil {
+			logger.Error("failed to insert job", "error", err)
+			return err
+		}
+	}
+
+	_, err = rc.InsertTx(ctx, tx, riverjobs.SendEmailArgs{
 		To:      "foo@bar.com",
 		From:    "Megaman",
 		Subject: "I never lose",

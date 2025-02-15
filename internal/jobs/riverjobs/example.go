@@ -1,4 +1,4 @@
-package workers
+package riverjobs
 
 import (
 	"context"
@@ -26,7 +26,7 @@ type SendEmailWorker struct {
 
 func (w *SendEmailWorker) Work(ctx context.Context, job *river.Job[SendEmailArgs]) error {
 	// example of using the database
-	users, _ := w.DB.GetUsers(context.Background(), pgtype.Int4{Int32: 1, Valid: true})
+	users, _ := w.DB.GetUsers(ctx, pgtype.Int4{Int32: 1, Valid: true})
 	// example of using the logger
 	w.Logger.Info("Got users", "users", users)
 	w.Logger.Info("Sending email", "to", job.Args.To, "from", job.Args.From, "subject", job.Args.Subject)

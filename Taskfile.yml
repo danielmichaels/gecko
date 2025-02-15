@@ -20,12 +20,12 @@ tasks:
   serve:
     desc: Run webserver
     cmds:
-      - air -c .air.toml -build.bin="./tmp/main serve" {{.CLI_ARGS}}
+      - air -c .air.toml -build.bin="./tmp/main serve {{.CLI_ARGS}}"
 
   worker:
-    desc: Run workers
+    desc: Run jobs
     cmds:
-      - air -c .air.toml -build.bin="./tmp/main worker" {{.CLI_ARGS}}
+      - air -c .air.toml -build.bin="./tmp/main worker {{.CLI_ARGS}}"
 
   tidy:
     desc: go mod tidy
@@ -47,7 +47,7 @@ tasks:
       - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} up  --wait -d
       - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} exec {{.DATABASE_CONTAINER_NAME}} /bin/sh -c 'until pg_isready; do sleep 1; done'
       - task: db:migration:up
-      - task: river:migration:up
+      - task: riverjobs:migration:up
 #      - task: db:local:seed
       - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} logs -f
 
@@ -131,17 +131,17 @@ tasks:
     cmds:
       - docker -f {{.DOCKERFILE}}  exec -it {{.DB_CONTAINER_NAME}} bash {{.CLI_ARGS}}
   river:migration:up:
-    desc: Run river migrations (all of them)
+    desc: Run riverjobs migrations (all of them)
     cmds:
-      - river migrate-up --line=main --database-url="{{.DATABASE_URL}}"
+      - riverjobs migrate-up --line=main --database-url="{{.DATABASE_URL}}"
   river:migration:down:
-    desc: Drop all river migrations
+    desc: Drop all riverjobs migrations
     cmds:
-      - river migrate-down --line=main --database-url="{{.DATABASE_URL}}" --max-steps=10
+      - riverjobs migrate-down --line=main --database-url="{{.DATABASE_URL}}" --max-steps=10
   river:migration:list:
-    desc: List river migrations
+    desc: List riverjobs migrations
     cmds:
-      - river migrate-list --line=main --database-url="{{.DATABASE_URL}}"
+      - riverjobs migrate-list --line=main --database-url="{{.DATABASE_URL}}"
   test:
     desc: Run all tests
     cmds:
@@ -168,7 +168,7 @@ tasks:
       - go install github.com/segmentio/golines@latest
       - go install github.com/dkorunic/betteralign/cmd/betteralign@latest
       - go install mvdan.cc/gofumpt@latest
-      - go install github.com/riverqueue/river/cmd/river@latest
+      - go install github.com/riverqueue/riverjobs/cmd/riverjobs@latest
 
   api:domain:*:
     desc: Add a new domain via the API
