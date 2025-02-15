@@ -3,14 +3,13 @@ package main
 import (
 	"fmt"
 	"github.com/danielmichaels/doublestag/internal/cmd"
+	"github.com/danielmichaels/doublestag/internal/version"
 	"os"
 
 	"github.com/alecthomas/kong"
 )
 
 const appName = "doublestag"
-
-var version string
 
 type VersionFlag string
 
@@ -25,17 +24,19 @@ func (v VersionFlag) BeforeApply(app *kong.Kong, vars kong.Vars) error {
 type CLI struct {
 	cmd.Globals
 
-	Serve   cmd.ServeCmd  `cmd:"" help:"Run server."`
-	Worker  cmd.WorkerCmd `cmd:"" help:"Run workers."`
+	Serve   cmd.ServeCmd  `cmd:"" help:"Run server"`
+	Worker  cmd.WorkerCmd `cmd:"" help:"Run jobs worker"`
+	Domain  cmd.DomainCmd `cmd:"" help:"Run domain operations"`
 	Version VersionFlag   `       help:"Print version information and quit" short:"v" name:"version"`
 }
 
 func run() error {
-	if version == "" {
-		version = "development"
+	ver := version.Get()
+	if ver == "unavailable" {
+		ver = "development"
 	}
 	cli := CLI{
-		Version: VersionFlag(version),
+		Version: VersionFlag(ver),
 	}
 	// Display help if no args are provided instead of an error message
 	if len(os.Args) < 2 {
@@ -44,7 +45,7 @@ func run() error {
 
 	ctx := kong.Parse(&cli,
 		kong.Name(appName),
-		kong.Description("Doublestag is a DNS security tool"),
+		kong.Description(fmt.Sprintf("%s is a DNS security tool", appName)),
 		kong.UsageOnError(),
 		kong.ConfigureHelp(kong.HelpOptions{
 			Compact: true,
