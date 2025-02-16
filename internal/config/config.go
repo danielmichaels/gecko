@@ -26,7 +26,7 @@ type dbConf struct {
 }
 type appConf struct {
 	// needs to be removed or made into a list a slice
-	DNSServer string `env:"DNS_SEVER,default=8.8.8.8:53"`
+	DNSServers []string `env:"DNS_SEVERS,default=8.8.8.8:53,1.1.1.1:53,9.9.9.9:53"`
 	// temporary XApiKey for development
 	XApiKey    string     `env:"X_API_KEY,default=changeme"`
 	LogLevel   slog.Level `env:"LOG_LEVEL,default=info"`
