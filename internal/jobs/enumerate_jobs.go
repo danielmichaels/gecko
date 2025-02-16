@@ -21,7 +21,7 @@ func (EnumerateSubdomainArgs) Kind() string { return "enumerate_subdomain" }
 
 func (EnumerateSubdomainArgs) InsertOpts() river.InsertOpts {
 	return river.InsertOpts{
-		Queue: MediumPriority,
+		Queue: queueEnumeration,
 	}
 }
 
@@ -63,7 +63,7 @@ type ResolveDomainArgs struct {
 
 func (ResolveDomainArgs) InsertOpts() river.InsertOpts {
 	return river.InsertOpts{
-		Queue: ResolverPriority,
+		Queue: queueResolver,
 	}
 }
 func (ResolveDomainArgs) Kind() string { return "resolve_domain" }

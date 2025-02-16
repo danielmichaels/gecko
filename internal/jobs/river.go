@@ -12,9 +12,9 @@ import (
 )
 
 const (
-	MediumPriority   = "medium_priority"
-	HighPriority     = "high_priority"
-	ResolverPriority = "resolver_priority"
+	queueEnumeration = "queue_enumeration"
+	queueResolver    = "queue_resolver"
+	queueScanner     = "queue_scanner"
 )
 
 type Config struct {
@@ -44,16 +44,18 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 	if cfg.AddWorkers {
 		river.AddWorker(rw, &EnumerateSubdomainWorker{Logger: *cfg.Logger, DB: cfg.DB})
 		river.AddWorker(rw, &ResolveDomainWorker{Logger: *cfg.Logger, Store: cfg.Store})
+		river.AddWorker(rw, &ScanCertificateWorker{Logger: *cfg.Logger, Store: cfg.Store})
+		river.AddWorker(rw, &ScanCNAMEWorker{Logger: *cfg.Logger, Store: cfg.Store})
 		riverConfig.Workers = rw
 		riverConfig.MaxAttempts = 3
 		riverConfig.Queues = map[string]river.QueueConfig{
 			river.QueueDefault: {MaxWorkers: cfg.WorkerCount},
 			// reserved for DNS resolution only
-			ResolverPriority: {MaxWorkers: cfg.WorkerCount * 2},
+			queueResolver: {MaxWorkers: cfg.WorkerCount},
 			// reserved for subdomain enumeration
-			MediumPriority: {MaxWorkers: cfg.WorkerCount},
-			// reserved for notifications
-			HighPriority: {MaxWorkers: cfg.WorkerCount},
+			queueEnumeration: {MaxWorkers: cfg.WorkerCount},
+			// reserved for scanners
+			queueScanner: {MaxWorkers: cfg.WorkerCount},
 		}
 	}
 
