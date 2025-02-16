@@ -5,9 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"github.com/danielmichaels/doublestag/internal/config"
-	"github.com/danielmichaels/doublestag/internal/jobs/riverjobs"
 	"github.com/danielmichaels/doublestag/internal/store"
 	"github.com/danielmichaels/doublestag/internal/version"
+	"github.com/jackc/pgx/v5"
+	"github.com/riverqueue/river"
 	"io"
 	"log/slog"
 	"net/http"
@@ -24,10 +25,10 @@ type Server struct {
 	Conf *config.Conf
 	Log  *slog.Logger
 	Db   *store.Queries
-	RC   *riverjobs.Client
+	RC   *river.Client[pgx.Tx]
 }
 
-func New(c *config.Conf, l *slog.Logger, db *store.Queries, RC *riverjobs.Client) *Server {
+func New(c *config.Conf, l *slog.Logger, db *store.Queries, RC *river.Client[pgx.Tx]) *Server {
 	return &Server{Conf: c, Log: l, Db: db, RC: RC}
 }
 

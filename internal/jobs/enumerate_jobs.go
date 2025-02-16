@@ -1,4 +1,4 @@
-package riverjobs
+package jobs
 
 import (
 	"context"
@@ -20,7 +20,7 @@ type EnumerateSubdomainWorker struct {
 
 func (w *EnumerateSubdomainWorker) Work(ctx context.Context, job *river.Job[EnumerateSubdomainArgs]) error {
 	dnsClient := scanner.NewDNSClient()
-	output, err := dnsClient.EnumerateWithSubfinder(context.Background(), job.Args.Domain, job.Args.Concurrency)
+	output, err := dnsClient.EnumerateWithSubfinder(ctx, job.Args.Domain, job.Args.Concurrency)
 	if err != nil {
 		return fmt.Errorf("EnumerateWithSubfinder: %w", err)
 	}

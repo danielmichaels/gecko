@@ -1,10 +1,7 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
-	"github.com/danielmichaels/doublestag/internal/config"
-	"github.com/danielmichaels/doublestag/internal/jobs/riverjobs"
 	"github.com/danielmichaels/doublestag/internal/server"
 	"github.com/danielmichaels/doublestag/internal/store"
 )
@@ -30,45 +27,27 @@ func (s *ServeCmd) Run() error {
 	if err := s.validateArgs(); err != nil {
 		return err
 	}
-	cfg := config.AppConfig()
-	logger, lctx := setupLogger(svcAPI, cfg)
-	ctx, cancel := context.WithCancel(lctx)
-	defer cancel()
 
-	db, err := store.NewDatabasePool(ctx, cfg)
+	setup, err := NewSetup(svcAPI, WithRiver(s.WorkerCount, !s.DisableWorker))
 	if err != nil {
-		logger.Error("database error", "error", err)
+		return err
 	}
-	defer db.Close()
-	err = db.Ping(ctx)
-	if err != nil {
-		logger.Error("database ping error", "error", err)
-	}
-	dbtx := store.New(db)
+	defer setup.Close()
 
-	rc, err := riverjobs.New(ctx, logger, db, dbtx, s.WorkerCount)
-	if err != nil {
-		logger.Error("worker error", "error", err)
-	}
-
-	app := server.New(cfg, logger, dbtx, rc)
+	dbtx := store.New(setup.DB)
+	app := server.New(setup.Config, setup.Logger, dbtx, setup.RC)
 
 	if !s.DisableWorker {
-		if err := app.RC.Work(ctx); err != nil {
+		if err := app.RC.Start(setup.Ctx); err != nil {
 			app.Log.Error("river worker error", "error", err)
 			return err
 		}
 	}
 
-	err = app.Serve(ctx)
+	err = app.Serve(setup.Ctx)
 	if err != nil {
 		app.Log.Error("api server error", "error", err, "msg", "failed to start server")
 	}
 	app.Log.Info("system shutdown")
-	if err := app.RC.Close(ctx); err != nil {
-		app.Log.Error("close error", "error", err)
-		return err
-	}
-
 	return nil
 }

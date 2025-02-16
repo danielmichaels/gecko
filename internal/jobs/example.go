@@ -1,4 +1,4 @@
-package riverjobs
+package jobs
 
 import (
 	"context"

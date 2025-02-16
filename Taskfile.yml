@@ -47,7 +47,7 @@ tasks:
       - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} up  --wait -d
       - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} exec {{.DATABASE_CONTAINER_NAME}} /bin/sh -c 'until pg_isready; do sleep 1; done'
       - task: db:migration:up
-      - task: riverjobs:migration:up
+      - task: river:migration:up
 #      - task: db:local:seed
       - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} logs -f
 
@@ -137,11 +137,11 @@ tasks:
   river:migration:down:
     desc: Drop all riverjobs migrations
     cmds:
-      - riverjobs migrate-down --line=main --database-url="{{.DATABASE_URL}}" --max-steps=10
+      - river migrate-down --line=main --database-url="{{.DATABASE_URL}}" --max-steps=10
   river:migration:list:
     desc: List riverjobs migrations
     cmds:
-      - riverjobs migrate-list --line=main --database-url="{{.DATABASE_URL}}"
+      - river migrate-list --line=main --database-url="{{.DATABASE_URL}}"
   test:
     desc: Run all tests
     cmds:
