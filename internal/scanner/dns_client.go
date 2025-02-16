@@ -1,11 +1,10 @@
 package scanner
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"github.com/danielmichaels/doublestag/internal/config"
-	"io"
+	"github.com/projectdiscovery/subfinder/v2/pkg/resolve"
 	"strings"
 
 	"github.com/miekg/dns"
@@ -175,118 +174,28 @@ type SubdomainResult struct {
 	DNSKEY []string
 }
 
-// EnumerateWithSubfinder performs a subdomain enumeration using the subfinder tool
-// and returns the results as a slice of SubdomainResult structs.
-func (c *DNSClient) EnumerateWithSubfinder(
+func (c *DNSClient) EnumerateWithSubfinderCallback(
 	ctx context.Context,
 	domain string,
 	concurrency int,
-) ([]SubdomainResult, error) {
-	return c.enumerateWithSubfinder(ctx, domain, concurrency)
-}
-func (c *DNSClient) enumerateWithSubfinder(
-	ctx context.Context,
-	domain string,
-	concurrency int,
-) ([]SubdomainResult, error) {
-	// Start with original domain lookup
-	originalDomain := SubdomainResult{
-		Name: domain,
-	}
-
-	// Get all DNS records for original domain
-	for _, query := range []struct {
-		field *[]string
-		qtype uint16
-	}{
-		{&originalDomain.A, dns.TypeA},
-		{&originalDomain.AAAA, dns.TypeAAAA},
-		{&originalDomain.CNAME, dns.TypeCNAME},
-		{&originalDomain.MX, dns.TypeMX},
-		{&originalDomain.TXT, dns.TypeTXT},
-		{&originalDomain.NS, dns.TypeNS},
-		{&originalDomain.PTR, dns.TypePTR},
-		{&originalDomain.SRV, dns.TypeSRV},
-		{&originalDomain.CAA, dns.TypeCAA},
-		{&originalDomain.DNSKEY, dns.TypeDNSKEY},
-		{&originalDomain.SOA, dns.TypeSOA},
-	} {
-		if records, ok := c.lookupRecord(domain+".", query.qtype); ok && len(records) > 0 {
-			*query.field = records
-		}
-	}
-
+	callback func(*resolve.HostEntry),
+) error {
 	subfinderOpts := &runner.Options{
-		Threads:            concurrency, // Thread controls the number of threads to use for active enumerations
-		Timeout:            30,          // Timeout is the seconds to wait for sources to respond
-		MaxEnumerationTime: 10,          // MaxEnumerationTime is the maximum amount of time in mins to wait for enumeration
+		Threads:            concurrency,
+		Timeout:            30,
+		MaxEnumerationTime: 10,
 		Silent:             true,
 		JSON:               false,
+		ResultCallback:     callback,
 	}
 
 	subfinder, err := runner.NewRunner(subfinderOpts)
 	if err != nil {
-		return []SubdomainResult{}, fmt.Errorf("failed to create subfinder runner: %w", err)
+		return fmt.Errorf("failed to create subfinder runner: %w", err)
 	}
 
-	output := &bytes.Buffer{}
-	_, err = subfinder.EnumerateSingleDomainWithCtx(
-		ctx,
-		domain,
-		[]io.Writer{output},
-	)
-	if err != nil {
-		return []SubdomainResult{}, fmt.Errorf("failed to enumerate domain %s: %w", domain, err)
-	}
-
-	subdomains := strings.Split(output.String(), "\n")
-	var enrichedResults []SubdomainResult
-
-	for _, subdomain := range subdomains {
-		if subdomain == "" {
-			continue
-		}
-		result := SubdomainResult{
-			Name: subdomain,
-		}
-		for _, query := range []struct {
-			field *[]string
-			qtype uint16
-		}{
-			{&result.A, dns.TypeA},
-			{&result.AAAA, dns.TypeAAAA},
-			{&result.CNAME, dns.TypeCNAME},
-			{&result.MX, dns.TypeMX},
-			{&result.TXT, dns.TypeTXT},
-			{&result.NS, dns.TypeNS},
-			{&result.PTR, dns.TypePTR},
-			{&result.SRV, dns.TypeSRV},
-			{&result.CAA, dns.TypeCAA},
-			{&result.DNSKEY, dns.TypeDNSKEY},
-			{&result.SOA, dns.TypeSOA},
-		} {
-			if records, ok := c.lookupRecord(subdomain+".", query.qtype); ok && len(records) > 0 {
-				*query.field = records
-			}
-		}
-		if len(result.A) > 0 || len(result.AAAA) > 0 || len(result.CNAME) > 0 ||
-			len(result.MX) > 0 || len(result.NS) > 0 || len(result.TXT) > 0 ||
-			len(result.PTR) > 0 || len(result.SOA) > 0 || len(result.DNSKEY) > 0 ||
-			len(result.SRV) > 0 || len(result.CAA) > 0 {
-			enrichedResults = append(enrichedResults, result)
-		}
-	}
-	enrichedResults = append([]SubdomainResult{originalDomain}, enrichedResults...)
-	return enrichedResults, nil
-}
-
-func ProcessSubdomainResults(results []SubdomainResult, handler func(SubdomainResult) error) error {
-	for _, result := range results {
-		if err := handler(result); err != nil {
-			return fmt.Errorf("failed to process subdomain %s: %w", result.Name, err)
-		}
-	}
-	return nil
+	_, err = subfinder.EnumerateSingleDomainWithCtx(ctx, domain, nil)
+	return err
 }
 
 func RecordHandler(result SubdomainResult) error {

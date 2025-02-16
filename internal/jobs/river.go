@@ -35,8 +35,8 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 
 	rw := river.NewWorkers()
 	if cfg.AddWorkers {
-		river.AddWorker(rw, &SendEmailWorker{Logger: *cfg.Logger, DB: cfg.Store})
-		river.AddWorker(rw, &EnumerateSubdomainWorker{Logger: *cfg.Logger, DB: cfg.Store})
+		river.AddWorker(rw, &EnumerateSubdomainWorker{Logger: *cfg.Logger, DB: cfg.DB})
+		river.AddWorker(rw, &ResolveDomainWorker{Logger: *cfg.Logger, Store: cfg.Store})
 	}
 
 	rc, err := river.NewClient(riverpgxv5.New(cfg.DB), &river.Config{
@@ -46,7 +46,7 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 		Workers: rw,
 	})
 	if err != nil {
-		return nil, err // Return the error
+		return nil, err
 	}
 	return rc, nil
 }
