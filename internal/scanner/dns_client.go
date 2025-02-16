@@ -26,11 +26,10 @@ func NewDNSClient() *DNSClient {
 	}
 }
 
-// getDNSServer returns the DNS server to be used for DNS lookups. It first checks the configuration for a custom
-// DNS server, and if none is set, it defaults to "8.8.8.8:53" (Google's public DNS server).
+// getDNSServers returns the slice of DNS servers to be used for DNS lookups.
+// If no slice is set, it defaults to a single entry, "8.8.8.8:53" (Google's public DNS server).
 func getDNSServers() []string {
 	var servers []string
-	// Get custom servers from environment
 	if customServers := config.AppConfig().AppConf.DNSServers; len(customServers) > 0 {
 		servers = append(servers, customServers...)
 	}
@@ -76,6 +75,36 @@ func (c *DNSClient) LookupNS(target string) ([]string, bool) {
 	return c.lookupRecord(target, dns.TypeNS)
 }
 
+// LookupSOA performs a DNS lookup for the given target and returns the record results as a slice of strings,
+// along with a boolean indicating whether the lookup was successful.
+func (c *DNSClient) LookupSOA(target string) ([]string, bool) {
+	return c.lookupRecord(target, dns.TypeSOA)
+}
+
+// LookupPTR performs a DNS lookup for the given target and returns the record results as a slice of strings,
+// along with a boolean indicating whether the lookup was successful.
+func (c *DNSClient) LookupPTR(target string) ([]string, bool) {
+	return c.lookupRecord(target, dns.TypePTR)
+}
+
+// LookupSRV performs a DNS lookup for the given target and returns the record results as a slice of strings,
+// along with a boolean indicating whether the lookup was successful.
+func (c *DNSClient) LookupSRV(target string) ([]string, bool) {
+	return c.lookupRecord(target, dns.TypeSRV)
+}
+
+// LookupCAA performs a DNS lookup for the given target and returns the record results as a slice of strings,
+// along with a boolean indicating whether the lookup was successful.
+func (c *DNSClient) LookupCAA(target string) ([]string, bool) {
+	return c.lookupRecord(target, dns.TypeCAA)
+}
+
+// LookupDNSKEY performs a DNS lookup for the given target and returns the record results as a slice of strings,
+// along with a boolean indicating whether the lookup was successful.
+func (c *DNSClient) LookupDNSKEY(target string) ([]string, bool) {
+	return c.lookupRecord(target, dns.TypeDNSKEY)
+}
+
 // lookupRecord performs a DNS lookup for the given target and query type, using the specified DNS server.
 // It returns the results as a slice of strings, and a boolean indicating whether the lookup was successful.
 func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
@@ -113,6 +142,16 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 					result = append(result, strings.Join(x.Txt, " "))
 				case *dns.NS:
 					result = append(result, x.Ns)
+				case *dns.SOA:
+					result = append(result, x.Mbox)
+				case *dns.PTR:
+					result = append(result, x.Ptr)
+				case *dns.SRV:
+					result = append(result, x.Target)
+				case *dns.CAA:
+					result = append(result, x.Value)
+				case *dns.DNSKEY:
+					result = append(result, x.PublicKey)
 				}
 			}
 		}
@@ -122,13 +161,18 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 }
 
 type SubdomainResult struct {
-	Name  string
-	A     []string
-	AAAA  []string
-	CNAME []string
-	MX    []string
-	TXT   []string
-	NS    []string
+	Name   string
+	A      []string
+	AAAA   []string
+	CNAME  []string
+	MX     []string
+	TXT    []string
+	NS     []string
+	PTR    []string
+	SRV    []string
+	CAA    []string
+	SOA    []string
+	DNSKEY []string
 }
 
 // EnumerateWithSubfinder performs a subdomain enumeration using the subfinder tool
@@ -145,6 +189,33 @@ func (c *DNSClient) enumerateWithSubfinder(
 	domain string,
 	concurrency int,
 ) ([]SubdomainResult, error) {
+	// Start with original domain lookup
+	originalDomain := SubdomainResult{
+		Name: domain,
+	}
+
+	// Get all DNS records for original domain
+	for _, query := range []struct {
+		field *[]string
+		qtype uint16
+	}{
+		{&originalDomain.A, dns.TypeA},
+		{&originalDomain.AAAA, dns.TypeAAAA},
+		{&originalDomain.CNAME, dns.TypeCNAME},
+		{&originalDomain.MX, dns.TypeMX},
+		{&originalDomain.TXT, dns.TypeTXT},
+		{&originalDomain.NS, dns.TypeNS},
+		{&originalDomain.PTR, dns.TypePTR},
+		{&originalDomain.SRV, dns.TypeSRV},
+		{&originalDomain.CAA, dns.TypeCAA},
+		{&originalDomain.DNSKEY, dns.TypeDNSKEY},
+		{&originalDomain.SOA, dns.TypeSOA},
+	} {
+		if records, ok := c.lookupRecord(domain+".", query.qtype); ok && len(records) > 0 {
+			*query.field = records
+		}
+	}
+
 	subfinderOpts := &runner.Options{
 		Threads:            concurrency, // Thread controls the number of threads to use for active enumerations
 		Timeout:            30,          // Timeout is the seconds to wait for sources to respond
@@ -167,7 +238,6 @@ func (c *DNSClient) enumerateWithSubfinder(
 	if err != nil {
 		return []SubdomainResult{}, fmt.Errorf("failed to enumerate domain %s: %w", domain, err)
 	}
-	//fmt.Printf("%v\n", sourceMap)
 
 	subdomains := strings.Split(output.String(), "\n")
 	var enrichedResults []SubdomainResult
@@ -189,18 +259,27 @@ func (c *DNSClient) enumerateWithSubfinder(
 			{&result.MX, dns.TypeMX},
 			{&result.TXT, dns.TypeTXT},
 			{&result.NS, dns.TypeNS},
+			{&result.PTR, dns.TypePTR},
+			{&result.SRV, dns.TypeSRV},
+			{&result.CAA, dns.TypeCAA},
+			{&result.DNSKEY, dns.TypeDNSKEY},
+			{&result.SOA, dns.TypeSOA},
 		} {
 			if records, ok := c.lookupRecord(subdomain+".", query.qtype); ok && len(records) > 0 {
 				*query.field = records
 			}
 		}
 		if len(result.A) > 0 || len(result.AAAA) > 0 || len(result.CNAME) > 0 ||
-			len(result.MX) > 0 || len(result.NS) > 0 || len(result.TXT) > 0 {
+			len(result.MX) > 0 || len(result.NS) > 0 || len(result.TXT) > 0 ||
+			len(result.PTR) > 0 || len(result.SOA) > 0 || len(result.DNSKEY) > 0 ||
+			len(result.SRV) > 0 || len(result.CAA) > 0 {
 			enrichedResults = append(enrichedResults, result)
 		}
 	}
+	enrichedResults = append([]SubdomainResult{originalDomain}, enrichedResults...)
 	return enrichedResults, nil
 }
+
 func ProcessSubdomainResults(results []SubdomainResult, handler func(SubdomainResult) error) error {
 	for _, result := range results {
 		if err := handler(result); err != nil {
@@ -211,23 +290,28 @@ func ProcessSubdomainResults(results []SubdomainResult, handler func(SubdomainRe
 }
 
 func RecordHandler(result SubdomainResult) error {
-	for _, record := range result.A {
-		fmt.Printf("A record for %s: %s\n", result.Name, record)
+	records := []struct {
+		name    string
+		entries []string
+	}{
+		{"A", result.A},
+		{"AAAA", result.AAAA},
+		{"CNAME", result.CNAME},
+		{"TXT", result.TXT},
+		{"NS", result.NS},
+		{"MX", result.MX},
+		{"SOA", result.SOA},
+		{"PTR", result.PTR},
+		{"CAA", result.CAA},
+		{"DNSKEY", result.DNSKEY},
+		{"SRV", result.SRV},
 	}
-	for _, record := range result.AAAA {
-		fmt.Printf("AAAA record for %s: %s\n", result.Name, record)
-	}
-	for _, record := range result.MX {
-		fmt.Printf("MX record for %s: %s\n", result.Name, record)
-	}
-	for _, record := range result.NS {
-		fmt.Printf("NS record for %s: %s\n", result.Name, record)
-	}
-	for _, record := range result.CNAME {
-		fmt.Printf("CNAME record for %s: %s\n", result.Name, record)
-	}
-	for _, record := range result.TXT {
-		fmt.Printf("TXT record for %s: %s\n", result.Name, record)
+
+	for _, r := range records {
+		for _, entry := range r.entries {
+			// todo: insert record into database
+			fmt.Printf("%s record for %s: %s\n", r.name, result.Name, entry)
+		}
 	}
 	return nil
 }

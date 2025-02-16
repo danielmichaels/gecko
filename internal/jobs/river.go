@@ -30,13 +30,13 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 		return nil, err
 	}
 	for _, version := range res.Versions {
-		cfg.Logger.Info("riverjobs migrations ran", "direction", res.Direction, "version", version.Version)
+		cfg.Logger.Info("river migrations ran", "direction", res.Direction, "version", version.Version)
 	}
 
 	rw := river.NewWorkers()
 	if cfg.AddWorkers {
 		river.AddWorker(rw, &SendEmailWorker{Logger: *cfg.Logger, DB: cfg.Store})
-		river.AddWorker(rw, &EnumerateSubdomainWorker{})
+		river.AddWorker(rw, &EnumerateSubdomainWorker{Logger: *cfg.Logger, DB: cfg.Store})
 	}
 
 	rc, err := river.NewClient(riverpgxv5.New(cfg.DB), &river.Config{
