@@ -11,6 +11,12 @@ import (
 	"log/slog"
 )
 
+const (
+	MediumPriority   = "medium_priority"
+	HighPriority     = "high_priority"
+	ResolverPriority = "resolver_priority"
+)
+
 type Config struct {
 	DB          *pgxpool.Pool
 	Logger      *slog.Logger
@@ -33,18 +39,25 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 		cfg.Logger.Info("river migrations ran", "direction", res.Direction, "version", version.Version)
 	}
 
+	riverConfig := &river.Config{}
 	rw := river.NewWorkers()
 	if cfg.AddWorkers {
 		river.AddWorker(rw, &EnumerateSubdomainWorker{Logger: *cfg.Logger, DB: cfg.DB})
 		river.AddWorker(rw, &ResolveDomainWorker{Logger: *cfg.Logger, Store: cfg.Store})
+		riverConfig.Workers = rw
+		riverConfig.MaxAttempts = 3
+		riverConfig.Queues = map[string]river.QueueConfig{
+			river.QueueDefault: {MaxWorkers: cfg.WorkerCount},
+			// reserved for DNS resolution only
+			ResolverPriority: {MaxWorkers: cfg.WorkerCount * 2},
+			// reserved for subdomain enumeration
+			MediumPriority: {MaxWorkers: cfg.WorkerCount},
+			// reserved for notifications
+			HighPriority: {MaxWorkers: cfg.WorkerCount},
+		}
 	}
 
-	rc, err := river.NewClient(riverpgxv5.New(cfg.DB), &river.Config{
-		Queues: map[string]river.QueueConfig{
-			river.QueueDefault: {MaxWorkers: cfg.WorkerCount},
-		},
-		Workers: rw,
-	})
+	rc, err := river.NewClient(riverpgxv5.New(cfg.DB), riverConfig)
 	if err != nil {
 		return nil, err
 	}

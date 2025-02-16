@@ -19,6 +19,12 @@ type EnumerateSubdomainArgs struct {
 
 func (EnumerateSubdomainArgs) Kind() string { return "enumerate_subdomain" }
 
+func (EnumerateSubdomainArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		Queue: MediumPriority,
+	}
+}
+
 type EnumerateSubdomainWorker struct {
 	Logger slog.Logger
 	DB     *pgxpool.Pool
@@ -55,6 +61,11 @@ type ResolveDomainArgs struct {
 	Domain string `json:"domain"`
 }
 
+func (ResolveDomainArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		Queue: ResolverPriority,
+	}
+}
 func (ResolveDomainArgs) Kind() string { return "resolve_domain" }
 
 type ResolveDomainWorker struct {
