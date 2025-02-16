@@ -131,15 +131,15 @@ tasks:
     cmds:
       - docker -f {{.DOCKERFILE}}  exec -it {{.DB_CONTAINER_NAME}} bash {{.CLI_ARGS}}
   river:migration:up:
-    desc: Run riverjobs migrations (all of them)
+    desc: Run river migrations (all of them)
     cmds:
-      - riverjobs migrate-up --line=main --database-url="{{.DATABASE_URL}}"
+      - river migrate-up --line=main --database-url="{{.DATABASE_URL}}"
   river:migration:down:
-    desc: Drop all riverjobs migrations
+    desc: Drop all river migrations
     cmds:
       - river migrate-down --line=main --database-url="{{.DATABASE_URL}}" --max-steps=10
   river:migration:list:
-    desc: List riverjobs migrations
+    desc: List river migrations
     cmds:
       - river migrate-list --line=main --database-url="{{.DATABASE_URL}}"
   test:
@@ -168,7 +168,7 @@ tasks:
       - go install github.com/segmentio/golines@latest
       - go install github.com/dkorunic/betteralign/cmd/betteralign@latest
       - go install mvdan.cc/gofumpt@latest
-      - go install github.com/riverqueue/riverjobs/cmd/riverjobs@latest
+      - go install github.com/riverqueue/riverqueue/cmd/river@latest
 
   api:domain:*:
     desc: Add a new domain via the API
