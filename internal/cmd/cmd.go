@@ -47,7 +47,7 @@ func createHandler(writer io.Writer, cfg *config.Conf) slog.Handler {
 
 func setupLogger(service string, cfg *config.Conf) (*slog.Logger, context.Context) {
 	var handler slog.Handler
-	handler = createHandler(os.Stdout, cfg)
+	handler = createHandler(os.Stderr, cfg)
 
 	handler = &SlogHandler{Handler: handler}
 
@@ -69,6 +69,11 @@ type Setup struct {
 }
 type SetupOption func(*Setup)
 
+// WithRiver sets up a River client.
+//
+// workerCount is the number of workers to start.
+//
+// addWorkers is whether to add workers to the River client. Used in server to disable workers.
 func WithRiver(workerCount int, addWorkers bool) SetupOption {
 	return func(s *Setup) {
 		riverCfg := jobs.Config{
@@ -87,6 +92,17 @@ func WithRiver(workerCount int, addWorkers bool) SetupOption {
 		s.RC = rc
 	}
 }
+
+// WithSilentLogging is the default mode for CLI commands. It discards
+// logs. CLI then relies upon printing. Using Verbose turns this off and
+// logs will be output on CLI invocation.
+func WithSilentLogging() SetupOption {
+	return func(s *Setup) {
+		handler := slog.NewJSONHandler(io.Discard, &slog.HandlerOptions{})
+		s.Logger = slog.New(handler)
+	}
+}
+
 func NewSetup(service string, opts ...SetupOption) (*Setup, error) {
 	cfg := config.AppConfig()
 	logger, lctx := setupLogger(service, cfg)

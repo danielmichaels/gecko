@@ -8,17 +8,24 @@ import (
 
 // FIXME: this needs auth with server but for now is unauthenticated
 type DomainCmd struct {
-	Add    AddDomainCmd    `cmd:"" help:"Add a new domain"`
-	Remove RemoveDomainCmd `cmd:"" help:"Remove a domain"`
-	List   ListDomainCmd   `cmd:"" help:"List all domains"`
+	Add     AddDomainCmd    `cmd:"" help:"Add a new domain"`
+	Remove  RemoveDomainCmd `cmd:"" help:"Remove a domain"`
+	List    ListDomainCmd   `cmd:"" help:"List all domains"`
+	Verbose bool            `help:"Increase verbosity (shows logs)" default:"false"`
 }
 
 type AddDomainCmd struct {
 	Name string `arg:"" help:"Domain name to add"`
 }
 
-func (a *AddDomainCmd) Run(g *Globals) error {
-	setup, err := NewSetup("domain-cli", WithRiver(100, true))
+func (a *AddDomainCmd) Run(dc *DomainCmd) error {
+	opts := []SetupOption{
+		WithRiver(100, true),
+	}
+	if !dc.Verbose {
+		opts = append(opts, WithSilentLogging())
+	}
+	setup, err := NewSetup("domain-cli", opts...)
 	if err != nil {
 		return err
 	}
@@ -35,6 +42,12 @@ func (a *AddDomainCmd) Run(g *Globals) error {
 	}
 	defer tx.Rollback(setup.Ctx)
 
+	_, err = setup.RC.InsertTx(setup.Ctx, tx, jobs.ResolveDomainArgs{
+		Domain: a.Name,
+	}, nil)
+	if err != nil {
+		return err
+	}
 	_, err = setup.RC.InsertTx(setup.Ctx, tx, jobs.EnumerateSubdomainArgs{
 		Domain:      a.Name,
 		Concurrency: 100,
