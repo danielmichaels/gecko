@@ -19,26 +19,18 @@ func ScanCNAME(domain string) *ProcessingResult {
 	dc := NewDNSClient()
 	cname, ok := dc.LookupCNAME(res.Domain)
 	if !ok {
-		//w.logger.DebugContext(w.ctx, "no CNAME", "domain", domain.Name)
-		//_ = m.Nak()
 		return &res
 	}
 	if len(cname) > 0 {
 		res.CNAME = cname
 		a, ok := dc.LookupA(domain)
 		if !ok {
-			//w.logger.DebugContext(w.ctx, "no A record", "domain", domain)
-			//_ = m.Nak()
 			res.CNAME = nil
-			//return &res
 		}
 		res.A = a
 		aaaa, ok := dc.LookupAAAA(domain)
 		if !ok {
 			res.AAAA = nil
-			//w.logger.DebugContext(w.ctx, "no A record", "domain", domain)
-			//_ = m.Nak()
-			//return &res
 		}
 		res.AAAA = aaaa
 	}
@@ -51,3 +43,8 @@ func ScanCNAME(domain string) *ProcessingResult {
 	}
 	return &res
 }
+
+// todo
+// CNAME loop
+// CNAME branching chain
+// CNAME points at IP

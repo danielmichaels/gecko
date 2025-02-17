@@ -142,7 +142,14 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 				case *dns.NS:
 					result = append(result, x.Ns)
 				case *dns.SOA:
-					result = append(result, x.Mbox)
+					result = append(result, fmt.Sprintf("%s %s %d %d %d %d %d",
+						x.Ns,
+						x.Mbox,
+						x.Serial,
+						x.Refresh,
+						x.Retry,
+						x.Expire,
+						x.Minttl))
 				case *dns.PTR:
 					result = append(result, x.Ptr)
 				case *dns.SRV:

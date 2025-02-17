@@ -73,3 +73,35 @@ func (w *ScanCNAMEWorker) Work(ctx context.Context, job *river.Job[ScanCNAMEArgs
 	fmt.Printf("CNAME (dangling) scan complete for: %q\n%+v\n", job.Args.Domain, result)
 	return nil
 }
+
+type ScanSOAArgs struct {
+	Domain string `json:"domain"`
+}
+
+func (ScanSOAArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		Queue: queueScanner,
+	}
+}
+func (ScanSOAArgs) Kind() string { return "scan_soa" }
+
+type ScanSOAWorker struct {
+	Logger slog.Logger
+	Store  *store.Queries
+	river.WorkerDefaults[ScanSOAArgs]
+}
+
+func (w *ScanSOAWorker) Work(ctx context.Context, job *river.Job[ScanSOAArgs]) error {
+	ctx = tracing.WithNewTraceID(ctx, true)
+	start := time.Now()
+
+	result := scanner.ScanSOA(job.Args.Domain)
+
+	w.Logger.InfoContext(ctx,
+		"soa scan complete",
+		"domain", job.Args.Domain,
+		"duration", time.Since(start),
+	)
+	fmt.Printf("SOA scan complete for: %q\n%+v\n", job.Args.Domain, result)
+	return nil
+}
