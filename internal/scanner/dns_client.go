@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/danielmichaels/doublestag/internal/config"
 	"github.com/projectdiscovery/subfinder/v2/pkg/resolve"
+	"strconv"
 	"strings"
 
 	"github.com/miekg/dns"
@@ -153,11 +154,12 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 				case *dns.PTR:
 					result = append(result, x.Ptr)
 				case *dns.SRV:
-					result = append(result, x.Target)
+					// todo create DTO
+					result = append(result, fmt.Sprintf("%s %d %d %d", x.Target, x.Port, x.Weight, x.Priority))
 				case *dns.CAA:
-					result = append(result, x.Value)
+					result = append(result, fmt.Sprintf("%s %d %s", x.Value, x.Flag, x.Tag))
 				case *dns.DNSKEY:
-					result = append(result, x.PublicKey)
+					result = append(result, fmt.Sprintf("%s %d %d %d", x.PublicKey, x.Flags, x.Protocol, x.Algorithm))
 				}
 			}
 		}
@@ -209,25 +211,252 @@ func RecordHandler(result SubdomainResult) error {
 	records := []struct {
 		name    string
 		entries []string
+		parser  func(string, string) (interface{}, error)
 	}{
-		{"A", result.A},
-		{"AAAA", result.AAAA},
-		{"CNAME", result.CNAME},
-		{"TXT", result.TXT},
-		{"NS", result.NS},
-		{"MX", result.MX},
-		{"SOA", result.SOA},
-		{"PTR", result.PTR},
-		{"CAA", result.CAA},
-		{"DNSKEY", result.DNSKEY},
-		{"SRV", result.SRV},
+		{"A", result.A, func(domain, record string) (interface{}, error) {
+			return ParseA(domain, record)
+		}},
+		{"AAAA", result.AAAA, func(domain, record string) (interface{}, error) {
+			return ParseAAAA(domain, record)
+		}},
+		{"CNAME", result.CNAME, func(domain, record string) (interface{}, error) {
+			return ParseCNAME(domain, record)
+		}},
+		{"TXT", result.TXT, func(domain, record string) (interface{}, error) {
+			return ParseTXT(domain, record)
+		}},
+		{"NS", result.NS, func(domain, record string) (interface{}, error) {
+			return ParseNS(domain, record)
+		}},
+		{"MX", result.MX, func(domain, record string) (interface{}, error) {
+			return ParseMX(domain, record)
+		}},
+		{"SOA", result.SOA, func(domain, record string) (interface{}, error) {
+			return ParseSOARecord(domain, record)
+		}},
+		{"PTR", result.PTR, func(domain, record string) (interface{}, error) {
+			return ParsePTR(domain, record)
+		}},
+		{"CAA", result.CAA, func(domain, record string) (interface{}, error) {
+			return ParseCAA(domain, record)
+		}},
+		{"DNSKEY", result.DNSKEY, func(domain, record string) (interface{}, error) {
+			return ParseDNSKEY(domain, record)
+		}},
+		{"SRV", result.SRV, func(domain, record string) (interface{}, error) {
+			return ParseSRV(domain, record)
+		}},
 	}
-
 	for _, r := range records {
 		for _, entry := range r.entries {
-			// todo: insert record into database
-			fmt.Printf("%s record for %s: %s\n", r.name, result.Name, entry)
+			parsed, err := r.parser(result.Name, entry) // Pass the domain here
+			if err != nil {
+				fmt.Printf("Error parsing %s record for %s: %v\n", r.name, result.Name, err)
+				continue
+			}
+			fmt.Printf("%s record for %s: %+v\n", r.name, result.Name, parsed)
 		}
 	}
 	return nil
+}
+
+type ARecord struct {
+	Domain string
+	IP     string
+}
+
+func ParseA(domain, record string) (*ARecord, error) {
+	return &ARecord{Domain: domain, IP: record}, nil
+}
+
+type AAAARecord struct {
+	Domain string
+	IP     string
+}
+
+func ParseAAAA(domain, record string) (*AAAARecord, error) {
+	return &AAAARecord{Domain: domain, IP: record}, nil
+}
+
+type CNAMERecord struct {
+	Domain string
+	Target string
+}
+
+func ParseCNAME(domain, record string) (*CNAMERecord, error) {
+	return &CNAMERecord{Domain: domain, Target: record}, nil
+}
+
+type MXRecord struct {
+	Domain     string
+	Preference uint16
+	Target     string
+}
+
+func ParseMX(domain, record string) (*MXRecord, error) {
+	parts := strings.Fields(record)
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("invalid MX record format")
+	}
+	pref, _ := strconv.ParseUint(parts[0], 10, 16)
+	return &MXRecord{
+		Domain:     domain,
+		Preference: uint16(pref),
+		Target:     parts[1],
+	}, nil
+}
+
+type TXTRecord struct {
+	Domain  string
+	Content string
+}
+
+func ParseTXT(domain, record string) (*TXTRecord, error) {
+	return &TXTRecord{Domain: domain, Content: record}, nil
+}
+
+type NSRecord struct {
+	Domain     string
+	NameServer string
+}
+
+func ParseNS(domain, record string) (*NSRecord, error) {
+	return &NSRecord{Domain: domain, NameServer: record}, nil
+}
+
+type PTRRecord struct {
+	Domain string
+	Target string
+}
+
+func ParsePTR(domain, record string) (*PTRRecord, error) {
+	return &PTRRecord{Domain: domain, Target: record}, nil
+}
+
+type CAAResult struct {
+	Domain      string
+	Value       string
+	Flag        uint8
+	Tag         string
+	IsValid     bool
+	ErrorReason string
+}
+
+func ParseCAA(domain, record string) (*CAAResult, error) {
+	parts := strings.Fields(record)
+	if len(parts) != 3 {
+		return nil, fmt.Errorf("invalid CAA record format")
+	}
+
+	flag, _ := strconv.ParseUint(parts[1], 10, 8)
+
+	return &CAAResult{
+		Domain:  domain,
+		Value:   parts[0],
+		Flag:    uint8(flag),
+		Tag:     parts[2],
+		IsValid: true,
+	}, nil
+}
+
+type DNSKEYResult struct {
+	Domain      string
+	PublicKey   string
+	Flags       uint16
+	Protocol    uint8
+	Algorithm   uint8
+	IsValid     bool
+	ErrorReason string
+}
+
+func ParseDNSKEY(domain, record string) (*DNSKEYResult, error) {
+	parts := strings.Fields(record)
+	if len(parts) != 4 {
+		return nil, fmt.Errorf("invalid DNSKEY record format")
+	}
+
+	flags, _ := strconv.ParseUint(parts[1], 10, 16)
+	protocol, _ := strconv.ParseUint(parts[2], 10, 8)
+	algorithm, _ := strconv.ParseUint(parts[3], 10, 8)
+
+	return &DNSKEYResult{
+		Domain:    domain,
+		PublicKey: parts[0],
+		Flags:     uint16(flags),
+		Protocol:  uint8(protocol),
+		Algorithm: uint8(algorithm),
+		IsValid:   true,
+	}, nil
+}
+
+type SRVResult struct {
+	Domain      string
+	Target      string
+	Port        uint16
+	Weight      uint16
+	Priority    uint16
+	IsValid     bool
+	ErrorReason string
+}
+
+func ParseSRV(domain, record string) (*SRVResult, error) {
+	parts := strings.Fields(record)
+	if len(parts) != 4 {
+		return nil, fmt.Errorf("invalid SRV record format")
+	}
+
+	port, _ := strconv.ParseUint(parts[1], 10, 16)
+	weight, _ := strconv.ParseUint(parts[2], 10, 16)
+	priority, _ := strconv.ParseUint(parts[3], 10, 16)
+
+	return &SRVResult{
+		Domain:   domain,
+		Target:   parts[0],
+		Port:     uint16(port),
+		Weight:   uint16(weight),
+		Priority: uint16(priority),
+		IsValid:  true,
+	}, nil
+}
+
+type SOAResult struct {
+	Domain      string
+	NameServer  string
+	AdminEmail  string
+	Serial      uint32
+	Refresh     uint32
+	Retry       uint32
+	Expire      uint32
+	MinimumTTL  uint32
+	IsValid     bool
+	ErrorReason string
+}
+
+// ParseSOARecord parses a SOA record string into a SOAResult struct.
+//
+// The SOA records arrive as a slice of strings, with each string
+// representing a field in the SOA record.
+func ParseSOARecord(domain, record string) (*SOAResult, error) {
+	parts := strings.Fields(record)
+	if len(parts) != 7 {
+		return nil, fmt.Errorf("invalid SOA record format")
+	}
+
+	serial, _ := strconv.ParseUint(parts[2], 10, 32)
+	refresh, _ := strconv.ParseUint(parts[3], 10, 32)
+	retry, _ := strconv.ParseUint(parts[4], 10, 32)
+	expire, _ := strconv.ParseUint(parts[5], 10, 32)
+	minTTL, _ := strconv.ParseUint(parts[6], 10, 32)
+
+	return &SOAResult{
+		Domain:     domain,
+		NameServer: parts[0],
+		AdminEmail: parts[1],
+		Serial:     uint32(serial),
+		Refresh:    uint32(refresh),
+		Retry:      uint32(retry),
+		Expire:     uint32(expire),
+		MinimumTTL: uint32(minTTL),
+		IsValid:    true,
+	}, nil
 }
