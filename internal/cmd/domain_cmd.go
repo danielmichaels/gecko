@@ -42,24 +42,24 @@ func (a *AddDomainCmd) Run(dc *DomainCmd) error {
 	}
 	defer tx.Rollback(setup.Ctx)
 
-	_, err = setup.RC.InsertTx(setup.Ctx, tx, jobs.ScanCertificateArgs{
-		Domain: a.Name,
-	}, nil)
-	if err != nil {
-		return err
-	}
-	_, err = setup.RC.InsertTx(setup.Ctx, tx, jobs.ScanCNAMEArgs{
-		Domain: a.Name,
-	}, nil)
-	if err != nil {
-		return err
-	}
-	//_, err = setup.RC.InsertTx(setup.Ctx, tx, jobs.ResolveDomainArgs{
+	//_, err = setup.RC.InsertTx(setup.Ctx, tx, jobs.ScanCertificateArgs{
 	//	Domain: a.Name,
 	//}, nil)
 	//if err != nil {
 	//	return err
 	//}
+	//_, err = setup.RC.InsertTx(setup.Ctx, tx, jobs.ScanCNAMEArgs{
+	//	Domain: a.Name,
+	//}, nil)
+	//if err != nil {
+	//	return err
+	//}
+	_, err = setup.RC.InsertTx(setup.Ctx, tx, jobs.ResolveDomainArgs{
+		Domain: a.Name,
+	}, nil)
+	if err != nil {
+		return err
+	}
 	//_, err = setup.RC.InsertTx(setup.Ctx, tx, jobs.EnumerateSubdomainArgs{
 	//	Domain:      a.Name,
 	//	Concurrency: 100,
