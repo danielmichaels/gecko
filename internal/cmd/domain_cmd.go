@@ -54,7 +54,13 @@ func (a *AddDomainCmd) Run(dc *DomainCmd) error {
 	//if err != nil {
 	//	return err
 	//}
-	_, err = setup.RC.InsertTx(setup.Ctx, tx, jobs.ResolveDomainArgs{
+	//_, err = setup.RC.InsertTx(setup.Ctx, tx, jobs.ResolveDomainArgs{
+	//	Domain: a.Name,
+	//}, nil)
+	//if err != nil {
+	//	return err
+	//}
+	_, err = setup.RC.InsertTx(setup.Ctx, tx, jobs.ScanDNSSECArgs{
 		Domain: a.Name,
 	}, nil)
 	if err != nil {

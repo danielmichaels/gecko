@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/danielmichaels/doublestag/internal/config"
 	"github.com/projectdiscovery/subfinder/v2/pkg/resolve"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -36,6 +37,7 @@ func getDNSServers() []string {
 	if len(servers) == 0 {
 		servers = append(servers, "8.8.8.8:53")
 	}
+	slog.Info("DNS servers", "servers", servers)
 	return servers
 }
 
@@ -105,6 +107,28 @@ func (c *DNSClient) LookupDNSKEY(target string) ([]string, bool) {
 	return c.lookupRecord(target, dns.TypeDNSKEY)
 }
 
+// LookupRRSIG performs a DNS lookup for the given target and returns the RRSIG
+// record results as a slice of strings, along with a boolean indicating whether
+// the lookup was successful.
+func (c *DNSClient) LookupRRSIG(target string) ([]string, bool) {
+	return c.lookupRecord(target, dns.TypeRRSIG)
+}
+
+// LookupDS performs a DNS lookup for the given target and returns the DS record results as a slice of strings,
+// along with a boolean indicating whether the lookup was successful.
+func (c *DNSClient) LookupDS(target string) ([]string, bool) {
+	parent, err := c.GetParentZone(target)
+	if err != nil {
+		slog.Info("Error getting parent zone", "target", target, "error", err)
+		return nil, false
+	}
+	m := new(dns.Msg)
+	m.SetQuestion(dns.Fqdn(target), dns.TypeDS)
+	m.SetEdns0(4096, true)
+	slog.Info("Querying DS records for parent zone", "parent", parent, "target", target)
+	return c.lookupRecord(target, dns.TypeDS)
+}
+
 // lookupRecord performs a DNS lookup for the given target and query type, using the specified DNS server.
 // It returns the results as a slice of strings, and a boolean indicating whether the lookup was successful.
 func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
@@ -112,15 +136,25 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 	m.SetQuestion(target, qtype)
 	m.RecursionDesired = true
 
+	// Set DNSSEC OK bit for DNSSEC-related queries
+	if qtype == dns.TypeDNSKEY || qtype == dns.TypeDS || qtype == dns.TypeRRSIG {
+		m.SetEdns0(4096, true)
+	}
+
+	slog.Info("querying DNS server", "target", target, "qtype", qtype, "server", c.servers[c.currentServerIdx])
 	for i := 0; i < len(c.servers); i++ {
 		serverIdx := (c.currentServerIdx + i) % len(c.servers)
 		server := c.servers[serverIdx]
+		slog.Debug("trying DNS server", "target", target, "qtype", qtype, "server", server)
 
 		r, _, err := c.client.Exchange(m, server)
 		if err != nil {
+			slog.Info("exchange error", "target", target, "qtype", qtype, "server", server, "error", err)
 			continue
 		}
+
 		if r.Rcode != dns.RcodeSuccess {
+			slog.Info("rcode error", "target", target, "qtype", qtype, "server", server, "rcode", r.Rcode)
 			continue
 		}
 		c.currentServerIdx = (serverIdx + 1) % len(c.servers)
@@ -128,7 +162,8 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 		var result []string
 		for _, a := range r.Answer {
 			h := a.Header()
-			if h.Rrtype == qtype {
+			slog.Info("record type", "type", h.Rrtype, "qtype", qtype, "server", server)
+			if h.Rrtype == dns.TypeRRSIG || h.Rrtype == qtype {
 				switch x := a.(type) {
 				case *dns.CNAME:
 					result = append(result, x.Target)
@@ -154,18 +189,67 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 				case *dns.PTR:
 					result = append(result, x.Ptr)
 				case *dns.SRV:
-					// todo create DTO
 					result = append(result, fmt.Sprintf("%s %d %d %d", x.Target, x.Port, x.Weight, x.Priority))
 				case *dns.CAA:
 					result = append(result, fmt.Sprintf("%s %d %s", x.Value, x.Flag, x.Tag))
 				case *dns.DNSKEY:
 					result = append(result, fmt.Sprintf("%s %d %d %d", x.PublicKey, x.Flags, x.Protocol, x.Algorithm))
+				case *dns.DS:
+					result = append(result, fmt.Sprintf("%d %d %d %s", x.KeyTag, x.Algorithm, x.DigestType, x.Digest))
+				//case *dns.RRSIG:
+				//result = append(result, fmt.Sprintf("%d %d %d %d %s", x.TypeCovered, x.Algorithm, x.Labels, x.OrigTtl, x.Signature))
+				case *dns.RRSIG: // Correctly handle RRSIG records here
+					result = append(result, fmt.Sprintf("%d %d %d %d %d %d %s %d %s",
+						x.TypeCovered, x.Algorithm, x.Labels, x.OrigTtl,
+						x.Expiration, x.Inception, x.SignerName, x.KeyTag, x.Signature))
+				default:
+					slog.Info("Unknown record type", "type", h.Rrtype, "qtype", qtype, "server", server)
 				}
 			}
 		}
 		return result, true
 	}
 	return nil, false
+}
+
+// GetParentZone returns the parent zone of the given domain.
+func (c *DNSClient) GetParentZone(domain string) (string, error) {
+	// example.com. -> com.
+	parent := dns.Fqdn(domain)
+	labels := dns.SplitDomainName(parent)
+	if len(labels) < 2 {
+		return "", fmt.Errorf("invalid domain: %s", domain)
+	}
+	fqdn := strings.Join(labels[1:], ".") + "." // + "." for FQDN
+	slog.Info("parent zone", "parent", parent, "fqdn", fqdn)
+	return fqdn, nil
+}
+
+// validateRRSIG validates an RRSIG record against a DNSKEY.
+func (c *DNSClient) validateRRSIG(domain string, dnskey *dns.DNSKEY, rrsig *dns.RRSIG) bool {
+	// Construct a dummy DNSKEY RR from the DNSKEYResult
+	keyRR := &dns.DNSKEY{
+		Hdr: dns.RR_Header{
+			Name:   dns.Fqdn(domain),
+			Rrtype: dns.TypeDNSKEY,
+			Class:  dns.ClassINET,
+			Ttl:    rrsig.OrigTtl,
+		},
+		Flags:     dnskey.Flags,
+		Protocol:  dnskey.Protocol,
+		Algorithm: dnskey.Algorithm,
+		PublicKey: dnskey.PublicKey,
+	}
+
+	// Create a slice containing only the DNSKEY record
+	rrSet := []dns.RR{keyRR}
+
+	// miekg/dns has a built-in function for this
+	err := rrsig.Verify(keyRR, rrSet)
+	if err != nil {
+		return false
+	}
+	return true
 }
 
 type SubdomainResult struct {
@@ -181,6 +265,8 @@ type SubdomainResult struct {
 	CAA    []string
 	SOA    []string
 	DNSKEY []string
+	DS     []string
+	RRSIG  []string
 }
 
 func (c *DNSClient) EnumerateWithSubfinderCallback(
@@ -242,6 +328,12 @@ func RecordHandler(result SubdomainResult) error {
 		}},
 		{"DNSKEY", result.DNSKEY, func(domain, record string) (interface{}, error) {
 			return ParseDNSKEY(domain, record)
+		}},
+		{"DS", result.DS, func(domain, record string) (interface{}, error) {
+			return ParseDS(domain, record)
+		}},
+		{"RRSIG", result.RRSIG, func(domain, record string) (interface{}, error) {
+			return ParseRRSIG(domain, record)
 		}},
 		{"SRV", result.SRV, func(domain, record string) (interface{}, error) {
 			return ParseSRV(domain, record)
@@ -386,6 +478,79 @@ func ParseDNSKEY(domain, record string) (*DNSKEYResult, error) {
 		Protocol:  uint8(protocol),
 		Algorithm: uint8(algorithm),
 		IsValid:   true,
+	}, nil
+}
+
+type DSResult struct {
+	Domain      string
+	KeyTag      uint16
+	Algorithm   uint8
+	DigestType  uint8
+	Digest      string
+	IsValid     bool
+	ErrorReason string
+}
+
+func ParseDS(domain, record string) (*DSResult, error) {
+	parts := strings.Fields(record)
+	if len(parts) != 4 {
+		return nil, fmt.Errorf("invalid DS record format")
+	}
+
+	keyTag, _ := strconv.ParseUint(parts[0], 10, 16)
+	algorithm, _ := strconv.ParseUint(parts[1], 10, 8)
+	digestType, _ := strconv.ParseUint(parts[2], 10, 8)
+
+	return &DSResult{
+		Domain:     domain,
+		KeyTag:     uint16(keyTag),
+		Algorithm:  uint8(algorithm),
+		DigestType: uint8(digestType),
+		Digest:     parts[3],
+		IsValid:    true,
+	}, nil
+}
+
+type RRSIGResult struct {
+	Domain      string
+	TypeCovered uint16
+	Algorithm   uint8
+	Labels      uint8
+	OriginalTTL uint32
+	Expiration  uint32
+	Inception   uint32
+	KeyTag      uint16
+	SignerName  string
+	Signature   string
+	IsValid     bool
+}
+
+func ParseRRSIG(domain, record string) (*RRSIGResult, error) {
+	parts := strings.Fields(record)
+	if len(parts) != 9 {
+		return nil, fmt.Errorf("invalid RRSIG record format")
+	}
+
+	typeCovered, _ := strconv.ParseUint(parts[0], 10, 16)
+	algorithm, _ := strconv.ParseUint(parts[1], 10, 8)
+	labels, _ := strconv.ParseUint(parts[2], 10, 8)
+	originalTTL, _ := strconv.ParseUint(parts[3], 10, 32)
+	expiration, _ := strconv.ParseUint(parts[4], 10, 32)
+	inception, _ := strconv.ParseUint(parts[5], 10, 32)
+	keyTag, _ := strconv.ParseUint(parts[6], 10, 16)
+
+	return &RRSIGResult{
+		Domain:      domain,
+		TypeCovered: uint16(typeCovered),
+		Algorithm:   uint8(algorithm),
+		Labels:      uint8(labels),
+		OriginalTTL: uint32(originalTTL),
+		Expiration:  uint32(expiration),
+		Inception:   uint32(inception),
+		KeyTag:      uint16(keyTag),
+		SignerName:  parts[7],
+		Signature:   parts[8],
+		IsValid:     true,
 	}, nil
 }
 
