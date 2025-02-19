@@ -2,9 +2,16 @@ package scanner
 
 import (
 	"context"
+	"crypto/sha1"
+	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"github.com/danielmichaels/doublestag/internal/config"
+	"github.com/danielmichaels/doublestag/internal/logging"
 	"github.com/projectdiscovery/subfinder/v2/pkg/resolve"
+	"hash"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -17,13 +24,17 @@ type DNSClient struct {
 	client           *dns.Client
 	servers          []string
 	currentServerIdx int
+	logger           *slog.Logger
 }
 
 func NewDNSClient() *DNSClient {
+	cfg := config.AppConfig()
+	logger, _ := logging.SetupLogger("dns-client", cfg)
 	return &DNSClient{
 		servers:          getDNSServers(),
 		client:           new(dns.Client),
 		currentServerIdx: 0,
+		logger:           logger,
 	}
 }
 
@@ -37,7 +48,6 @@ func getDNSServers() []string {
 	if len(servers) == 0 {
 		servers = append(servers, "8.8.8.8:53")
 	}
-	slog.Info("DNS servers", "servers", servers)
 	return servers
 }
 
@@ -117,15 +127,6 @@ func (c *DNSClient) LookupRRSIG(target string) ([]string, bool) {
 // LookupDS performs a DNS lookup for the given target and returns the DS record results as a slice of strings,
 // along with a boolean indicating whether the lookup was successful.
 func (c *DNSClient) LookupDS(target string) ([]string, bool) {
-	parent, err := c.GetParentZone(target)
-	if err != nil {
-		slog.Info("Error getting parent zone", "target", target, "error", err)
-		return nil, false
-	}
-	m := new(dns.Msg)
-	m.SetQuestion(dns.Fqdn(target), dns.TypeDS)
-	m.SetEdns0(4096, true)
-	slog.Info("Querying DS records for parent zone", "parent", parent, "target", target)
 	return c.lookupRecord(target, dns.TypeDS)
 }
 
@@ -141,20 +142,19 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 		m.SetEdns0(4096, true)
 	}
 
-	slog.Info("querying DNS server", "target", target, "qtype", qtype, "server", c.servers[c.currentServerIdx])
+	c.logger.Info("querying DNS server", "target", target, "qtype", qtype, "server", c.servers[c.currentServerIdx])
 	for i := 0; i < len(c.servers); i++ {
 		serverIdx := (c.currentServerIdx + i) % len(c.servers)
 		server := c.servers[serverIdx]
-		slog.Debug("trying DNS server", "target", target, "qtype", qtype, "server", server)
 
 		r, _, err := c.client.Exchange(m, server)
 		if err != nil {
-			slog.Info("exchange error", "target", target, "qtype", qtype, "server", server, "error", err)
+			c.logger.Info("exchange error", "target", target, "qtype", qtype, "server", server, "error", err)
 			continue
 		}
 
 		if r.Rcode != dns.RcodeSuccess {
-			slog.Info("rcode error", "target", target, "qtype", qtype, "server", server, "rcode", r.Rcode)
+			c.logger.Info("rcode error", "target", target, "qtype", qtype, "server", server, "rcode", r.Rcode)
 			continue
 		}
 		c.currentServerIdx = (serverIdx + 1) % len(c.servers)
@@ -162,8 +162,9 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 		var result []string
 		for _, a := range r.Answer {
 			h := a.Header()
-			slog.Info("record type", "type", h.Rrtype, "qtype", qtype, "server", server)
-			if h.Rrtype == dns.TypeRRSIG || h.Rrtype == qtype {
+			c.logger.Info("record type", "type", h.Rrtype, "qtype", qtype, "server", server)
+			//if h.Rrtype == dns.TypeRRSIG || h.Rrtype == qtype {
+			if h.Rrtype == qtype {
 				switch x := a.(type) {
 				case *dns.CNAME:
 					result = append(result, x.Target)
@@ -203,7 +204,7 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 						x.TypeCovered, x.Algorithm, x.Labels, x.OrigTtl,
 						x.Expiration, x.Inception, x.SignerName, x.KeyTag, x.Signature))
 				default:
-					slog.Info("Unknown record type", "type", h.Rrtype, "qtype", qtype, "server", server)
+					c.logger.Info("Unknown record type", "type", h.Rrtype, "qtype", qtype, "server", server)
 				}
 			}
 		}
@@ -214,42 +215,409 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 
 // GetParentZone returns the parent zone of the given domain.
 func (c *DNSClient) GetParentZone(domain string) (string, error) {
-	// example.com. -> com.
-	parent := dns.Fqdn(domain)
-	labels := dns.SplitDomainName(parent)
-	if len(labels) < 2 {
-		return "", fmt.Errorf("invalid domain: %s", domain)
+	// Handle root zone case
+	if domain == "." {
+		return "", nil
 	}
-	fqdn := strings.Join(labels[1:], ".") + "." // + "." for FQDN
-	slog.Info("parent zone", "parent", parent, "fqdn", fqdn)
+	labels := dns.SplitDomainName(domain)
+	if len(labels) < 2 {
+		// If we only have one label, we're at the top level (e.g., "au.").
+		// Return an empty string to signal that there's no parent.
+		//return "", fmt.Errorf("invalid domain: %s", domain)
+		return ".", nil
+	}
+	fqdn := strings.Join(labels[1:], ".") + "."
+	c.logger.Info("parent zone", "domain", domain, "fqdn", fqdn)
 	return fqdn, nil
 }
 
-// validateRRSIG validates an RRSIG record against a DNSKEY.
-func (c *DNSClient) validateRRSIG(domain string, dnskey *dns.DNSKEY, rrsig *dns.RRSIG) bool {
-	// Construct a dummy DNSKEY RR from the DNSKEYResult
-	keyRR := &dns.DNSKEY{
-		Hdr: dns.RR_Header{
-			Name:   dns.Fqdn(domain),
-			Rrtype: dns.TypeDNSKEY,
-			Class:  dns.ClassINET,
-			Ttl:    rrsig.OrigTtl,
-		},
-		Flags:     dnskey.Flags,
-		Protocol:  dnskey.Protocol,
-		Algorithm: dnskey.Algorithm,
-		PublicKey: dnskey.PublicKey,
-	}
-
-	// Create a slice containing only the DNSKEY record
-	rrSet := []dns.RR{keyRR}
-
-	// miekg/dns has a built-in function for this
-	err := rrsig.Verify(keyRR, rrSet)
-	if err != nil {
+// validateDS validates DS records against KSKs (Key Signing Keys)
+func (c *DNSClient) validateDS(domain string, ksks []DNSKEYResult) bool {
+	dsRecords, ok := c.LookupDS(domain)
+	if !ok || len(dsRecords) == 0 {
 		return false
 	}
-	return true
+
+	for _, dsRecord := range dsRecords {
+		ds, err := ParseDS(domain, dsRecord)
+		if err != nil {
+			continue
+		}
+
+		// Convert DSResult to dns.DS
+		dsRR := &dns.DS{
+			Hdr: dns.RR_Header{
+				Name:   dns.Fqdn(domain),
+				Rrtype: dns.TypeDS,
+				Class:  dns.ClassINET,
+			},
+			KeyTag:     ds.KeyTag,
+			Algorithm:  ds.Algorithm,
+			DigestType: ds.DigestType,
+			Digest:     ds.Digest,
+		}
+
+		for _, ksk := range ksks {
+			dnskey := &dns.DNSKEY{
+				Hdr: dns.RR_Header{
+					Name:   dns.Fqdn(domain),
+					Rrtype: dns.TypeDNSKEY,
+					Class:  dns.ClassINET,
+				},
+				Flags:     ksk.Flags,
+				Protocol:  ksk.Protocol,
+				Algorithm: ds.Algorithm,
+				PublicKey: ksk.PublicKey,
+			}
+
+			generatedDS := dnskey.ToDS(ds.DigestType)
+			if generatedDS == nil {
+				continue
+			}
+
+			if c.compareDS(generatedDS, dsRR) {
+				c.logger.Info("DS record validated", "keytag", ds.KeyTag)
+				return true
+			}
+		}
+	}
+	c.logger.Warn("DS validation failed", "domain", domain)
+	return false
+}
+
+// calculateKeyDigest calculates the digest for a DNSKEY
+func (c *DNSClient) calculateKeyDigest(key *dns.DNSKEY, digestType uint8) (string, error) {
+	var h hash.Hash
+
+	switch digestType {
+	case dns.SHA1:
+		h = sha1.New()
+	case dns.SHA256:
+		h = sha256.New()
+	case dns.SHA384:
+		h = sha512.New384()
+	default:
+		return "", fmt.Errorf("unsupported digest type: %d", digestType)
+	}
+
+	// Create canonical form of DNSKEY
+	DNSBufferSize := 4096
+	canonical := make([]byte, DNSBufferSize)
+	key.Hdr.Name = dns.CanonicalName(key.Hdr.Name)
+	offset, err := dns.PackRR(key, canonical, 0, nil, false)
+	if err != nil {
+		return "", err
+	}
+	slog.Info("packed RR", "name", key.Hdr.Name, "offset", offset)
+
+	h.Write(canonical[:offset])
+	digest := hex.EncodeToString(h.Sum(nil))
+	c.logger.Info("calculateKeyDigest", "name", key.Hdr.Name, "digest", digest)
+	return digest, nil
+}
+func (c *DNSClient) LookupDNSKEYWithRRSIG(target string) ([]string, []string, bool) {
+	m := new(dns.Msg)
+	m.SetQuestion(dns.Fqdn(target), dns.TypeDNSKEY)
+	m.RecursionDesired = true
+	m.SetEdns0(4096, true)
+
+	for i := 0; i < len(c.servers); i++ {
+		serverIdx := (c.currentServerIdx + i) % len(c.servers)
+		server := c.servers[serverIdx]
+
+		r, _, err := c.client.Exchange(m, server)
+		if err != nil {
+			continue
+		}
+		if r.Rcode != dns.RcodeSuccess {
+			continue
+		}
+		c.currentServerIdx = (serverIdx + 1) % len(c.servers)
+
+		var dnskeys []string
+		var rrsigs []string
+
+		for _, a := range r.Answer {
+			switch x := a.(type) {
+			case *dns.DNSKEY:
+				dnskeys = append(dnskeys, fmt.Sprintf("%s %d %d %d",
+					x.PublicKey, x.Flags, x.Protocol, x.Algorithm))
+			case *dns.RRSIG:
+				rrsigs = append(rrsigs, fmt.Sprintf("%d %d %d %d %d %d %s %d %s",
+					x.TypeCovered, x.Algorithm, x.Labels, x.OrigTtl,
+					x.Expiration, x.Inception, x.SignerName, x.KeyTag, x.Signature))
+			}
+		}
+		return dnskeys, rrsigs, true
+	}
+	return nil, nil, false
+}
+
+func (c *DNSClient) sendDNSSECQuery(m *dns.Msg) (*dns.Msg, bool) {
+	for i := 0; i < len(c.servers); i++ {
+		serverIdx := (c.currentServerIdx + i) % len(c.servers)
+		server := c.servers[serverIdx]
+
+		r, _, err := c.client.Exchange(m, server)
+		if err != nil || r.Rcode != dns.RcodeSuccess {
+			continue
+		}
+
+		c.currentServerIdx = (serverIdx + 1) % len(c.servers)
+		return r, true
+	}
+	return nil, false
+}
+
+func (c *DNSClient) isZoneApex(domain string) bool {
+	// Query for SOA record to determine if this is a zone apex
+	m := new(dns.Msg)
+	m.SetQuestion(dns.Fqdn(domain), dns.TypeSOA)
+
+	client := NewDNSClient()
+	response, ok := client.sendDNSSECQuery(m)
+
+	return ok && len(response.Answer) > 0
+}
+
+func (c *DNSClient) validateZoneApex(domain string, dnskeys []DNSKEYResult, rrsigs []dns.RRSIG) bool {
+	if len(dnskeys) == 0 || len(rrsigs) == 0 {
+		return false
+	}
+
+	client := NewDNSClient()
+
+	// Iterate through RRSIGs, find the one covering DNSKEY, and validate it.
+	for _, rrsig := range rrsigs {
+		if rrsig.TypeCovered == dns.TypeDNSKEY {
+			// Find the corresponding DNSKEY.
+			for _, dnskey := range dnskeys {
+				// Construct a *dns.DNSKEY from the DNSKEYResult
+				keyRR := &dns.DNSKEY{
+					Hdr: dns.RR_Header{
+						Name:   dns.Fqdn(domain),
+						Rrtype: dns.TypeDNSKEY,
+						Class:  dns.ClassINET,
+						Ttl:    rrsig.OrigTtl,
+					},
+					Flags:     dnskey.Flags,
+					Protocol:  dnskey.Protocol,
+					Algorithm: dnskey.Algorithm,
+					PublicKey: dnskey.PublicKey,
+				}
+
+				if client.validateRRSIG([]dns.RR{keyRR}, keyRR, &rrsig) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// validateRRSIG validates an RRSIG record against a DNSKEY and a record set.
+func (c *DNSClient) validateRRSIG(rrSet []dns.RR, dnskey *dns.DNSKEY, rrsig *dns.RRSIG) bool {
+	err := rrsig.Verify(dnskey, rrSet)
+	return err == nil
+}
+
+// ValidateDNSSEC performs the complete DNSSEC validation for a given domain.
+func (c *DNSClient) ValidateDNSSEC(domain string) error {
+	return c.validateDNSSECRecursive(domain, dns.Fqdn(domain)) // Start recursive validation.
+}
+func (c *DNSClient) validateChainOfTrust(domain string, ksks []DNSKEYResult) bool {
+	return c.validateDS(domain, ksks)
+}
+
+// validateDNSSECRecursive is the recursive helper function for ValidateDNSSEC.
+func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string) error {
+	// 1. Query for DNSKEY and RRSIG records at the current zone.
+	dnskeyRRs, rrsigRRs, ok := c.LookupDNSKEYWithRRSIG(currentDomain)
+	if !ok {
+		return errors.New(DNSSECNotImplemented)
+	}
+
+	// Parse DNSKEY records.
+	var dnskeys []*dns.DNSKEY
+	for _, key := range dnskeyRRs {
+		parsedKey, err := ParseDNSKEY(currentDomain, key)
+		if err != nil {
+			return fmt.Errorf("error parsing DNSKEY: %w", err)
+		}
+		c.logger.Info("Parsed DNSKEY", "currentDomain", currentDomain, "parsedKey", parsedKey) // Log the parsed key
+		if parsedKey != nil {
+			dnskeys = append(dnskeys, &dns.DNSKEY{
+				Hdr: dns.RR_Header{
+					Name:   dns.Fqdn(currentDomain),
+					Rrtype: dns.TypeDNSKEY,
+					Class:  dns.ClassINET,
+					Ttl:    60,
+				},
+				Flags:     parsedKey.Flags,
+				Protocol:  parsedKey.Protocol,
+				Algorithm: parsedKey.Algorithm,
+				PublicKey: parsedKey.PublicKey,
+			})
+		}
+	}
+
+	// Parse RRSIG records
+	var rrsigs []*dns.RRSIG
+	for _, record := range rrsigRRs {
+		rrsigResult, err := ParseRRSIG(currentDomain, record)
+		if err != nil {
+			return fmt.Errorf("error parsing RRSIG: %w", err)
+		}
+		c.logger.Info("Parsed RRSIG", "currentDomain", currentDomain, "rrsigResult", rrsigResult) // Log the parsed RRSIG
+		// Convert *RRSIGResult to dns.RRSIG.
+		rrsig := dns.RRSIG{
+			Hdr: dns.RR_Header{
+				Name:   dns.Fqdn(currentDomain),
+				Rrtype: dns.TypeRRSIG,
+				Class:  dns.ClassINET,
+				Ttl:    rrsigResult.OriginalTTL,
+			},
+			TypeCovered: rrsigResult.TypeCovered,
+			Algorithm:   rrsigResult.Algorithm,
+			Labels:      rrsigResult.Labels,
+			OrigTtl:     rrsigResult.OriginalTTL,
+			Expiration:  rrsigResult.Expiration,
+			Inception:   rrsigResult.Inception,
+			KeyTag:      rrsigResult.KeyTag,
+			SignerName:  rrsigResult.SignerName,
+			Signature:   rrsigResult.Signature,
+		}
+		rrsigs = append(rrsigs, &rrsig)
+	}
+	// 2.  Retrieve the records we want to validate (in this case, we are validating the DNSKEY records themselves at the zone apex)
+	rrSet := make([]dns.RR, 0, len(dnskeys))
+	for _, k := range dnskeys {
+		c.logger.Info("Adding DNSKEY to rrSet", "dnskey", k) // Log each DNSKEY added to rrSet
+		rrSet = append(rrSet, k)
+	}
+
+	// 3. Verify RRSIG.
+	validated := false
+	for _, rrsig := range rrsigs {
+		if rrsig.TypeCovered != dns.TypeDNSKEY {
+			c.logger.Info("Skipping RRSIG - not covering DNSKEY", "rrsig", rrsig)
+			continue // We're validating the DNSKEY record set.
+		}
+		for _, dnskey := range dnskeys {
+			if c.validateRRSIG(rrSet, dnskey, rrsig) {
+				validated = true
+				c.logger.Info("RRSIG validated successfully!", "rrsig", rrsig, "dnskey", dnskey)
+				break // One valid signature is enough.
+			} else {
+				c.logger.Info("RRSIG validation failed", "rrsig", rrsig, "dnskey", dnskey)
+			}
+		}
+		if validated {
+			break
+		}
+	}
+	if !validated {
+		return errors.New(DNSSECFailedZoneApexValidation)
+	}
+
+	// 4. Establish Chain of Trust.
+	// Separate KSKs and ZSKs.
+	var ksks []*dns.DNSKEY
+	for _, key := range dnskeys {
+		if key.Flags == 257 {
+			ksks = append(ksks, key)
+		}
+	}
+
+	if len(ksks) > 0 { // Only if KSKs exist, try to validate DS records.
+		parentZone, err := c.GetParentZone(currentDomain)
+		if err != nil {
+			return fmt.Errorf("getting parent zone: %w", err)
+		}
+
+		dsRecords, ok := c.LookupDS(currentDomain) // LookupDS now queries the parent.
+		if !ok {
+			//If we are at the root, we don't expect DS records
+			if currentDomain == "." {
+				return nil
+			}
+			return errors.New(DNSSECNotImplemented)
+		}
+
+		// Parse DS records.
+		var dsSet []*dns.DS
+		for _, dsRecord := range dsRecords {
+			ds, err := ParseDS(currentDomain, dsRecord)
+			if err != nil {
+				c.logger.Warn("Error parsing DS record", "error", err)
+				continue // Skip invalid DS records.
+			}
+			dsSet = append(dsSet, &dns.DS{
+				Hdr: dns.RR_Header{
+					Name:   dns.Fqdn(currentDomain),
+					Rrtype: dns.TypeDS,
+					Class:  dns.ClassINET,
+					Ttl:    3600, // Doesn't affect validation.
+				},
+				KeyTag:     ds.KeyTag,
+				Algorithm:  ds.Algorithm,
+				DigestType: ds.DigestType,
+				Digest:     ds.Digest,
+			})
+
+		}
+		if len(dsSet) == 0 && currentDomain != "." {
+			return errors.New(DNSSECFailedChainOfTrust)
+		}
+
+		// Verify DS against DNSKEY hash.
+		dsValid := false
+		for _, ksk := range ksks {
+			for _, ds := range dsSet {
+				generatedDS, err := c.generateDS(dns.Fqdn(currentDomain), ksk, ds.DigestType)
+				if err != nil {
+					continue
+				}
+				if c.compareDS(ds, generatedDS) {
+					dsValid = true
+					break // One valid DS is enough.
+				}
+			}
+			if dsValid {
+				break
+			}
+		}
+		if !dsValid && currentDomain != "." {
+			return errors.New(DNSSECFailedChainOfTrust)
+		}
+
+		// 5. Repeat for higher zones (recursively).
+		//if currentDomain != "." {
+		if parentZone != "." {
+			if err := c.validateDNSSECRecursive(originalDomain, parentZone); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// generateDS creates a DS record from a DNSKEY using specified digest type
+func (c *DNSClient) generateDS(name string, key *dns.DNSKEY, digestType uint8) (*dns.DS, error) {
+	ds := key.ToDS(digestType)
+	if ds == nil {
+		return nil, fmt.Errorf("failed to generate DS record")
+	}
+
+	ds.Hdr.Name = dns.Fqdn(name)
+	c.logger.Info("generated DS record",
+		"name", name,
+		"keytag", ds.KeyTag,
+		"algorithm", ds.Algorithm,
+		"digest_type", ds.DigestType,
+		"digest", ds.Digest)
+	return ds, nil
 }
 
 type SubdomainResult struct {
@@ -497,9 +865,18 @@ func ParseDS(domain, record string) (*DSResult, error) {
 		return nil, fmt.Errorf("invalid DS record format")
 	}
 
-	keyTag, _ := strconv.ParseUint(parts[0], 10, 16)
-	algorithm, _ := strconv.ParseUint(parts[1], 10, 8)
-	digestType, _ := strconv.ParseUint(parts[2], 10, 8)
+	keyTag, err := strconv.ParseUint(parts[0], 10, 16)
+	if err != nil {
+		return nil, fmt.Errorf("invalid KeyTag: %w", err)
+	}
+	algorithm, err := strconv.ParseUint(parts[1], 10, 8)
+	if err != nil {
+		return nil, fmt.Errorf("invalid Algorithm: %w", err)
+	}
+	digestType, err := strconv.ParseUint(parts[2], 10, 8)
+	if err != nil {
+		return nil, fmt.Errorf("invalid DigestType: %w", err)
+	}
 
 	return &DSResult{
 		Domain:     domain,
@@ -537,7 +914,8 @@ func ParseRRSIG(domain, record string) (*RRSIGResult, error) {
 	originalTTL, _ := strconv.ParseUint(parts[3], 10, 32)
 	expiration, _ := strconv.ParseUint(parts[4], 10, 32)
 	inception, _ := strconv.ParseUint(parts[5], 10, 32)
-	keyTag, _ := strconv.ParseUint(parts[6], 10, 16)
+	signerName := parts[6]
+	keyTag, _ := strconv.ParseUint(parts[7], 10, 16)
 
 	return &RRSIGResult{
 		Domain:      domain,
@@ -548,7 +926,7 @@ func ParseRRSIG(domain, record string) (*RRSIGResult, error) {
 		Expiration:  uint32(expiration),
 		Inception:   uint32(inception),
 		KeyTag:      uint16(keyTag),
-		SignerName:  parts[7],
+		SignerName:  signerName,
 		Signature:   parts[8],
 		IsValid:     true,
 	}, nil
