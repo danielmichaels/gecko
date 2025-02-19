@@ -2,13 +2,14 @@ package jobs
 
 import (
 	"context"
+	"log/slog"
+
 	"github.com/danielmichaels/doublestag/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivermigrate"
-	"log/slog"
 )
 
 const (
@@ -36,7 +37,13 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 		return nil, err
 	}
 	for _, version := range res.Versions {
-		cfg.Logger.Info("river migrations ran", "direction", res.Direction, "version", version.Version)
+		cfg.Logger.Info(
+			"river migrations ran",
+			"direction",
+			res.Direction,
+			"version",
+			version.Version,
+		)
 	}
 
 	riverConfig := &river.Config{}

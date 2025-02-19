@@ -3,14 +3,14 @@ package scanner
 import "github.com/miekg/dns"
 
 type ZoneTransferResult struct {
-	Domain                string
-	NS                    []string
 	AXFR                  map[string][]dns.RR
 	IXFR                  map[string][]dns.RR
-	Error                 string
-	Vulnerable            bool
 	SuccessfulTransfers   map[string]string
+	Domain                string
+	Error                 string
+	NS                    []string
 	VulnerableNameservers []string
+	Vulnerable            bool
 }
 
 func NewZoneTransferResult(domain string) *ZoneTransferResult {

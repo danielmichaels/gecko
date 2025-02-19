@@ -1,10 +1,11 @@
 package server
 
 import (
+	"net/http"
+
 	"github.com/danielmichaels/doublestag/assets"
 	"github.com/danielmichaels/doublestag/internal/config"
 	"github.com/danielmichaels/doublestag/internal/version"
-	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-chi/chi/v5"

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+
 	"github.com/danielmichaels/doublestag/internal/server"
 	"github.com/danielmichaels/doublestag/internal/store"
 )

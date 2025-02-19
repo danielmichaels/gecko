@@ -3,12 +3,13 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"time"
+
 	"github.com/danielmichaels/doublestag/internal/scanner"
 	"github.com/danielmichaels/doublestag/internal/store"
 	"github.com/danielmichaels/doublestag/internal/tracing"
 	"github.com/riverqueue/river"
-	"log/slog"
-	"time"
 )
 
 type ScanCertificateArgs struct {
@@ -23,12 +24,15 @@ func (ScanCertificateArgs) InsertOpts() river.InsertOpts {
 func (ScanCertificateArgs) Kind() string { return "scan_certificate" }
 
 type ScanCertificateWorker struct {
+	river.WorkerDefaults[ScanCertificateArgs]
 	Logger slog.Logger
 	Store  *store.Queries
-	river.WorkerDefaults[ScanCertificateArgs]
 }
 
-func (w *ScanCertificateWorker) Work(ctx context.Context, job *river.Job[ScanCertificateArgs]) error {
+func (w *ScanCertificateWorker) Work(
+	ctx context.Context,
+	job *river.Job[ScanCertificateArgs],
+) error {
 	ctx = tracing.WithNewTraceID(ctx, true)
 	start := time.Now()
 
@@ -54,9 +58,9 @@ func (ScanCNAMEArgs) InsertOpts() river.InsertOpts {
 func (ScanCNAMEArgs) Kind() string { return "scan_cname" }
 
 type ScanCNAMEWorker struct {
+	river.WorkerDefaults[ScanCNAMEArgs]
 	Logger slog.Logger
 	Store  *store.Queries
-	river.WorkerDefaults[ScanCNAMEArgs]
 }
 
 func (w *ScanCNAMEWorker) Work(ctx context.Context, job *river.Job[ScanCNAMEArgs]) error {
@@ -86,9 +90,9 @@ func (ScanDNSSECArgs) InsertOpts() river.InsertOpts {
 func (ScanDNSSECArgs) Kind() string { return "scan_dnssec" }
 
 type ScanDNSSECWorker struct {
+	river.WorkerDefaults[ScanDNSSECArgs]
 	Logger slog.Logger
 	Store  *store.Queries
-	river.WorkerDefaults[ScanDNSSECArgs]
 }
 
 func (w *ScanDNSSECWorker) Work(ctx context.Context, job *river.Job[ScanDNSSECArgs]) error {
@@ -121,12 +125,15 @@ func (ScanZoneTransferArgs) InsertOpts() river.InsertOpts {
 func (ScanZoneTransferArgs) Kind() string { return "scan_zone_transfer" }
 
 type ScanZoneTransferWorker struct {
+	river.WorkerDefaults[ScanZoneTransferArgs]
 	Logger slog.Logger
 	Store  *store.Queries
-	river.WorkerDefaults[ScanZoneTransferArgs]
 }
 
-func (w *ScanZoneTransferWorker) Work(ctx context.Context, job *river.Job[ScanZoneTransferArgs]) error {
+func (w *ScanZoneTransferWorker) Work(
+	ctx context.Context,
+	job *river.Job[ScanZoneTransferArgs],
+) error {
 	ctx = tracing.WithNewTraceID(ctx, true)
 	start := time.Now()
 

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+
 	"github.com/danielmichaels/doublestag/internal/version"
 )
 

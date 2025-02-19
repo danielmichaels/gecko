@@ -1,11 +1,12 @@
 package scanner
 
 import (
+	"log/slog"
+	"strings"
+
 	"github.com/danielmichaels/doublestag/internal/config"
 	"github.com/danielmichaels/doublestag/internal/logging"
 	"github.com/miekg/dns"
-	"log/slog"
-	"strings"
 )
 
 const (
@@ -19,21 +20,21 @@ const (
 type DNSSECResult struct {
 	Domain          string
 	Status          string
-	HasDNSKEY       bool
-	HasDS           bool
-	HasRRSIG        bool
 	ValidationError string
 	KSKs            []DNSKEYResult
 	ZSKs            []DNSKEYResult
 	Details         []string
+	HasDNSKEY       bool
+	HasDS           bool
+	HasRRSIG        bool
 }
 
 // todo: a lot of this scanner will need to be moved to an assessor later
 type DNSSECScanner struct {
-	Domain string
 	Result *DNSSECResult
 	Client *DNSClient
 	logger *slog.Logger
+	Domain string
 }
 
 func NewDNSSECScanner(domain string) *DNSSECScanner {
@@ -46,6 +47,7 @@ func NewDNSSECScanner(domain string) *DNSSECScanner {
 	client := NewDNSClient()
 	return &DNSSECScanner{Domain: domain, Client: client, Result: result, logger: logger}
 }
+
 func ScanDNSSEC(domain string) *DNSSECResult {
 	ds := NewDNSSECScanner(domain)
 

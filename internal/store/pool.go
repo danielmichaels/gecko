@@ -3,9 +3,10 @@ package store
 import (
 	"context"
 	"fmt"
-	"github.com/danielmichaels/doublestag/internal/config"
 	"os"
 	"time"
+
+	"github.com/danielmichaels/doublestag/internal/config"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )

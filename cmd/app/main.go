@@ -2,9 +2,10 @@ package main
 
 import (
 	"fmt"
+	"os"
+
 	"github.com/danielmichaels/doublestag/internal/cmd"
 	"github.com/danielmichaels/doublestag/internal/version"
-	"os"
 
 	"github.com/alecthomas/kong"
 )
@@ -24,10 +25,11 @@ func (v VersionFlag) BeforeApply(app *kong.Kong, vars kong.Vars) error {
 type CLI struct {
 	cmd.Globals
 
-	Serve   cmd.ServeCmd  `cmd:"" help:"Run server"`
 	Worker  cmd.WorkerCmd `cmd:"" help:"Run jobs worker"`
-	Domain  cmd.DomainCmd `cmd:"" help:"Run domain operations"`
 	Version VersionFlag   `       help:"Print version information and quit" short:"v" name:"version"`
+	Domain  cmd.DomainCmd `cmd:"" help:"Run domain operations"`
+
+	Serve cmd.ServeCmd `cmd:"" help:"Run server"`
 }
 
 func run() error {

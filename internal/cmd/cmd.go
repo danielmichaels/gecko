@@ -2,6 +2,9 @@ package cmd
 
 import (
 	"context"
+	"io"
+	"log/slog"
+
 	"github.com/danielmichaels/doublestag/internal/config"
 	"github.com/danielmichaels/doublestag/internal/jobs"
 	"github.com/danielmichaels/doublestag/internal/logging"
@@ -9,8 +12,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
-	"io"
-	"log/slog"
 )
 
 type Globals struct{}

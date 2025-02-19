@@ -2,20 +2,16 @@ package scanner
 
 import (
 	"context"
-	"crypto/sha1"
-	"crypto/sha256"
-	"crypto/sha512"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/danielmichaels/doublestag/internal/config"
-	"github.com/danielmichaels/doublestag/internal/logging"
-	"github.com/projectdiscovery/subfinder/v2/pkg/resolve"
-	"hash"
 	"log/slog"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/danielmichaels/doublestag/internal/config"
+	"github.com/danielmichaels/doublestag/internal/logging"
+	"github.com/projectdiscovery/subfinder/v2/pkg/resolve"
 
 	"github.com/miekg/dns"
 	"github.com/projectdiscovery/subfinder/v2/pkg/runner"
@@ -23,9 +19,9 @@ import (
 
 type DNSClient struct {
 	client           *dns.Client
+	logger           *slog.Logger
 	servers          []string
 	currentServerIdx int
-	logger           *slog.Logger
 }
 
 func NewDNSClient() *DNSClient {
@@ -143,19 +139,47 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 		m.SetEdns0(4096, true)
 	}
 
-	c.logger.Debug("querying DNS server", "target", target, "qtype", qtype, "server", c.servers[c.currentServerIdx])
+	c.logger.Debug(
+		"querying DNS server",
+		"target",
+		target,
+		"qtype",
+		qtype,
+		"server",
+		c.servers[c.currentServerIdx],
+	)
 	for i := 0; i < len(c.servers); i++ {
 		serverIdx := (c.currentServerIdx + i) % len(c.servers)
 		server := c.servers[serverIdx]
 
 		r, _, err := c.client.Exchange(m, server)
 		if err != nil {
-			c.logger.Debug("exchange error", "target", target, "qtype", qtype, "server", server, "error", err)
+			c.logger.Debug(
+				"exchange error",
+				"target",
+				target,
+				"qtype",
+				qtype,
+				"server",
+				server,
+				"error",
+				err,
+			)
 			continue
 		}
 
 		if r.Rcode != dns.RcodeSuccess {
-			c.logger.Debug("rcode error", "target", target, "qtype", qtype, "server", server, "rcode", r.Rcode)
+			c.logger.Debug(
+				"rcode error",
+				"target",
+				target,
+				"qtype",
+				qtype,
+				"server",
+				server,
+				"rcode",
+				r.Rcode,
+			)
 			continue
 		}
 		c.currentServerIdx = (serverIdx + 1) % len(c.servers)
@@ -221,97 +245,13 @@ func (c *DNSClient) GetParentZone(domain string) (string, error) {
 	if len(labels) < 2 {
 		// If we only have one label, we're at the top level (e.g., "au.").
 		// Return an empty string to signal that there's no parent.
-		//return "", fmt.Errorf("invalid domain: %s", domain)
+		// return "", fmt.Errorf("invalid domain: %s", domain)
 		return ".", nil
 	}
 	fqdn := strings.Join(labels[1:], ".") + "."
 	return fqdn, nil
 }
 
-// validateDS validates DS records against KSKs (Key Signing Keys)
-func (c *DNSClient) validateDS(domain string, ksks []DNSKEYResult) bool {
-	dsRecords, ok := c.LookupDS(domain)
-	if !ok || len(dsRecords) == 0 {
-		return false
-	}
-
-	for _, dsRecord := range dsRecords {
-		ds, err := ParseDS(domain, dsRecord)
-		if err != nil {
-			continue
-		}
-
-		// Convert DSResult to dns.DS
-		dsRR := &dns.DS{
-			Hdr: dns.RR_Header{
-				Name:   dns.Fqdn(domain),
-				Rrtype: dns.TypeDS,
-				Class:  dns.ClassINET,
-			},
-			KeyTag:     ds.KeyTag,
-			Algorithm:  ds.Algorithm,
-			DigestType: ds.DigestType,
-			Digest:     ds.Digest,
-		}
-
-		for _, ksk := range ksks {
-			dnskey := &dns.DNSKEY{
-				Hdr: dns.RR_Header{
-					Name:   dns.Fqdn(domain),
-					Rrtype: dns.TypeDNSKEY,
-					Class:  dns.ClassINET,
-				},
-				Flags:     ksk.Flags,
-				Protocol:  ksk.Protocol,
-				Algorithm: ds.Algorithm,
-				PublicKey: ksk.PublicKey,
-			}
-
-			generatedDS := dnskey.ToDS(ds.DigestType)
-			if generatedDS == nil {
-				continue
-			}
-
-			if c.compareDS(generatedDS, dsRR) {
-				c.logger.Debug("DS record validated", "keytag", ds.KeyTag)
-				return true
-			}
-		}
-	}
-	c.logger.Warn("DS validation failed", "domain", domain)
-	return false
-}
-
-// calculateKeyDigest calculates the digest for a DNSKEY
-func (c *DNSClient) calculateKeyDigest(key *dns.DNSKEY, digestType uint8) (string, error) {
-	var h hash.Hash
-
-	switch digestType {
-	case dns.SHA1:
-		h = sha1.New()
-	case dns.SHA256:
-		h = sha256.New()
-	case dns.SHA384:
-		h = sha512.New384()
-	default:
-		return "", fmt.Errorf("unsupported digest type: %d", digestType)
-	}
-
-	// Create canonical form of DNSKEY
-	DNSBufferSize := 4096
-	canonical := make([]byte, DNSBufferSize)
-	key.Hdr.Name = dns.CanonicalName(key.Hdr.Name)
-	offset, err := dns.PackRR(key, canonical, 0, nil, false)
-	if err != nil {
-		return "", err
-	}
-	slog.Debug("packed RR", "name", key.Hdr.Name, "offset", offset)
-
-	h.Write(canonical[:offset])
-	digest := hex.EncodeToString(h.Sum(nil))
-	c.logger.Debug("calculateKeyDigest", "name", key.Hdr.Name, "digest", digest)
-	return digest, nil
-}
 func (c *DNSClient) LookupDNSKEYWithRRSIG(target string) ([]string, []string, bool) {
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(target), dns.TypeDNSKEY)
@@ -377,39 +317,6 @@ func (c *DNSClient) isZoneApex(domain string) bool {
 	return ok && len(response.Answer) > 0
 }
 
-func (c *DNSClient) validateZoneApex(domain string, dnskeys []DNSKEYResult, rrsigs []dns.RRSIG) bool {
-	if len(dnskeys) == 0 || len(rrsigs) == 0 {
-		return false
-	}
-
-	// Iterate through RRSIGs, find the one covering DNSKEY, and validate it.
-	for _, rrsig := range rrsigs {
-		if rrsig.TypeCovered == dns.TypeDNSKEY {
-			// Find the corresponding DNSKEY.
-			for _, dnskey := range dnskeys {
-				// Construct a *dns.DNSKEY from the DNSKEYResult
-				keyRR := &dns.DNSKEY{
-					Hdr: dns.RR_Header{
-						Name:   dns.Fqdn(domain),
-						Rrtype: dns.TypeDNSKEY,
-						Class:  dns.ClassINET,
-						Ttl:    rrsig.OrigTtl,
-					},
-					Flags:     dnskey.Flags,
-					Protocol:  dnskey.Protocol,
-					Algorithm: dnskey.Algorithm,
-					PublicKey: dnskey.PublicKey,
-				}
-
-				if c.validateRRSIG([]dns.RR{keyRR}, keyRR, &rrsig) {
-					return true
-				}
-			}
-		}
-	}
-	return false
-}
-
 // validateRRSIG validates an RRSIG record against a DNSKEY and a record set.
 func (c *DNSClient) validateRRSIG(rrSet []dns.RR, dnskey *dns.DNSKEY, rrsig *dns.RRSIG) bool {
 	err := rrsig.Verify(dnskey, rrSet)
@@ -419,9 +326,6 @@ func (c *DNSClient) validateRRSIG(rrSet []dns.RR, dnskey *dns.DNSKEY, rrsig *dns
 // ValidateDNSSEC performs the complete DNSSEC validation for a given domain.
 func (c *DNSClient) ValidateDNSSEC(domain string) error {
 	return c.validateDNSSECRecursive(domain, dns.Fqdn(domain)) // Start recursive validation.
-}
-func (c *DNSClient) validateChainOfTrust(domain string, ksks []DNSKEYResult) bool {
-	return c.validateDS(domain, ksks)
 }
 
 // validateDNSSECRecursive is the recursive helper function for ValidateDNSSEC.
@@ -440,7 +344,13 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 		if err != nil {
 			return fmt.Errorf("error parsing DNSKEY: %w", err)
 		}
-		c.logger.Debug("Parsed DNSKEY", "currentDomain", currentDomain, "parsedKey", parsedKey) // Log the parsed key
+		c.logger.Debug(
+			"Parsed DNSKEY",
+			"currentDomain",
+			currentDomain,
+			"parsedKey",
+			parsedKey,
+		) // Log the parsed key
 		if parsedKey != nil {
 			dnskeys = append(dnskeys, &dns.DNSKEY{
 				Hdr: dns.RR_Header{
@@ -464,7 +374,13 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 		if err != nil {
 			return fmt.Errorf("error parsing RRSIG: %w", err)
 		}
-		c.logger.Debug("Parsed RRSIG", "currentDomain", currentDomain, "rrsigResult", rrsigResult) // Log the parsed RRSIG
+		c.logger.Debug(
+			"Parsed RRSIG",
+			"currentDomain",
+			currentDomain,
+			"rrsigResult",
+			rrsigResult,
+		) // Log the parsed RRSIG
 		// Convert *RRSIGResult to dns.RRSIG.
 		rrsig := dns.RRSIG{
 			Hdr: dns.RR_Header{
@@ -532,9 +448,9 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 		}
 
 		dsRecords, ok := c.LookupDS(currentDomain) // LookupDS now queries the parent.
-		//dsRecords, ok := c.LookupDS(parentZone) // LookupDS now queries the parent.
+		// dsRecords, ok := c.LookupDS(parentZone) // LookupDS now queries the parent.
 		if !ok {
-			//If we are at the root, we don't expect DS records
+			// If we are at the root, we don't expect DS records
 			if currentDomain == "." {
 				return nil
 			}
@@ -544,14 +460,22 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 		// Parse DS records.
 		var dsSet []*dns.DS
 		for _, dsRecord := range dsRecords {
-			c.logger.Debug("Found DS record (check zone/domain)", "dnskey", dsRecord, "parentZone", parentZone, "currentDomain", currentDomain)
-			//ds, err := ParseDS(parentZone, dsRecord)
+			c.logger.Debug(
+				"Found DS record (check zone/domain)",
+				"dnskey",
+				dsRecord,
+				"parentZone",
+				parentZone,
+				"currentDomain",
+				currentDomain,
+			)
+			// ds, err := ParseDS(parentZone, dsRecord)
 			ds, err := ParseDS(currentDomain, dsRecord)
 			if err != nil {
 				c.logger.Warn("Error parsing DS record", "error", err)
 				continue // Skip invalid DS records.
 			}
-			//ds.Domain = parentZone
+			// ds.Domain = parentZone
 			dsSet = append(dsSet, &dns.DS{
 				Hdr: dns.RR_Header{
 					Name:   dns.Fqdn(currentDomain),
@@ -566,7 +490,13 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 
 		}
 		if len(dsSet) == 0 && currentDomain != "." {
-			c.logger.Error("dsSet and currentDomain err", "dsSet", dsSet, "currentDomain", currentDomain)
+			c.logger.Error(
+				"dsSet and currentDomain err",
+				"dsSet",
+				dsSet,
+				"currentDomain",
+				currentDomain,
+			)
 			return errors.New(DNSSECFailedChainOfTrust)
 		}
 
@@ -574,7 +504,12 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 		dsValid := false
 		for _, ksk := range ksks {
 			for _, ds := range dsSet {
-				generatedDS, err := c.generateDS(dns.Fqdn(currentDomain), ksk, ds.DigestType, ds.Algorithm)
+				generatedDS, err := c.generateDS(
+					dns.Fqdn(currentDomain),
+					ksk,
+					ds.DigestType,
+					ds.Algorithm,
+				)
 				if err != nil {
 					continue
 				}
@@ -588,7 +523,15 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 			}
 		}
 		if !dsValid && currentDomain != "." {
-			c.logger.Error("ds invalid", "dsSet", dsSet, "parentZone", parentZone, "currentDomain", currentDomain)
+			c.logger.Error(
+				"ds invalid",
+				"dsSet",
+				dsSet,
+				"parentZone",
+				parentZone,
+				"currentDomain",
+				currentDomain,
+			)
 			return errors.New(DNSSECFailedChainOfTrust)
 		}
 
@@ -604,7 +547,11 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 }
 
 // generateDS creates a DS record from a DNSKEY using specified digest type
-func (c *DNSClient) generateDS(name string, key *dns.DNSKEY, digestType, algorithm uint8) (*dns.DS, error) {
+func (c *DNSClient) generateDS(
+	name string,
+	key *dns.DNSKEY,
+	digestType, algorithm uint8,
+) (*dns.DS, error) {
 	originalAlgorithm := key.Algorithm
 	ds := key.ToDS(digestType)
 	if ds == nil {
@@ -663,52 +610,71 @@ func (c *DNSClient) EnumerateWithSubfinderCallback(
 	return err
 }
 
+type recordParser struct {
+	parser  func(string, string) (interface{}, error)
+	name    string
+	entries []string
+}
+
+var parsers = map[string]func(string, string) (interface{}, error){
+	"A": func(domain, record string) (interface{}, error) {
+		return ParseA(domain, record)
+	},
+	"AAAA": func(domain, record string) (interface{}, error) {
+		return ParseAAAA(domain, record)
+	},
+	"CNAME": func(domain, record string) (interface{}, error) {
+		return ParseCNAME(domain, record)
+	},
+	"TXT": func(domain, record string) (interface{}, error) {
+		return ParseTXT(domain, record)
+	},
+	"NS": func(domain, record string) (interface{}, error) {
+		return ParseNS(domain, record)
+	},
+	"MX": func(domain, record string) (interface{}, error) {
+		return ParseMX(domain, record)
+	},
+	"SOA": func(domain, record string) (interface{}, error) {
+		return ParseSOARecord(domain, record)
+	},
+	"PTR": func(domain, record string) (interface{}, error) {
+		return ParsePTR(domain, record)
+	},
+	"CAA": func(domain, record string) (interface{}, error) {
+		return ParseCAA(domain, record)
+	},
+	"DNSKEY": func(domain, record string) (interface{}, error) {
+		return ParseDNSKEY(domain, record)
+	},
+	"DS": func(domain, record string) (interface{}, error) {
+		return ParseDS(domain, record)
+	},
+	"RRSIG": func(domain, record string) (interface{}, error) {
+		return ParseRRSIG(domain, record)
+	},
+	"SRV": func(domain, record string) (interface{}, error) {
+		return ParseSRV(domain, record)
+	},
+}
+
 func RecordHandler(result SubdomainResult) error {
-	records := []struct {
-		name    string
-		entries []string
-		parser  func(string, string) (interface{}, error)
-	}{
-		{"A", result.A, func(domain, record string) (interface{}, error) {
-			return ParseA(domain, record)
-		}},
-		{"AAAA", result.AAAA, func(domain, record string) (interface{}, error) {
-			return ParseAAAA(domain, record)
-		}},
-		{"CNAME", result.CNAME, func(domain, record string) (interface{}, error) {
-			return ParseCNAME(domain, record)
-		}},
-		{"TXT", result.TXT, func(domain, record string) (interface{}, error) {
-			return ParseTXT(domain, record)
-		}},
-		{"NS", result.NS, func(domain, record string) (interface{}, error) {
-			return ParseNS(domain, record)
-		}},
-		{"MX", result.MX, func(domain, record string) (interface{}, error) {
-			return ParseMX(domain, record)
-		}},
-		{"SOA", result.SOA, func(domain, record string) (interface{}, error) {
-			return ParseSOARecord(domain, record)
-		}},
-		{"PTR", result.PTR, func(domain, record string) (interface{}, error) {
-			return ParsePTR(domain, record)
-		}},
-		{"CAA", result.CAA, func(domain, record string) (interface{}, error) {
-			return ParseCAA(domain, record)
-		}},
-		{"DNSKEY", result.DNSKEY, func(domain, record string) (interface{}, error) {
-			return ParseDNSKEY(domain, record)
-		}},
-		{"DS", result.DS, func(domain, record string) (interface{}, error) {
-			return ParseDS(domain, record)
-		}},
-		{"RRSIG", result.RRSIG, func(domain, record string) (interface{}, error) {
-			return ParseRRSIG(domain, record)
-		}},
-		{"SRV", result.SRV, func(domain, record string) (interface{}, error) {
-			return ParseSRV(domain, record)
-		}},
+	records := []recordParser{
+		{parsers["A"], "A", result.A},
+		{parsers["AAAA"], "AAAA", result.AAAA},
+		{parsers["CNAME"], "CNAME", result.CNAME},
+		{parsers["TXT"], "TXT", result.TXT},
+		{parsers["NS"], "NS", result.NS},
+		{parsers["MX"], "MX", result.MX},
+		{parsers["SOA"], "SOA", result.SOA},
+		{parsers["PTR"], "PTR", result.PTR},
+		{parsers["CAA"], "CAA", result.CAA},
+		{parsers["DNSKEY"], "DNSKEY", result.DNSKEY},
+		{parsers["DS"], "DS", result.DS},
+		{parsers["RRSIG"], "RRSIG", result.RRSIG},
+		{parsers["SRV"], "SRV", result.SRV},
 	}
+
 	for _, r := range records {
 		for _, entry := range r.entries {
 			parsed, err := r.parser(result.Name, entry) // Pass the domain here
@@ -751,8 +717,8 @@ func ParseCNAME(domain, record string) (*CNAMERecord, error) {
 
 type MXRecord struct {
 	Domain     string
-	Preference uint16
 	Target     string
+	Preference uint16
 }
 
 func ParseMX(domain, record string) (*MXRecord, error) {
@@ -798,10 +764,10 @@ func ParsePTR(domain, record string) (*PTRRecord, error) {
 type CAAResult struct {
 	Domain      string
 	Value       string
-	Flag        uint8
 	Tag         string
-	IsValid     bool
 	ErrorReason string
+	Flag        uint8
+	IsValid     bool
 }
 
 func ParseCAA(domain, record string) (*CAAResult, error) {
@@ -824,11 +790,11 @@ func ParseCAA(domain, record string) (*CAAResult, error) {
 type DNSKEYResult struct {
 	Domain      string
 	PublicKey   string
+	ErrorReason string
 	Flags       uint16
 	Protocol    uint8
 	Algorithm   uint8
 	IsValid     bool
-	ErrorReason string
 }
 
 func ParseDNSKEY(domain, record string) (*DNSKEYResult, error) {
@@ -853,12 +819,12 @@ func ParseDNSKEY(domain, record string) (*DNSKEYResult, error) {
 
 type DSResult struct {
 	Domain      string
+	Digest      string
+	ErrorReason string
 	KeyTag      uint16
 	Algorithm   uint8
 	DigestType  uint8
-	Digest      string
 	IsValid     bool
-	ErrorReason string
 }
 
 func ParseDS(domain, record string) (*DSResult, error) {
@@ -892,15 +858,15 @@ func ParseDS(domain, record string) (*DSResult, error) {
 
 type RRSIGResult struct {
 	Domain      string
-	TypeCovered uint16
-	Algorithm   uint8
-	Labels      uint8
+	SignerName  string
+	Signature   string
 	OriginalTTL uint32
 	Expiration  uint32
 	Inception   uint32
+	TypeCovered uint16
 	KeyTag      uint16
-	SignerName  string
-	Signature   string
+	Algorithm   uint8
+	Labels      uint8
 	IsValid     bool
 }
 
@@ -937,11 +903,11 @@ func ParseRRSIG(domain, record string) (*RRSIGResult, error) {
 type SRVResult struct {
 	Domain      string
 	Target      string
+	ErrorReason string
 	Port        uint16
 	Weight      uint16
 	Priority    uint16
 	IsValid     bool
-	ErrorReason string
 }
 
 func ParseSRV(domain, record string) (*SRVResult, error) {
@@ -968,13 +934,13 @@ type SOAResult struct {
 	Domain      string
 	NameServer  string
 	AdminEmail  string
+	ErrorReason string
 	Serial      uint32
 	Refresh     uint32
 	Retry       uint32
 	Expire      uint32
 	MinimumTTL  uint32
 	IsValid     bool
-	ErrorReason string
 }
 
 // ParseSOARecord parses a SOA record string into a SOAResult struct.

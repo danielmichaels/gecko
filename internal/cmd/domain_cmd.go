@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
+
 	"github.com/danielmichaels/doublestag/internal/jobs"
 	"github.com/jackc/pgx/v5"
 )
@@ -40,7 +42,9 @@ func (a *AddDomainCmd) Run(dc *DomainCmd) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(setup.Ctx)
+	defer func(tx pgx.Tx, ctx context.Context) {
+		_ = tx.Rollback(ctx)
+	}(tx, setup.Ctx)
 
 	//_, err = setup.RC.InsertTx(setup.Ctx, tx, jobs.ScanCertificateArgs{
 	//	Domain: a.Name,
@@ -55,6 +59,12 @@ func (a *AddDomainCmd) Run(dc *DomainCmd) error {
 	//	return err
 	//}
 	//_, err = setup.RC.InsertTx(setup.Ctx, tx, jobs.ResolveDomainArgs{
+	//	Domain: a.Name,
+	//}, nil)
+	//if err != nil {
+	//	return err
+	//}
+	//_, err = setup.RC.InsertTx(setup.Ctx, tx, jobs.ScanZoneTransferArgs{
 	//	Domain: a.Name,
 	//}, nil)
 	//if err != nil {

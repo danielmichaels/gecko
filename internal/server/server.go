@@ -4,11 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/danielmichaels/doublestag/internal/config"
-	"github.com/danielmichaels/doublestag/internal/store"
-	"github.com/danielmichaels/doublestag/internal/version"
-	"github.com/jackc/pgx/v5"
-	"github.com/riverqueue/river"
 	"io"
 	"log/slog"
 	"net/http"
@@ -17,6 +12,12 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/danielmichaels/doublestag/internal/config"
+	"github.com/danielmichaels/doublestag/internal/store"
+	"github.com/danielmichaels/doublestag/internal/version"
+	"github.com/jackc/pgx/v5"
+	"github.com/riverqueue/river"
 
 	"github.com/go-chi/httplog/v2"
 )

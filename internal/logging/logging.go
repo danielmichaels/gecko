@@ -2,12 +2,13 @@ package logging
 
 import (
 	"context"
-	"github.com/MatusOllah/slogcolor"
-	"github.com/danielmichaels/doublestag/internal/config"
-	"github.com/danielmichaels/doublestag/internal/tracing"
 	"io"
 	"log/slog"
 	"os"
+
+	"github.com/MatusOllah/slogcolor"
+	"github.com/danielmichaels/doublestag/internal/config"
+	"github.com/danielmichaels/doublestag/internal/tracing"
 )
 
 type SlogHandler struct{ slog.Handler }

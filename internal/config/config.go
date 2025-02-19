@@ -25,10 +25,10 @@ type dbConf struct {
 	MaxConns int    `env:"POSTGRES_MAX_CONNS,default=16"`
 }
 type appConf struct {
-	// needs to be removed or made into a list a slice
-	DNSServers []string `env:"DNS_SEVERS,default=8.8.8.8:53;1.1.1.1:53;9.9.9.9:53"`
 	// temporary XApiKey for development
-	XApiKey    string     `env:"X_API_KEY,default=changeme"`
+	XApiKey string `env:"X_API_KEY,default=changeme"`
+	// needs to be removed or made into a list a slice
+	DNSServers []string   `env:"DNS_SEVERS,default=8.8.8.8:53;1.1.1.1:53;9.9.9.9:53"`
 	LogLevel   slog.Level `env:"LOG_LEVEL,default=info"`
 	LogJson    bool       `env:"LOG_JSON,default=false"`
 	LogConcise bool       `env:"LOG_CONCISE,default=false"`
