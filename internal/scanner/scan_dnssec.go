@@ -58,7 +58,11 @@ func ScanDNSSEC(domain string) *DNSSECResult {
 
 	err := ds.Client.ValidateDNSSEC(domain)
 	if err != nil {
-		ds.Result.Status = err.Error() // Store the specific error.
+		if err.Error() == DNSSECNotImplemented {
+			ds.Result.Status = DNSSECNotImplemented
+			return ds.Result
+		}
+		ds.Result.Status = err.Error()
 		ds.Result.ValidationError = err.Error()
 		return ds.Result
 	}

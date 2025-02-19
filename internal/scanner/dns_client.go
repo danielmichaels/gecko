@@ -227,7 +227,6 @@ func (c *DNSClient) GetParentZone(domain string) (string, error) {
 		return ".", nil
 	}
 	fqdn := strings.Join(labels[1:], ".") + "."
-	c.logger.Info("parent zone", "domain", domain, "fqdn", fqdn)
 	return fqdn, nil
 }
 
@@ -433,7 +432,9 @@ func (c *DNSClient) validateChainOfTrust(domain string, ksks []DNSKEYResult) boo
 func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string) error {
 	// 1. Query for DNSKEY and RRSIG records at the current zone.
 	dnskeyRRs, rrsigRRs, ok := c.LookupDNSKEYWithRRSIG(currentDomain)
-	if !ok {
+	// end validation early for non-DNSSEC enabled domain, here we don't
+	// attempt any further validation
+	if !ok || len(dnskeyRRs) == 0 || len(rrsigRRs) == 0 {
 		return errors.New(DNSSECNotImplemented)
 	}
 
