@@ -803,18 +803,27 @@ func ParseDNSKEY(domain, record string) (*DNSKEYResult, error) {
 		return nil, fmt.Errorf("invalid DNSKEY record format")
 	}
 
-	flags, _ := strconv.ParseUint(parts[1], 10, 16)
-	protocol, _ := strconv.ParseUint(parts[2], 10, 8)
-	algorithm, _ := strconv.ParseUint(parts[3], 10, 8)
-
-	return &DNSKEYResult{
+	flags, err := strconv.ParseUint(parts[1], 10, 16)
+	if err != nil {
+		return nil, fmt.Errorf("invalid Flags: %w", err)
+	}
+	protocol, err := strconv.ParseUint(parts[2], 10, 8)
+	if err != nil {
+		return nil, fmt.Errorf("invalid Protocol: %w", err)
+	}
+	algorithm, err := strconv.ParseUint(parts[3], 10, 8)
+	if err != nil {
+		return nil, fmt.Errorf("invalid Algorithm: %w", err)
+	}
+	result := &DNSKEYResult{
 		Domain:    domain,
 		PublicKey: parts[0],
 		Flags:     uint16(flags),
 		Protocol:  uint8(protocol),
 		Algorithm: uint8(algorithm),
 		IsValid:   true,
-	}, nil
+	}
+	return result, nil
 }
 
 type DSResult struct {
@@ -885,7 +894,7 @@ func ParseRRSIG(domain, record string) (*RRSIGResult, error) {
 	signerName := parts[6]
 	keyTag, _ := strconv.ParseUint(parts[7], 10, 16)
 
-	return &RRSIGResult{
+	result := &RRSIGResult{
 		Domain:      domain,
 		TypeCovered: uint16(typeCovered),
 		Algorithm:   uint8(algorithm),
@@ -897,7 +906,8 @@ func ParseRRSIG(domain, record string) (*RRSIGResult, error) {
 		SignerName:  signerName,
 		Signature:   parts[8],
 		IsValid:     true,
-	}, nil
+	}
+	return result, nil
 }
 
 type SRVResult struct {
