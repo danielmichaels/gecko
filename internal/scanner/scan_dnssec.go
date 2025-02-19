@@ -28,6 +28,7 @@ type DNSSECResult struct {
 	Details         []string
 }
 
+// todo: a lot of this scanner will need to be moved to an assessor later
 type DNSSECScanner struct {
 	Domain string
 	Result *DNSSECResult

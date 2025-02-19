@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	genericServerError = "An internal server error occurred"
+// genericServerError = "An internal server error occurred"
 )
 
 func (app *Server) handleHealthzGet(_ context.Context, _ *struct{}) (*struct{}, error) {

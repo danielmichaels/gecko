@@ -47,6 +47,7 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 		river.AddWorker(rw, &ScanCertificateWorker{Logger: *cfg.Logger, Store: cfg.Store})
 		river.AddWorker(rw, &ScanCNAMEWorker{Logger: *cfg.Logger, Store: cfg.Store})
 		river.AddWorker(rw, &ScanDNSSECWorker{Logger: *cfg.Logger, Store: cfg.Store})
+		river.AddWorker(rw, &ScanZoneTransferWorker{Logger: *cfg.Logger, Store: cfg.Store})
 		riverConfig.Workers = rw
 		riverConfig.MaxAttempts = 3
 		riverConfig.Queues = map[string]river.QueueConfig{

@@ -37,7 +37,12 @@ func (w *EnumerateSubdomainWorker) Work(ctx context.Context, job *river.Job[Enum
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func(tx pgx.Tx, ctx context.Context) {
+		err := tx.Rollback(ctx)
+		if err != nil {
+			w.Logger.Error("transaction rollback", "error", err)
+		}
+	}(tx, ctx)
 
 	rc := river.ClientFromContext[pgx.Tx](ctx)
 

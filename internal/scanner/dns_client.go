@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/miekg/dns"
 	"github.com/projectdiscovery/subfinder/v2/pkg/runner"
@@ -1003,4 +1004,109 @@ func ParseSOARecord(domain, record string) (*SOAResult, error) {
 		MinimumTTL: uint32(minTTL),
 		IsValid:    true,
 	}, nil
+}
+
+func (c *DNSClient) AttemptZoneTransfer(domain string) *ZoneTransferResult {
+	fqdn := dns.Fqdn(domain)
+	result := NewZoneTransferResult(domain)
+
+	nameservers, ok := c.LookupNS(fqdn)
+	if !ok || len(nameservers) == 0 {
+		result.Error = "no nameservers found"
+		return result
+	}
+	result.NS = nameservers
+
+	for _, ns := range nameservers {
+		nsAddr := ns + ":53"
+
+		isVulnerable := false
+
+		if records := c.attemptAXFR(fqdn, nsAddr); len(records) > 0 {
+			result.AXFR[nsAddr] = records
+			isVulnerable = true
+			result.SuccessfulTransfers[nsAddr] = "AXFR"
+		}
+
+		if records := c.attemptIXFR(fqdn, nsAddr); len(records) > 0 {
+			result.IXFR[nsAddr] = records
+			isVulnerable = true
+			result.SuccessfulTransfers[nsAddr] = "IXFR"
+		}
+		if isVulnerable {
+			result.Vulnerable = true
+			result.VulnerableNameservers = append(result.VulnerableNameservers, nsAddr)
+		}
+	}
+
+	return result
+}
+
+func (c *DNSClient) attemptAXFR(domain, nameserver string) []dns.RR {
+	m := new(dns.Msg)
+	m.SetAxfr(domain)
+
+	return c.performTransfer(domain, nameserver, m)
+}
+
+func (c *DNSClient) attemptIXFR(domain, nameserver string) []dns.RR {
+	// Get SOA first to get serial number
+	soa, ok := c.LookupSOA(domain)
+	if !ok || len(soa) == 0 {
+		return nil
+	}
+
+	// Parse SOA to get serial
+	soaResult, err := ParseSOARecord(domain, soa[0])
+	if err != nil {
+		return nil
+	}
+
+	m := new(dns.Msg)
+	m.SetIxfr(domain, soaResult.Serial, soaResult.NameServer, soaResult.AdminEmail)
+
+	return c.performTransfer(domain, nameserver, m)
+}
+
+func (c *DNSClient) performTransfer(domain, nameserver string, m *dns.Msg) []dns.RR {
+	transfer := &dns.Transfer{
+		DialTimeout: time.Second * 10,
+		ReadTimeout: time.Second * 10,
+	}
+
+	transferType := "AXFR"
+	if m.Question[0].Qtype == dns.TypeIXFR {
+		transferType = "IXFR"
+	}
+	c.logger.Info("attempting zone transfer",
+		"domain", domain,
+		"nameserver", nameserver,
+		"type", transferType,
+	)
+
+	env, err := transfer.In(m, nameserver)
+	if err != nil {
+		c.logger.Info("zone transfer failed",
+			"domain", domain,
+			"nameserver", nameserver,
+			"type", transferType,
+			"error", err)
+		return nil
+	}
+
+	var records []dns.RR
+	for e := range env {
+		if e.Error != nil {
+			continue
+		}
+		records = append(records, e.RR...)
+	}
+	if len(records) > 0 {
+		c.logger.Info("zone transfer successful",
+			"domain", domain,
+			"nameserver", nameserver,
+			"type", transferType,
+			"records", len(records))
+	}
+	return records
 }

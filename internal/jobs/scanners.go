@@ -94,16 +94,60 @@ type ScanDNSSECWorker struct {
 func (w *ScanDNSSECWorker) Work(ctx context.Context, job *river.Job[ScanDNSSECArgs]) error {
 	ctx = tracing.WithNewTraceID(ctx, true)
 	start := time.Now()
-
-	// Assuming you have a scanner.ScanDNSSEC function.  You'll need to implement
-	// this in your scanner package.
 	result := scanner.ScanDNSSEC(job.Args.Domain)
 
 	w.Logger.InfoContext(ctx,
 		"dnssec scan complete",
 		"domain", job.Args.Domain,
 		"duration", time.Since(start),
+		"result", result,
 	)
-	fmt.Printf("DNSSEC scan complete for: %q\n%+v\n", job.Args.Domain, result)
+	// todo: do something with the result
+	return nil
+}
+
+type ScanZoneTransferArgs struct {
+	Domain string `json:"domain"`
+}
+
+func (ScanZoneTransferArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		Queue: queueScanner,
+	}
+}
+func (ScanZoneTransferArgs) Kind() string { return "scan_zone_transfer" }
+
+type ScanZoneTransferWorker struct {
+	Logger slog.Logger
+	Store  *store.Queries
+	river.WorkerDefaults[ScanZoneTransferArgs]
+}
+
+func (w *ScanZoneTransferWorker) Work(ctx context.Context, job *river.Job[ScanZoneTransferArgs]) error {
+	ctx = tracing.WithNewTraceID(ctx, true)
+	start := time.Now()
+
+	result := scanner.ScanZoneTransfer(job.Args.Domain)
+
+	w.Logger.InfoContext(ctx,
+		"zone transfer scan complete",
+		"domain", job.Args.Domain,
+		"vulnerable", result.Vulnerable,
+		"nameservers", result.NS,
+		"duration", time.Since(start),
+	)
+
+	if result.Vulnerable {
+		// todo: insert to DB here
+		w.Logger.WarnContext(ctx,
+			"zone transfer vulnerability detected",
+			"domain", job.Args.Domain,
+			"nameservers", result.NS,
+			"successful_transfers", result.SuccessfulTransfers,
+		)
+	} else {
+		w.Logger.InfoContext(ctx, "zone transfer not possible", "domain", job.Args.Domain, "ns", result.NS)
+	}
+
 	return nil
 }
