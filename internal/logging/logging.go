@@ -35,7 +35,7 @@ func createHandler(writer io.Writer, cfg *config.Conf) slog.Handler {
 		})
 	}
 	// Use slogcolor for colorful console logging
-	return slogcolor.NewHandler(writer, slogcolor.DefaultOptions)
+	return slogcolor.NewHandler(writer, &slogcolor.Options{Level: cfg.AppConf.LogLevel})
 }
 
 func SetupLogger(service string, cfg *config.Conf) (*slog.Logger, context.Context) {

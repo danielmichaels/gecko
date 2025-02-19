@@ -39,9 +39,7 @@ type DNSSECScanner struct {
 func NewDNSSECScanner(domain string) *DNSSECScanner {
 	cfg := config.AppConfig()
 	logger, _ := logging.SetupLogger("dns-client", cfg)
-	if !strings.HasSuffix(domain, ".") {
-		domain = domain + "."
-	}
+	domain = dns.Fqdn(domain)
 	result := &DNSSECResult{
 		Domain: domain,
 	}
@@ -70,7 +68,7 @@ func ScanDNSSEC(domain string) *DNSSECResult {
 	ds.Result.Status = DNSSECFullyImplemented
 
 	// Retrieve DNSKEY and DS information for the report (optional, for detailed output)
-	dnskeys, _, dnskeyOK := ds.Client.LookupDNSKEYWithRRSIG(domain)
+	dnskeys, rrsigs, dnskeyOK := ds.Client.LookupDNSKEYWithRRSIG(domain)
 	if dnskeyOK {
 		for _, key := range dnskeys {
 			parsedKey, _ := ParseDNSKEY(domain, key)
@@ -83,22 +81,19 @@ func ScanDNSSEC(domain string) *DNSSECResult {
 			}
 		}
 		ds.Result.HasDNSKEY = len(dnskeys) > 0
+		ds.Result.HasRRSIG = len(rrsigs) > 0
 	}
 
 	// Check for DS record but informational purposes only
 	dsRecords, dsOK := ds.Client.LookupDS(domain)
 	ds.Result.HasDS = dsOK && len(dsRecords) > 0
 
-	return ds.Result
-}
-
-// checkDSExistence checks if DS records exist in the parent zone.
-func (c *DNSClient) checkDSExistence(domain string) bool {
-	dsRecords, ok := c.LookupDS(domain) // LookupDS now correctly queries the parent
-	if !ok {
-		return false // Lookup failed (e.g., network error)
+	if !ds.Result.HasRRSIG || !ds.Result.HasDS || !ds.Result.HasDNSKEY {
+		ds.Result.Status = DNSSECNotImplemented
+		return ds.Result
 	}
-	return len(dsRecords) > 0 // DS records exist
+
+	return ds.Result
 }
 
 // compareDS compares two DS records
@@ -112,7 +107,8 @@ func (c *DNSClient) compareDS(ds1, ds2 *dns.DS) bool {
 		ds1.DigestType == ds2.DigestType &&
 		digest1 == digest2
 
-	c.logger.Info("compareDS",
+	c.logger.Debug("compareDS",
+		"domain", ds1.Hdr.Name,
 		"result", result,
 		"digest1", digest1,
 		"digest2", digest2,

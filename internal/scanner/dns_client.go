@@ -135,7 +135,7 @@ func (c *DNSClient) LookupDS(target string) ([]string, bool) {
 // It returns the results as a slice of strings, and a boolean indicating whether the lookup was successful.
 func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 	m := new(dns.Msg)
-	m.SetQuestion(target, qtype)
+	m.SetQuestion(dns.Fqdn(target), qtype)
 	m.RecursionDesired = true
 
 	// Set DNSSEC OK bit for DNSSEC-related queries
@@ -143,19 +143,19 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 		m.SetEdns0(4096, true)
 	}
 
-	c.logger.Info("querying DNS server", "target", target, "qtype", qtype, "server", c.servers[c.currentServerIdx])
+	c.logger.Debug("querying DNS server", "target", target, "qtype", qtype, "server", c.servers[c.currentServerIdx])
 	for i := 0; i < len(c.servers); i++ {
 		serverIdx := (c.currentServerIdx + i) % len(c.servers)
 		server := c.servers[serverIdx]
 
 		r, _, err := c.client.Exchange(m, server)
 		if err != nil {
-			c.logger.Info("exchange error", "target", target, "qtype", qtype, "server", server, "error", err)
+			c.logger.Debug("exchange error", "target", target, "qtype", qtype, "server", server, "error", err)
 			continue
 		}
 
 		if r.Rcode != dns.RcodeSuccess {
-			c.logger.Info("rcode error", "target", target, "qtype", qtype, "server", server, "rcode", r.Rcode)
+			c.logger.Debug("rcode error", "target", target, "qtype", qtype, "server", server, "rcode", r.Rcode)
 			continue
 		}
 		c.currentServerIdx = (serverIdx + 1) % len(c.servers)
@@ -163,8 +163,7 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 		var result []string
 		for _, a := range r.Answer {
 			h := a.Header()
-			c.logger.Info("record type", "type", h.Rrtype, "qtype", qtype, "server", server)
-			//if h.Rrtype == dns.TypeRRSIG || h.Rrtype == qtype {
+			c.logger.Debug("record type", "type", h.Rrtype, "qtype", qtype, "server", server)
 			if h.Rrtype == qtype {
 				switch x := a.(type) {
 				case *dns.CNAME:
@@ -198,14 +197,12 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 					result = append(result, fmt.Sprintf("%s %d %d %d", x.PublicKey, x.Flags, x.Protocol, x.Algorithm))
 				case *dns.DS:
 					result = append(result, fmt.Sprintf("%d %d %d %s", x.KeyTag, x.Algorithm, x.DigestType, x.Digest))
-				//case *dns.RRSIG:
-				//result = append(result, fmt.Sprintf("%d %d %d %d %s", x.TypeCovered, x.Algorithm, x.Labels, x.OrigTtl, x.Signature))
 				case *dns.RRSIG: // Correctly handle RRSIG records here
 					result = append(result, fmt.Sprintf("%d %d %d %d %d %d %s %d %s",
 						x.TypeCovered, x.Algorithm, x.Labels, x.OrigTtl,
 						x.Expiration, x.Inception, x.SignerName, x.KeyTag, x.Signature))
 				default:
-					c.logger.Info("Unknown record type", "type", h.Rrtype, "qtype", qtype, "server", server)
+					c.logger.Debug("Unknown record type", "type", h.Rrtype, "qtype", qtype, "server", server)
 				}
 			}
 		}
@@ -276,7 +273,7 @@ func (c *DNSClient) validateDS(domain string, ksks []DNSKEYResult) bool {
 			}
 
 			if c.compareDS(generatedDS, dsRR) {
-				c.logger.Info("DS record validated", "keytag", ds.KeyTag)
+				c.logger.Debug("DS record validated", "keytag", ds.KeyTag)
 				return true
 			}
 		}
@@ -308,11 +305,11 @@ func (c *DNSClient) calculateKeyDigest(key *dns.DNSKEY, digestType uint8) (strin
 	if err != nil {
 		return "", err
 	}
-	slog.Info("packed RR", "name", key.Hdr.Name, "offset", offset)
+	slog.Debug("packed RR", "name", key.Hdr.Name, "offset", offset)
 
 	h.Write(canonical[:offset])
 	digest := hex.EncodeToString(h.Sum(nil))
-	c.logger.Info("calculateKeyDigest", "name", key.Hdr.Name, "digest", digest)
+	c.logger.Debug("calculateKeyDigest", "name", key.Hdr.Name, "digest", digest)
 	return digest, nil
 }
 func (c *DNSClient) LookupDNSKEYWithRRSIG(target string) ([]string, []string, bool) {
@@ -385,8 +382,6 @@ func (c *DNSClient) validateZoneApex(domain string, dnskeys []DNSKEYResult, rrsi
 		return false
 	}
 
-	client := NewDNSClient()
-
 	// Iterate through RRSIGs, find the one covering DNSKEY, and validate it.
 	for _, rrsig := range rrsigs {
 		if rrsig.TypeCovered == dns.TypeDNSKEY {
@@ -406,7 +401,7 @@ func (c *DNSClient) validateZoneApex(domain string, dnskeys []DNSKEYResult, rrsi
 					PublicKey: dnskey.PublicKey,
 				}
 
-				if client.validateRRSIG([]dns.RR{keyRR}, keyRR, &rrsig) {
+				if c.validateRRSIG([]dns.RR{keyRR}, keyRR, &rrsig) {
 					return true
 				}
 			}
@@ -439,14 +434,13 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 		return errors.New(DNSSECNotImplemented)
 	}
 
-	// Parse DNSKEY records.
 	var dnskeys []*dns.DNSKEY
 	for _, key := range dnskeyRRs {
 		parsedKey, err := ParseDNSKEY(currentDomain, key)
 		if err != nil {
 			return fmt.Errorf("error parsing DNSKEY: %w", err)
 		}
-		c.logger.Info("Parsed DNSKEY", "currentDomain", currentDomain, "parsedKey", parsedKey) // Log the parsed key
+		c.logger.Debug("Parsed DNSKEY", "currentDomain", currentDomain, "parsedKey", parsedKey) // Log the parsed key
 		if parsedKey != nil {
 			dnskeys = append(dnskeys, &dns.DNSKEY{
 				Hdr: dns.RR_Header{
@@ -470,7 +464,7 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 		if err != nil {
 			return fmt.Errorf("error parsing RRSIG: %w", err)
 		}
-		c.logger.Info("Parsed RRSIG", "currentDomain", currentDomain, "rrsigResult", rrsigResult) // Log the parsed RRSIG
+		c.logger.Debug("Parsed RRSIG", "currentDomain", currentDomain, "rrsigResult", rrsigResult) // Log the parsed RRSIG
 		// Convert *RRSIGResult to dns.RRSIG.
 		rrsig := dns.RRSIG{
 			Hdr: dns.RR_Header{
@@ -494,7 +488,7 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 	// 2.  Retrieve the records we want to validate (in this case, we are validating the DNSKEY records themselves at the zone apex)
 	rrSet := make([]dns.RR, 0, len(dnskeys))
 	for _, k := range dnskeys {
-		c.logger.Info("Adding DNSKEY to rrSet", "dnskey", k) // Log each DNSKEY added to rrSet
+		c.logger.Debug("Adding DNSKEY to rrSet", "dnskey", k) // Log each DNSKEY added to rrSet
 		rrSet = append(rrSet, k)
 	}
 
@@ -502,16 +496,16 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 	validated := false
 	for _, rrsig := range rrsigs {
 		if rrsig.TypeCovered != dns.TypeDNSKEY {
-			c.logger.Info("Skipping RRSIG - not covering DNSKEY", "rrsig", rrsig)
+			c.logger.Debug("Skipping RRSIG - not covering DNSKEY", "rrsig", rrsig)
 			continue // We're validating the DNSKEY record set.
 		}
 		for _, dnskey := range dnskeys {
 			if c.validateRRSIG(rrSet, dnskey, rrsig) {
 				validated = true
-				c.logger.Info("RRSIG validated successfully!", "rrsig", rrsig, "dnskey", dnskey)
+				c.logger.Debug("RRSIG validated successfully!", "rrsig", rrsig, "dnskey", dnskey)
 				break // One valid signature is enough.
 			} else {
-				c.logger.Info("RRSIG validation failed", "rrsig", rrsig, "dnskey", dnskey)
+				c.logger.Debug("RRSIG validation failed", "rrsig", rrsig, "dnskey", dnskey)
 			}
 		}
 		if validated {
@@ -538,6 +532,7 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 		}
 
 		dsRecords, ok := c.LookupDS(currentDomain) // LookupDS now queries the parent.
+		//dsRecords, ok := c.LookupDS(parentZone) // LookupDS now queries the parent.
 		if !ok {
 			//If we are at the root, we don't expect DS records
 			if currentDomain == "." {
@@ -549,17 +544,19 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 		// Parse DS records.
 		var dsSet []*dns.DS
 		for _, dsRecord := range dsRecords {
+			c.logger.Debug("Found DS record (check zone/domain)", "dnskey", dsRecord, "parentZone", parentZone, "currentDomain", currentDomain)
+			//ds, err := ParseDS(parentZone, dsRecord)
 			ds, err := ParseDS(currentDomain, dsRecord)
 			if err != nil {
 				c.logger.Warn("Error parsing DS record", "error", err)
 				continue // Skip invalid DS records.
 			}
+			//ds.Domain = parentZone
 			dsSet = append(dsSet, &dns.DS{
 				Hdr: dns.RR_Header{
 					Name:   dns.Fqdn(currentDomain),
 					Rrtype: dns.TypeDS,
 					Class:  dns.ClassINET,
-					Ttl:    3600, // Doesn't affect validation.
 				},
 				KeyTag:     ds.KeyTag,
 				Algorithm:  ds.Algorithm,
@@ -569,6 +566,7 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 
 		}
 		if len(dsSet) == 0 && currentDomain != "." {
+			c.logger.Error("dsSet and currentDomain err", "dsSet", dsSet, "currentDomain", currentDomain)
 			return errors.New(DNSSECFailedChainOfTrust)
 		}
 
@@ -576,7 +574,7 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 		dsValid := false
 		for _, ksk := range ksks {
 			for _, ds := range dsSet {
-				generatedDS, err := c.generateDS(dns.Fqdn(currentDomain), ksk, ds.DigestType)
+				generatedDS, err := c.generateDS(dns.Fqdn(currentDomain), ksk, ds.DigestType, ds.Algorithm)
 				if err != nil {
 					continue
 				}
@@ -590,11 +588,11 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 			}
 		}
 		if !dsValid && currentDomain != "." {
+			c.logger.Error("ds invalid", "dsSet", dsSet, "parentZone", parentZone, "currentDomain", currentDomain)
 			return errors.New(DNSSECFailedChainOfTrust)
 		}
 
 		// 5. Repeat for higher zones (recursively).
-		//if currentDomain != "." {
 		if parentZone != "." {
 			if err := c.validateDNSSECRecursive(originalDomain, parentZone); err != nil {
 				return err
@@ -606,14 +604,16 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 }
 
 // generateDS creates a DS record from a DNSKEY using specified digest type
-func (c *DNSClient) generateDS(name string, key *dns.DNSKEY, digestType uint8) (*dns.DS, error) {
+func (c *DNSClient) generateDS(name string, key *dns.DNSKEY, digestType, algorithm uint8) (*dns.DS, error) {
+	originalAlgorithm := key.Algorithm
 	ds := key.ToDS(digestType)
 	if ds == nil {
 		return nil, fmt.Errorf("failed to generate DS record")
 	}
 
+	ds.Algorithm = originalAlgorithm
 	ds.Hdr.Name = dns.Fqdn(name)
-	c.logger.Info("generated DS record",
+	c.logger.Debug("generated DS record",
 		"name", name,
 		"keytag", ds.KeyTag,
 		"algorithm", ds.Algorithm,
@@ -1078,7 +1078,7 @@ func (c *DNSClient) performTransfer(domain, nameserver string, m *dns.Msg) []dns
 	if m.Question[0].Qtype == dns.TypeIXFR {
 		transferType = "IXFR"
 	}
-	c.logger.Info("attempting zone transfer",
+	c.logger.Debug("attempting zone transfer",
 		"domain", domain,
 		"nameserver", nameserver,
 		"type", transferType,
@@ -1086,7 +1086,7 @@ func (c *DNSClient) performTransfer(domain, nameserver string, m *dns.Msg) []dns
 
 	env, err := transfer.In(m, nameserver)
 	if err != nil {
-		c.logger.Info("zone transfer failed",
+		c.logger.Debug("zone transfer failed",
 			"domain", domain,
 			"nameserver", nameserver,
 			"type", transferType,
@@ -1102,7 +1102,7 @@ func (c *DNSClient) performTransfer(domain, nameserver string, m *dns.Msg) []dns
 		records = append(records, e.RR...)
 	}
 	if len(records) > 0 {
-		c.logger.Info("zone transfer successful",
+		c.logger.Debug("zone transfer successful",
 			"domain", domain,
 			"nameserver", nameserver,
 			"type", transferType,

@@ -100,7 +100,10 @@ func (w *ScanDNSSECWorker) Work(ctx context.Context, job *river.Job[ScanDNSSECAr
 		"dnssec scan complete",
 		"domain", job.Args.Domain,
 		"duration", time.Since(start),
-		"result", result,
+		"status", result.Status,
+		"has_rrsig", result.HasRRSIG,
+		"has_ds", result.HasDS,
+		"has_dnskey", result.HasDNSKEY,
 	)
 	// todo: do something with the result
 	return nil
