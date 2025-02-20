@@ -150,10 +150,17 @@ tasks:
   audit:
     desc: Run linters and betteralign
     cmds:
-      - betteralign -apply ./...
+      - task: betteralign
       - task: golines
-      - golangci-lint run ./... {{.CLI_ARGS}}
-
+      - task: golangci
+  betteralign:
+    desc: Run betteralign
+    cmds:
+      - betteralign -apply ./...
+  golangci:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run ./... -c .golanci.yml {{.CLI_ARGS}}
   golines:
     desc: run golines
     cmds:
