@@ -20,7 +20,20 @@ services:
       timeout: 5s
     volumes:
       - doublestag_db:/var/lib/postgresql/data
-
+  riverui:
+    image: ghcr.io/riverqueue/riverui:master
+    container_name: riverui
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - PGDATABASE=$POSTGRES_DB
+      - PGUSER=$POSTGRES_USER
+      - PGPASSWORD=$POSTGRES_PASSWORD
+      - PGHOST=db
+      - PGPORT=$POSTGRES_PORT
+    networks:
+      - doublestag
 volumes:
   doublestag_db:
 
