@@ -17,13 +17,52 @@ import (
 	"github.com/projectdiscovery/subfinder/v2/pkg/runner"
 )
 
+// RCodeToString is a map that translates DNS response codes to their string representations.
+// It maps integer DNS response codes to their corresponding string values.
+var RCodeToString = map[int]string{
+	dns.RcodeSuccess:        "NOERROR",
+	dns.RcodeFormatError:    "FORMERR",
+	dns.RcodeServerFailure:  "SERVFAIL",
+	dns.RcodeNameError:      "NXDOMAIN",
+	dns.RcodeNotImplemented: "NOTIMP",
+	dns.RcodeRefused:        "REFUSED",
+}
+
+// QTypeToString is a map that maps DNS record types (uint16) to their string representations.
+// It provides a convenient way to convert numeric record types to their human-readable names.
+var QTypeToString = map[uint16]string{
+	dns.TypeA:      "A",
+	dns.TypeNS:     "NS",
+	dns.TypeCNAME:  "CNAME",
+	dns.TypeSOA:    "SOA",
+	dns.TypePTR:    "PTR",
+	dns.TypeMX:     "MX",
+	dns.TypeTXT:    "TXT",
+	dns.TypeAAAA:   "AAAA",
+	dns.TypeSRV:    "SRV",
+	dns.TypeCAA:    "CAA",
+	dns.TypeDNSKEY: "DNSKEY",
+	dns.TypeDS:     "DS",
+	dns.TypeRRSIG:  "RRSIG",
+}
+
+// DNSClient is a struct that holds the DNS client, logger, and a list of DNS servers to use for lookups.
+// It provides methods to perform various DNS record lookups, such as CNAME, A, and AAAA.
 type DNSClient struct {
-	client           *dns.Client
-	logger           *slog.Logger
-	servers          []string
+	// client is a DNS client used for making DNS queries.
+	client *dns.Client
+	// logger is a logger instance used by the DNSClient for logging purposes.
+	logger *slog.Logger
+	// servers is a slice of DNS server addresses to be used for DNS lookups.
+	// If no custom servers are configured, it defaults to a single entry, "8.8.8.8:53" (Google's public DNS server).
+	servers []string
+	// currentServerIdx is the index of the current DNS server being used for lookups.
+	// It is used to keep track of the server being used and cycle through the list of configured servers.
 	currentServerIdx int
 }
 
+// NewDNSClient creates a new DNSClient instance with the configured DNS servers and a logger.
+// It initializes the DNS client and sets the current server index to 0.
 func NewDNSClient() *DNSClient {
 	cfg := config.AppConfig()
 	logger, _ := logging.SetupLogger("dns-client", cfg)
@@ -144,7 +183,7 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 		"target",
 		target,
 		"qtype",
-		qtype,
+		QTypeToString[qtype],
 		"server",
 		c.servers[c.currentServerIdx],
 	)
@@ -159,7 +198,7 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 				"target",
 				target,
 				"qtype",
-				qtype,
+				QTypeToString[qtype],
 				"server",
 				server,
 				"error",
@@ -174,11 +213,11 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 				"target",
 				target,
 				"qtype",
-				qtype,
+				QTypeToString[qtype],
 				"server",
 				server,
 				"rcode",
-				r.Rcode,
+				RCodeToString[r.Rcode],
 			)
 			continue
 		}
@@ -187,7 +226,15 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 		var result []string
 		for _, a := range r.Answer {
 			h := a.Header()
-			c.logger.Debug("record type", "type", h.Rrtype, "qtype", qtype, "server", server)
+			c.logger.Debug(
+				"record type",
+				"type",
+				QTypeToString[h.Rrtype],
+				"qtype",
+				QTypeToString[qtype],
+				"server",
+				server,
+			)
 			if h.Rrtype == qtype {
 				switch x := a.(type) {
 				case *dns.CNAME:
@@ -226,7 +273,7 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 						x.TypeCovered, x.Algorithm, x.Labels, x.OrigTtl,
 						x.Expiration, x.Inception, x.SignerName, x.KeyTag, x.Signature))
 				default:
-					c.logger.Debug("Unknown record type", "type", h.Rrtype, "qtype", qtype, "server", server)
+					c.logger.Debug("Unknown record type", "type", h.Rrtype, "qtype", QTypeToString[qtype], "server", server)
 				}
 			}
 		}
@@ -252,6 +299,9 @@ func (c *DNSClient) GetParentZone(domain string) (string, error) {
 	return fqdn, nil
 }
 
+// LookupDNSKEYWithRRSIG performs a DNS query for the DNSKEY and RRSIG records
+// for the given target domain. It returns the DNSKEY and RRSIG records, or
+// false if the query was unsuccessful.
 func (c *DNSClient) LookupDNSKEYWithRRSIG(target string) ([]string, []string, bool) {
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(target), dns.TypeDNSKEY)
@@ -290,6 +340,10 @@ func (c *DNSClient) LookupDNSKEYWithRRSIG(target string) ([]string, []string, bo
 	return nil, nil, false
 }
 
+// sendDNSSECQuery sends a DNS query and returns the response message and a
+// boolean indicating whether the query was successful. It tries each of the
+// configured DNS servers in a round-robin fashion until a successful response
+// is received or all servers have been tried.
 func (c *DNSClient) sendDNSSECQuery(m *dns.Msg) (*dns.Msg, bool) {
 	for i := 0; i < len(c.servers); i++ {
 		serverIdx := (c.currentServerIdx + i) % len(c.servers)
@@ -306,6 +360,8 @@ func (c *DNSClient) sendDNSSECQuery(m *dns.Msg) (*dns.Msg, bool) {
 	return nil, false
 }
 
+// isZoneApex checks if the given domain is the zone apex by querying for the SOA record.
+// It returns true if the domain is the zone apex, false otherwise.
 func (c *DNSClient) isZoneApex(domain string) bool {
 	// Query for SOA record to determine if this is a zone apex
 	m := new(dns.Msg)
@@ -508,7 +564,6 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 					dns.Fqdn(currentDomain),
 					ksk,
 					ds.DigestType,
-					ds.Algorithm,
 				)
 				if err != nil {
 					continue
@@ -550,7 +605,7 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 func (c *DNSClient) generateDS(
 	name string,
 	key *dns.DNSKEY,
-	digestType, algorithm uint8,
+	digestType uint8,
 ) (*dns.DS, error) {
 	originalAlgorithm := key.Algorithm
 	ds := key.ToDS(digestType)
@@ -586,6 +641,9 @@ type SubdomainResult struct {
 	RRSIG  []string
 }
 
+// EnumerateWithSubfinderCallback enumerates subdomains for the given domain using the Subfinder tool,
+// and calls the provided callback function for each resolved host entry.
+// The concurrency parameter specifies the number of concurrent requests to make.
 func (c *DNSClient) EnumerateWithSubfinderCallback(
 	ctx context.Context,
 	domain string,
@@ -608,84 +666,6 @@ func (c *DNSClient) EnumerateWithSubfinderCallback(
 
 	_, err = subfinder.EnumerateSingleDomainWithCtx(ctx, domain, nil)
 	return err
-}
-
-type recordParser struct {
-	parser  func(string, string) (interface{}, error)
-	name    string
-	entries []string
-}
-
-var parsers = map[string]func(string, string) (interface{}, error){
-	"A": func(domain, record string) (interface{}, error) {
-		return ParseA(domain, record)
-	},
-	"AAAA": func(domain, record string) (interface{}, error) {
-		return ParseAAAA(domain, record)
-	},
-	"CNAME": func(domain, record string) (interface{}, error) {
-		return ParseCNAME(domain, record)
-	},
-	"TXT": func(domain, record string) (interface{}, error) {
-		return ParseTXT(domain, record)
-	},
-	"NS": func(domain, record string) (interface{}, error) {
-		return ParseNS(domain, record)
-	},
-	"MX": func(domain, record string) (interface{}, error) {
-		return ParseMX(domain, record)
-	},
-	"SOA": func(domain, record string) (interface{}, error) {
-		return ParseSOARecord(domain, record)
-	},
-	"PTR": func(domain, record string) (interface{}, error) {
-		return ParsePTR(domain, record)
-	},
-	"CAA": func(domain, record string) (interface{}, error) {
-		return ParseCAA(domain, record)
-	},
-	"DNSKEY": func(domain, record string) (interface{}, error) {
-		return ParseDNSKEY(domain, record)
-	},
-	"DS": func(domain, record string) (interface{}, error) {
-		return ParseDS(domain, record)
-	},
-	"RRSIG": func(domain, record string) (interface{}, error) {
-		return ParseRRSIG(domain, record)
-	},
-	"SRV": func(domain, record string) (interface{}, error) {
-		return ParseSRV(domain, record)
-	},
-}
-
-func RecordHandler(result SubdomainResult) error {
-	records := []recordParser{
-		{parsers["A"], "A", result.A},
-		{parsers["AAAA"], "AAAA", result.AAAA},
-		{parsers["CNAME"], "CNAME", result.CNAME},
-		{parsers["TXT"], "TXT", result.TXT},
-		{parsers["NS"], "NS", result.NS},
-		{parsers["MX"], "MX", result.MX},
-		{parsers["SOA"], "SOA", result.SOA},
-		{parsers["PTR"], "PTR", result.PTR},
-		{parsers["CAA"], "CAA", result.CAA},
-		{parsers["DNSKEY"], "DNSKEY", result.DNSKEY},
-		{parsers["DS"], "DS", result.DS},
-		{parsers["RRSIG"], "RRSIG", result.RRSIG},
-		{parsers["SRV"], "SRV", result.SRV},
-	}
-
-	for _, r := range records {
-		for _, entry := range r.entries {
-			parsed, err := r.parser(result.Name, entry) // Pass the domain here
-			if err != nil {
-				fmt.Printf("Error parsing %s record for %s: %v\n", r.name, result.Name, err)
-				continue
-			}
-			fmt.Printf("%s record for %s: %+v\n", r.name, result.Name, parsed)
-		}
-	}
-	return nil
 }
 
 type ARecord struct {
@@ -772,15 +752,19 @@ type CAAResult struct {
 
 func ParseCAA(domain, record string) (*CAAResult, error) {
 	parts := strings.Fields(record)
-	if len(parts) != 3 {
+	if len(parts) < 3 {
 		return nil, fmt.Errorf("invalid CAA record format")
 	}
 
 	flag, _ := strconv.ParseUint(parts[1], 10, 8)
+	value := parts[0]
+	if len(parts) > 3 {
+		value = strings.Join(parts[3:], " ")
+	}
 
 	return &CAAResult{
 		Domain:  domain,
-		Value:   parts[0],
+		Value:   value,
 		Flag:    uint8(flag),
 		Tag:     parts[2],
 		IsValid: true,

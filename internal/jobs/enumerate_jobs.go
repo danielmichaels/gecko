@@ -183,7 +183,7 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 					"error", err)
 				continue
 			}
-			w.Logger.Debug("parsed record", "parsed", parsed)
+			w.Logger.Info("parsed record", "parsed", parsed, "type", r.name)
 			// Store parsed record using worker's services
 			// w.DB.StoreRecord(ctx, parsed)
 		}
