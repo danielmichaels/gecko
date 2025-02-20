@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -8,10 +9,25 @@ import (
 
 const svcWorkers = "worker"
 
-type WorkerCmd struct{}
+type WorkerCmd struct {
+	WorkerCount int `short:"w" help:"Number of workers to start" default:"100"`
+}
 
+func (w *WorkerCmd) validateArgs() error {
+	if w.WorkerCount < 1 {
+		return fmt.Errorf("invalid number of workers specified - must be greater than 0")
+	}
+	if w.WorkerCount > 10000 {
+		return fmt.Errorf("invalid number of workers specified - must be less than 10000")
+	}
+	return nil
+}
 func (w *WorkerCmd) Run() error {
-	setup, err := NewSetup(svcWorkers, WithRiver(100, true))
+	if err := w.validateArgs(); err != nil {
+		return err
+	}
+
+	setup, err := NewSetup(svcWorkers, WithRiver(w.WorkerCount, true))
 	if err != nil {
 		return err
 	}
