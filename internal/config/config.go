@@ -28,10 +28,13 @@ type appConf struct {
 	// temporary XApiKey for development
 	XApiKey string `env:"X_API_KEY,default=changeme"`
 	// needs to be removed or made into a list a slice
-	DNSServers []string   `env:"DNS_SEVERS,default=8.8.8.8:53;1.1.1.1:53;9.9.9.9:53"`
-	LogLevel   slog.Level `env:"LOG_LEVEL,default=info"`
-	LogJson    bool       `env:"LOG_JSON,default=false"`
-	LogConcise bool       `env:"LOG_CONCISE,default=false"`
+	DNSServers          []string   `env:"DNS_SERVERS,default=8.8.8.8:53;1.1.1.1:53;9.9.9.9:53"`
+	DNSBackoffBaseDelay int        `env:"DNS_BACKOFF_BASE_DELAY,default=1"`
+	DNSBackoffMaxDelay  int        `env:"DNS_BACKOFF_MAX_DELAY,default=16"`
+	DNSMaxRetries       int        `env:"DNS_MAX_RETRIES,default=5"`
+	LogLevel            slog.Level `env:"LOG_LEVEL,default=info"`
+	LogJson             bool       `env:"LOG_JSON,default=false"`
+	LogConcise          bool       `env:"LOG_CONCISE,default=false"`
 }
 type serverConf struct {
 	APIPort      int           `env:"API_SERVER_PORT,default=9090"`

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"strconv"
 	"strings"
 	"time"
@@ -59,6 +60,9 @@ type DNSClient struct {
 	// currentServerIdx is the index of the current DNS server being used for lookups.
 	// It is used to keep track of the server being used and cycle through the list of configured servers.
 	currentServerIdx int
+	// conf is a pointer to the application configuration struct.
+	// It is used to access the configuration settings for the DNS client.
+	conf *config.Conf
 }
 
 // NewDNSClient creates a new DNSClient instance with the configured DNS servers and a logger.
@@ -71,6 +75,7 @@ func NewDNSClient() *DNSClient {
 		client:           new(dns.Client),
 		currentServerIdx: 0,
 		logger:           logger,
+		conf:             cfg,
 	}
 }
 
@@ -85,6 +90,16 @@ func getDNSServers() []string {
 		servers = append(servers, "8.8.8.8:53")
 	}
 	return servers
+}
+
+// numRetries returns the number of retries to use for DNS lookups. If the configured
+// DNSMaxRetries is 0, it defaults to 5 retries.
+func (c *DNSClient) numRetries() int {
+	numRetries := c.conf.AppConf.DNSMaxRetries
+	if numRetries == 0 {
+		numRetries = 5
+	}
+	return numRetries
 }
 
 // LookupCNAME performs a DNS lookup for the given target and returns the CNAME record results as a slice of strings,
@@ -187,8 +202,11 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 		"server",
 		c.servers[c.currentServerIdx],
 	)
-	for i := 0; i < len(c.servers); i++ {
-		serverIdx := (c.currentServerIdx + i) % len(c.servers)
+
+	numRetries := c.numRetries()
+	for attempt := 0; attempt < numRetries; attempt++ {
+		// Randomly select a server for this attempt
+		serverIdx := rand.Intn(len(c.servers))
 		server := c.servers[serverIdx]
 
 		r, _, err := c.client.Exchange(m, server)
@@ -204,9 +222,20 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 				"error",
 				err,
 			)
+			c.backoffSleep(attempt)
 			continue
 		}
-
+		// exit early on NXDOMAIN
+		if r.Rcode == dns.RcodeNameError {
+			c.logger.Debug(
+				"rcode NXDOMAIN",
+				"target", target,
+				"qtype", QTypeToString[qtype],
+				"server", server,
+				"rcode", RCodeToString[r.Rcode],
+			)
+			return nil, false // Return immediately
+		}
 		if r.Rcode != dns.RcodeSuccess {
 			c.logger.Debug(
 				"rcode error",
@@ -219,67 +248,49 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 				"rcode",
 				RCodeToString[r.Rcode],
 			)
+			c.backoffSleep(attempt)
 			continue
 		}
-		c.currentServerIdx = (serverIdx + 1) % len(c.servers)
-
-		var result []string
-		for _, a := range r.Answer {
-			h := a.Header()
-			c.logger.Debug(
-				"record type",
-				"type",
-				QTypeToString[h.Rrtype],
-				"qtype",
-				QTypeToString[qtype],
-				"server",
-				server,
-			)
-			if h.Rrtype == qtype {
-				switch x := a.(type) {
-				case *dns.CNAME:
-					result = append(result, x.Target)
-				case *dns.A:
-					result = append(result, x.A.String())
-				case *dns.AAAA:
-					result = append(result, x.AAAA.String())
-				case *dns.MX:
-					result = append(result, fmt.Sprintf("%d %s", x.Preference, x.Mx))
-				case *dns.TXT:
-					result = append(result, strings.Join(x.Txt, " "))
-				case *dns.NS:
-					result = append(result, x.Ns)
-				case *dns.SOA:
-					result = append(result, fmt.Sprintf("%s %s %d %d %d %d %d",
-						x.Ns,
-						x.Mbox,
-						x.Serial,
-						x.Refresh,
-						x.Retry,
-						x.Expire,
-						x.Minttl))
-				case *dns.PTR:
-					result = append(result, x.Ptr)
-				case *dns.SRV:
-					result = append(result, fmt.Sprintf("%s %d %d %d", x.Target, x.Port, x.Weight, x.Priority))
-				case *dns.CAA:
-					result = append(result, fmt.Sprintf("%s %d %s", x.Value, x.Flag, x.Tag))
-				case *dns.DNSKEY:
-					result = append(result, fmt.Sprintf("%s %d %d %d", x.PublicKey, x.Flags, x.Protocol, x.Algorithm))
-				case *dns.DS:
-					result = append(result, fmt.Sprintf("%d %d %d %s", x.KeyTag, x.Algorithm, x.DigestType, x.Digest))
-				case *dns.RRSIG: // Correctly handle RRSIG records here
-					result = append(result, fmt.Sprintf("%d %d %d %d %d %d %s %d %s",
-						x.TypeCovered, x.Algorithm, x.Labels, x.OrigTtl,
-						x.Expiration, x.Inception, x.SignerName, x.KeyTag, x.Signature))
-				default:
-					c.logger.Debug("Unknown record type", "type", h.Rrtype, "qtype", QTypeToString[qtype], "server", server)
-				}
-			}
-		}
-		return result, true
+		return processResponse(r, qtype), true
 	}
 	return nil, false
+}
+func processResponse(r *dns.Msg, qtype uint16) []string {
+	var result []string
+	for _, a := range r.Answer {
+		h := a.Header()
+		if h.Rrtype == qtype {
+			switch x := a.(type) {
+			case *dns.CNAME:
+				result = append(result, x.Target)
+			case *dns.A:
+				result = append(result, x.A.String())
+			case *dns.AAAA:
+				result = append(result, x.AAAA.String())
+			case *dns.MX:
+				result = append(result, fmt.Sprintf("%d %s", x.Preference, x.Mx))
+			case *dns.TXT:
+				result = append(result, strings.Join(x.Txt, " "))
+			case *dns.NS:
+				result = append(result, x.Ns)
+			case *dns.SOA:
+				result = append(result, fmt.Sprintf("%s %s %d %d %d %d %d", x.Ns, x.Mbox, x.Serial, x.Refresh, x.Retry, x.Expire, x.Minttl))
+			case *dns.PTR:
+				result = append(result, x.Ptr)
+			case *dns.SRV:
+				result = append(result, fmt.Sprintf("%s %d %d %d", x.Target, x.Port, x.Weight, x.Priority))
+			case *dns.CAA:
+				result = append(result, fmt.Sprintf("%s %d %s", x.Value, x.Flag, x.Tag))
+			case *dns.DNSKEY:
+				result = append(result, fmt.Sprintf("%s %d %d %d", x.PublicKey, x.Flags, x.Protocol, x.Algorithm))
+			case *dns.DS:
+				result = append(result, fmt.Sprintf("%d %d %d %s", x.KeyTag, x.Algorithm, x.DigestType, x.Digest))
+			case *dns.RRSIG:
+				result = append(result, fmt.Sprintf("%d %d %d %d %d %d %s %d %s", x.TypeCovered, x.Algorithm, x.Labels, x.OrigTtl, x.Expiration, x.Inception, x.SignerName, x.KeyTag, x.Signature))
+			}
+		}
+	}
+	return result
 }
 
 // GetParentZone returns the parent zone of the given domain.
@@ -345,16 +356,16 @@ func (c *DNSClient) LookupDNSKEYWithRRSIG(target string) ([]string, []string, bo
 // configured DNS servers in a round-robin fashion until a successful response
 // is received or all servers have been tried.
 func (c *DNSClient) sendDNSSECQuery(m *dns.Msg) (*dns.Msg, bool) {
-	for i := 0; i < len(c.servers); i++ {
-		serverIdx := (c.currentServerIdx + i) % len(c.servers)
+	numRetries := c.numRetries()
+	for attempt := 0; attempt < numRetries; attempt++ {
+		serverIdx := rand.Intn(len(c.servers))
 		server := c.servers[serverIdx]
 
 		r, _, err := c.client.Exchange(m, server)
 		if err != nil || r.Rcode != dns.RcodeSuccess {
+			c.backoffSleep(attempt)
 			continue
 		}
-
-		c.currentServerIdx = (serverIdx + 1) % len(c.servers)
 		return r, true
 	}
 	return nil, false
@@ -1069,4 +1080,27 @@ func (c *DNSClient) performTransfer(domain, nameserver string, m *dns.Msg) []dns
 			"records", len(records))
 	}
 	return records
+}
+
+// backoffSleep implements a simple exponential backoff sleep.
+func (c *DNSClient) backoffSleep(attempt int) {
+	cfg := config.AppConfig()
+
+	baseDelay := time.Duration(cfg.AppConf.DNSBackoffBaseDelay) * time.Second
+	if baseDelay == 0 {
+		baseDelay = 1 * time.Second // Default base delay
+	}
+	maxDelay := time.Duration(cfg.AppConf.DNSBackoffMaxDelay) * time.Second
+	if maxDelay == 0 {
+		maxDelay = 16 * time.Second // Default maximum delay
+	}
+
+	delay := baseDelay * time.Duration(1<<uint(attempt))
+
+	if delay > maxDelay {
+		delay = maxDelay
+	}
+
+	c.logger.Debug("backoff sleep", "delay", delay)
+	time.Sleep(delay)
 }
