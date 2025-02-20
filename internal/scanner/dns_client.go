@@ -222,7 +222,7 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 				"error",
 				err,
 			)
-			c.backoffSleep(attempt)
+			c.backoffSleep(attempt, target)
 			continue
 		}
 		// exit early on NXDOMAIN
@@ -248,7 +248,7 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 				"rcode",
 				RCodeToString[r.Rcode],
 			)
-			c.backoffSleep(attempt)
+			c.backoffSleep(attempt, target)
 			continue
 		}
 		return processResponse(r, qtype), true
@@ -363,7 +363,7 @@ func (c *DNSClient) sendDNSSECQuery(m *dns.Msg) (*dns.Msg, bool) {
 
 		r, _, err := c.client.Exchange(m, server)
 		if err != nil || r.Rcode != dns.RcodeSuccess {
-			c.backoffSleep(attempt)
+			c.backoffSleep(attempt, m.Question[0].Name)
 			continue
 		}
 		return r, true
@@ -1083,16 +1083,16 @@ func (c *DNSClient) performTransfer(domain, nameserver string, m *dns.Msg) []dns
 }
 
 // backoffSleep implements a simple exponential backoff sleep.
-func (c *DNSClient) backoffSleep(attempt int) {
+func (c *DNSClient) backoffSleep(attempt int, domain string) {
 	cfg := config.AppConfig()
 
 	baseDelay := time.Duration(cfg.AppConf.DNSBackoffBaseDelay) * time.Second
 	if baseDelay == 0 {
-		baseDelay = 1 * time.Second // Default base delay
+		baseDelay = 1 * time.Second
 	}
 	maxDelay := time.Duration(cfg.AppConf.DNSBackoffMaxDelay) * time.Second
 	if maxDelay == 0 {
-		maxDelay = 16 * time.Second // Default maximum delay
+		maxDelay = 16 * time.Second
 	}
 
 	delay := baseDelay * time.Duration(1<<uint(attempt))
@@ -1101,6 +1101,6 @@ func (c *DNSClient) backoffSleep(attempt int) {
 		delay = maxDelay
 	}
 
-	c.logger.Debug("backoff sleep", "delay", delay)
+	c.logger.Debug("backoff retrying", "delay", delay, "attempt", attempt+1, "domain", domain)
 	time.Sleep(delay)
 }
