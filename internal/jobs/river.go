@@ -2,14 +2,13 @@ package jobs
 
 import (
 	"context"
-	"log/slog"
-
 	"github.com/danielmichaels/doublestag/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivermigrate"
+	"log/slog"
 )
 
 const (
@@ -56,7 +55,7 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 		river.AddWorker(rw, &ScanDNSSECWorker{Logger: *cfg.Logger, Store: cfg.Store})
 		river.AddWorker(rw, &ScanZoneTransferWorker{Logger: *cfg.Logger, Store: cfg.Store})
 		riverConfig.Workers = rw
-		riverConfig.MaxAttempts = 3
+		riverConfig.MaxAttempts = 5
 		riverConfig.Queues = map[string]river.QueueConfig{
 			river.QueueDefault: {MaxWorkers: cfg.WorkerCount},
 			// reserved for DNS resolution only
