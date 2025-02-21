@@ -13,7 +13,7 @@ env:
   DOCKER_BUILD_SUMMARY: true
   DAGGER_VERSION: '0.16.1'
   DOCKERFILE: './zarf/docker/Dockerfile'
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  GITHUB_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
 
 jobs:
   lint:
