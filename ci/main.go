@@ -69,15 +69,20 @@ func (m *Backend) Publish(
 	dockerfile *dagger.File,
 	registry, imageName, registryUsername string,
 	registryPassword *dagger.Secret,
-) error {
-	b, err := m.LintTestBuild(ctx, buildContext, dockerfile)
+	tags []string,
+) ([]string, error) {
+	addr := []string{}
+	b, err := m.Build(ctx, buildContext, dockerfile)
 	if err != nil {
-		return err
+		return addr, err
 	}
-	_, err = b.WithRegistryAuth(registry, registryUsername, registryPassword).
-		Publish(ctx, fmt.Sprintf("%s/%s:testing123", registry, imageName))
-	if err != nil {
-		return err
+	ctr := b.WithRegistryAuth(registry, registryUsername, registryPassword)
+	for _, tag := range tags {
+		a, err := ctr.Publish(ctx, fmt.Sprintf("%s/%s:%s", registry, imageName, tag))
+		if err != nil {
+			return addr, err
+		}
+		addr = append(addr, a)
 	}
-	return err
+	return addr, err
 }

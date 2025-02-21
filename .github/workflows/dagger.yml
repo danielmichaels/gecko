@@ -13,6 +13,7 @@ env:
   IMAGE_NAME: ${{ github.repository }}
   DOCKER_BUILD_SUMMARY: true
   DAGGER_VERSION: '0.16.1'
+  DOCKERFILE: './zarf/docker/Dockerfile'
 
 jobs:
   lint:
@@ -43,4 +44,46 @@ jobs:
           version: ${{ env.DAGGER_VERSION }}
           verb: call
           args: test --src .
+          cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+  build:
+    name: build
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@master
+        with:
+          fetch-depth: 1
+      - name: lint
+        uses: dagger/dagger-for-github@main
+        with:
+          version: ${{ env.DAGGER_VERSION }}
+          verb: call
+          args: build --src . --dockerfile ${{ env.DOCKERFILE }}
+          cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+
+  publish:
+    name: publish
+    needs: [lint, test, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@master
+        with:
+          fetch-depth: 1
+      - name: lint
+        uses: dagger/dagger-for-github@main
+        with:
+          version: ${{ env.DAGGER_VERSION }}
+          verb: call
+          args: |
+            publish --build-context . \
+            --dockerfile ${{ env.DOCKERFILE }} \
+            --registry ${{ env.REGISTRY }} \
+            --registry-username ${{ github.actor }} \
+            --registry-password ${{ secrets.GITHUB_TOKEN }}
+            --image-name ${{ env.IMAGE_NAME }} \
+            --tags ${{ github.sha }},${{ github.ref_name }}
           cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
