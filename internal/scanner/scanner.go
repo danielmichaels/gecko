@@ -1,8 +1,9 @@
 package scanner
 
 import (
-	"github.com/danielmichaels/doublestag/internal/store"
 	"log/slog"
+
+	"github.com/danielmichaels/doublestag/internal/store"
 )
 
 type Config struct {

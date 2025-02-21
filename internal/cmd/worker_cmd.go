@@ -22,6 +22,7 @@ func (w *WorkerCmd) validateArgs() error {
 	}
 	return nil
 }
+
 func (w *WorkerCmd) Run() error {
 	if err := w.validateArgs(); err != nil {
 		return err

@@ -3,9 +3,10 @@ package jobs
 import (
 	"context"
 	"fmt"
-	"github.com/jackc/pgx/v5"
 	"log/slog"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/danielmichaels/doublestag/internal/scanner"
 	"github.com/danielmichaels/doublestag/internal/store"

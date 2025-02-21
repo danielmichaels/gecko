@@ -1,8 +1,9 @@
 package scanner
 
 import (
-	"github.com/danielmichaels/doublestag/internal/dnsclient"
 	"strings"
+
+	"github.com/danielmichaels/doublestag/internal/dnsclient"
 )
 
 type CNAMEScanResult struct {

@@ -1,9 +1,10 @@
 package scanner
 
 import (
+	"log/slog"
+
 	"github.com/danielmichaels/doublestag/internal/dnsclient"
 	"github.com/danielmichaels/doublestag/internal/dnsrecords"
-	"log/slog"
 
 	"github.com/danielmichaels/doublestag/internal/config"
 	"github.com/danielmichaels/doublestag/internal/logging"

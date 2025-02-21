@@ -147,6 +147,22 @@ tasks:
     cmds:
       - go test -race -v -cover ./...
 
+  ci:lint:
+    cmds:
+      - dagger call lint --src .
+  ci:test:
+    cmds:
+      - dagger call test --src .
+  ci:build:
+    cmds:
+      - dagger call build --src . --dockerfile {{.DOCKERFILE}}
+  ci:all:
+    cmds:
+      - dagger call lint-test-build --src . --dockerfile {{.DOCKERFILE}}
+  ci:publish:
+    cmds:
+      - dagger call publish --build-context . --dockerfile {{.DOCKERFILE}} --register ttl.sh --image-name {{.APP_NAME}} --registry-username "fake" --registry-password env:USER --tags "latest"
+
   audit:
     desc: Run linters and betteralign
     cmds:
@@ -156,16 +172,24 @@ tasks:
   betteralign:
     desc: Run betteralign
     cmds:
-      - betteralign -apply ./...
+      - betteralign -apply ./... {{.CLI_ARGS}}
   golangci:
     desc: Run golangci-lint
     cmds:
-      - golangci-lint run ./... -c .golanci.yml {{.CLI_ARGS}}
+      - golangci-lint run ./... -c .golangci.yml {{.CLI_ARGS}}
   golines:
     desc: run golines
     cmds:
-      - golines . -w --ignore-generated --no-reformat-tags --base-formatter=gofumpt
-
+      - golines . -w --ignore-generated --no-reformat-tags --ignored-dirs=ci --base-formatter=gofumpt {{.CLI_ARGS}}
+  golines-ci:
+    desc: run golines
+    cmds:
+      - |
+        output=$(golines . --ignore-generated --no-reformat-tags --ignored-dirs=ci --base-formatter=gofumpt --dry-run)
+        if [ -n "$output" ]; then
+          echo "$output"
+          exit 1
+        fi
   install_bins:
     desc: Install all required go binaries
     cmds:
@@ -175,7 +199,7 @@ tasks:
       - go install github.com/segmentio/golines@latest
       - go install github.com/dkorunic/betteralign/cmd/betteralign@latest
       - go install mvdan.cc/gofumpt@latest
-      - go install github.com/riverqueue/riverqueue/cmd/river@latest
+      - go install github.com/riverqueue/river/cmd/river@latest
 
   api:domain:*:
     desc: Add a new domain via the API
