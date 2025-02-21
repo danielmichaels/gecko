@@ -10,7 +10,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
   DOCKER_BUILD_SUMMARY: true
   DAGGER_VERSION: '0.16.1'
   DOCKERFILE: './zarf/docker/Dockerfile'
@@ -48,7 +47,7 @@ jobs:
           cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
   build:
     name: build
-#    needs: [lint, test]
+    needs: [lint, test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@master
@@ -64,8 +63,8 @@ jobs:
 
   publish:
     name: publish
-#    needs: [lint, test, build]
-#    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+    needs: [lint, test, build]
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -88,5 +87,5 @@ jobs:
         with:
           version: ${{ env.DAGGER_VERSION }}
           verb: call
-          args: publish --build-context . --dockerfile ${{ env.DOCKERFILE }} --registry ${{ env.REGISTRY }} --registry-username ${{ github.actor }} --registry-password env:GITHUB_TOKEN --image-name ${{ env.IMAGE_NAME }} --tags "${{ steps.tags.outputs.tags }},${{ github.sha }}"
+          args: publish --build-context . --dockerfile ${{ env.DOCKERFILE }} --registry ${{ env.REGISTRY }} --registry-username ${{ github.actor }} --registry-password env:GITHUB_TOKEN --image-name ${{ github.repository }} --tags "${{ steps.tags.outputs.tags }}"
           cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
