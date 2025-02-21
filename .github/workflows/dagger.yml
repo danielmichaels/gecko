@@ -87,6 +87,5 @@ jobs:
         with:
           version: ${{ env.DAGGER_VERSION }}
           verb: call
-          args: |
-            publish --build-context . --dockerfile ${{ env.DOCKERFILE }} --registry ${{ env.REGISTRY }} --registry-username ${{ github.actor }} --registry-password env:GITHUB_TOKEN --image-name ${{ env.IMAGE_NAME }} --tags ${{ steps.tags.outputs.tags }},${{ github.sha }}
+          args: publish --build-context . --dockerfile ${{ env.DOCKERFILE }} --registry ${{ env.REGISTRY }} --registry-username ${{ github.actor }} --registry-password env:GITHUB_TOKEN --image-name ${{ env.IMAGE_NAME }} --tags "${{ steps.tags.outputs.tags }},${{ github.sha }}"
           cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
