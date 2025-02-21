@@ -23,7 +23,7 @@ func NewZoneTransferResult(domain string) *ZoneTransferResult {
 	}
 }
 
-func ScanZoneTransfer(domain string) *ZoneTransferResult {
+func (s *Scan) ScanZoneTransfer(domain string) *ZoneTransferResult {
 	client := NewDNSClient()
 	result := client.AttemptZoneTransfer(domain)
 	return result

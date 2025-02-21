@@ -2,18 +2,18 @@ package scanner
 
 import "strings"
 
-type ProcessingResult struct {
+type CNAMEScanResult struct {
 	Domain string
 	A      []string
 	AAAA   []string
 	CNAME  []string
 }
 
-func ScanCNAME(domain string) *ProcessingResult {
+func (s *Scan) ScanCNAME(domain string) *CNAMEScanResult {
 	if !strings.HasSuffix(domain, ".") {
 		domain = domain + "."
 	}
-	res := ProcessingResult{
+	res := CNAMEScanResult{
 		Domain: domain,
 	}
 	dc := NewDNSClient()
@@ -23,18 +23,11 @@ func ScanCNAME(domain string) *ProcessingResult {
 	}
 	if len(cname) > 0 {
 		res.CNAME = cname
-		a, ok := dc.LookupA(domain)
-		if !ok {
-			res.CNAME = nil
-		}
+		a, _ := dc.LookupA(domain)
 		res.A = a
-		aaaa, ok := dc.LookupAAAA(domain)
-		if !ok {
-			res.AAAA = nil
-		}
+		aaaa, _ := dc.LookupAAAA(domain)
 		res.AAAA = aaaa
 	}
-	// Strip trailing dots from domains in results
 	res.Domain = strings.TrimSuffix(res.Domain, ".")
 	for i, cn := range res.CNAME {
 		if strings.HasSuffix(cn, ".") {
@@ -43,8 +36,3 @@ func ScanCNAME(domain string) *ProcessingResult {
 	}
 	return &res
 }
-
-// todo
-// CNAME loop
-// CNAME branching chain
-// CNAME points at IP

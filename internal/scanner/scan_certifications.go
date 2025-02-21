@@ -27,7 +27,7 @@ type CertificateResult struct {
 	IsCA          bool
 }
 
-func ScanCertificate(domain string) *CertificateResult {
+func (s *Scan) ScanCertificate(domain string) *CertificateResult {
 	conf := &tls.Config{
 		InsecureSkipVerify: true,
 	}

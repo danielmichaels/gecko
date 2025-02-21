@@ -36,7 +36,8 @@ func (w *ScanCertificateWorker) Work(
 	ctx = tracing.WithNewTraceID(ctx, true)
 	start := time.Now()
 
-	result := scanner.ScanCertificate(job.Args.Domain)
+	s := scanner.NewScanner(scanner.Config{Logger: &w.Logger, Store: w.Store})
+	result := s.ScanCertificate(job.Args.Domain)
 	w.Logger.InfoContext(ctx,
 		"certificate scan complete",
 		"domain", job.Args.Domain,
@@ -67,12 +68,14 @@ func (w *ScanCNAMEWorker) Work(ctx context.Context, job *river.Job[ScanCNAMEArgs
 	ctx = tracing.WithNewTraceID(ctx, true)
 	start := time.Now()
 
-	result := scanner.ScanCNAME(job.Args.Domain)
+	s := scanner.NewScanner(scanner.Config{Logger: &w.Logger, Store: w.Store})
+	result := s.ScanCNAME(job.Args.Domain)
 
 	w.Logger.InfoContext(ctx,
 		"cname scan complete",
 		"domain", job.Args.Domain,
 		"duration", time.Since(start),
+		"result", result, // remove, debugging only pre-alpha
 	)
 	fmt.Printf("CNAME (dangling) scan complete for: %q\n%+v\n", job.Args.Domain, result)
 	return nil
@@ -98,7 +101,9 @@ type ScanDNSSECWorker struct {
 func (w *ScanDNSSECWorker) Work(ctx context.Context, job *river.Job[ScanDNSSECArgs]) error {
 	ctx = tracing.WithNewTraceID(ctx, true)
 	start := time.Now()
-	result := scanner.ScanDNSSEC(job.Args.Domain)
+
+	s := scanner.NewScanner(scanner.Config{Logger: &w.Logger, Store: w.Store})
+	result := s.ScanDNSSEC(job.Args.Domain)
 
 	w.Logger.InfoContext(ctx,
 		"dnssec scan complete",
@@ -137,7 +142,8 @@ func (w *ScanZoneTransferWorker) Work(
 	ctx = tracing.WithNewTraceID(ctx, true)
 	start := time.Now()
 
-	result := scanner.ScanZoneTransfer(job.Args.Domain)
+	s := scanner.NewScanner(scanner.Config{Logger: &w.Logger, Store: w.Store})
+	result := s.ScanZoneTransfer(job.Args.Domain)
 
 	w.Logger.InfoContext(ctx,
 		"zone transfer scan complete",

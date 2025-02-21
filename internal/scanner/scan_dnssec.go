@@ -48,7 +48,7 @@ func NewDNSSECScanner(domain string) *DNSSECScanner {
 	return &DNSSECScanner{Domain: domain, Client: client, Result: result, logger: logger}
 }
 
-func ScanDNSSEC(domain string) *DNSSECResult {
+func (s *Scan) ScanDNSSEC(domain string) *DNSSECResult {
 	ds := NewDNSSECScanner(domain)
 
 	// Check if domain is zone apex
