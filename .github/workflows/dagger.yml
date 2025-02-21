@@ -12,7 +12,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
   DOCKER_BUILD_SUMMARY: true
-  REPO: github.com/danielmichaels/doublestag
+  DAGGER_VERSION: '0.16.1'
 
 jobs:
   lint:
@@ -25,9 +25,22 @@ jobs:
       - name: lint
         uses: dagger/dagger-for-github@main
         with:
-          version: '0.16.1'
+          version: ${{ env.DAGGER_VERSION }}
           verb: call
           args: lint --src .
-#          module: ${{ env.REPO }}
           cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
 
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@master
+        with:
+          fetch-depth: 1
+      - name: lint
+        uses: dagger/dagger-for-github@main
+        with:
+          version: ${{ env.DAGGER_VERSION }}
+          verb: call
+          args: test --src .
+          cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
