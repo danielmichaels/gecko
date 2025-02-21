@@ -73,6 +73,14 @@ jobs:
       - uses: actions/checkout@master
         with:
           fetch-depth: 1
+      - name: Set Docker tags
+        id: tags
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_OUTPUT
+          fi
       - name: publish
         uses: dagger/dagger-for-github@main
         with:
@@ -85,5 +93,5 @@ jobs:
             --registry-username ${{ github.actor }} \
             --registry-password ${{ secrets.GITHUB_TOKEN }}
             --image-name ${{ env.IMAGE_NAME }} \
-            --tags ${{ github.sha }},${GITHUB_REF#refs/tags/},latest
+            --tags ${{ steps.tags.outputs.tags }}
           cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
