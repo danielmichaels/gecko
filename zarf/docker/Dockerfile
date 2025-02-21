@@ -1,5 +1,5 @@
 FROM danielmichaels/ci-toolkit AS toolkit
-FROM golang:1.23-bookworm AS builder
+FROM golang:1.24-bookworm AS builder
 
 WORKDIR /build
 # only copy mod file for better caching

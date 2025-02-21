@@ -156,15 +156,24 @@ tasks:
   betteralign:
     desc: Run betteralign
     cmds:
-      - betteralign -apply ./...
+      - betteralign -apply ./... {{.CLI_ARGS}}
   golangci:
     desc: Run golangci-lint
     cmds:
-      - golangci-lint run ./... -c .golanci.yml {{.CLI_ARGS}}
+      - golangci-lint run ./... -c .golangci.yml {{.CLI_ARGS}}
   golines:
     desc: run golines
     cmds:
-      - golines . -w --ignore-generated --no-reformat-tags --base-formatter=gofumpt
+      - golines . -w --ignore-generated --no-reformat-tags --ignored-dirs=ci --base-formatter=gofumpt {{.CLI_ARGS}}
+  golines-ci:
+    desc: run golines
+    cmds:
+      - |
+        output=$(golines . --ignore-generated --no-reformat-tags --ignored-dirs=ci --base-formatter=gofumpt --dry-run)
+        if [ -n "$output" ]; then
+          echo "$output"
+          exit 1
+        fi
 
   install_bins:
     desc: Install all required go binaries
@@ -175,7 +184,7 @@ tasks:
       - go install github.com/segmentio/golines@latest
       - go install github.com/dkorunic/betteralign/cmd/betteralign@latest
       - go install mvdan.cc/gofumpt@latest
-      - go install github.com/riverqueue/riverqueue/cmd/river@latest
+      - go install github.com/riverqueue/river/cmd/river@latest
 
   api:domain:*:
     desc: Add a new domain via the API

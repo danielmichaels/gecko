@@ -25,11 +25,12 @@ func (v VersionFlag) BeforeApply(app *kong.Kong, vars kong.Vars) error {
 type CLI struct {
 	cmd.Globals
 
-	Worker  cmd.WorkerCmd `cmd:"" help:"Run jobs worker"`
 	Version VersionFlag   `       help:"Print version information and quit" short:"v" name:"version"`
 	Domain  cmd.DomainCmd `cmd:"" help:"Run domain operations"`
 
 	Serve cmd.ServeCmd `cmd:"" help:"Run server"`
+
+	Worker cmd.WorkerCmd `cmd:"" help:"Run jobs worker"`
 }
 
 func run() error {

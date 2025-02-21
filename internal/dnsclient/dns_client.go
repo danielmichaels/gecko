@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/danielmichaels/doublestag/internal/dnsrecords"
 	"log/slog"
 	"math/rand"
 	"strings"
 	"time"
+
+	"github.com/danielmichaels/doublestag/internal/dnsrecords"
 
 	"github.com/danielmichaels/doublestag/internal/config"
 	"github.com/danielmichaels/doublestag/internal/logging"
@@ -46,6 +47,7 @@ var QTypeToString = map[uint16]string{
 	dns.TypeDS:     "DS",
 	dns.TypeRRSIG:  "RRSIG",
 }
+
 var (
 	ErrDNSSECNotImplemented           = errors.New("DNSSEC not implemented")
 	ErrDNSSECFailedZoneApexValidation = errors.New("DNSSEC failed zone apex validation")
@@ -59,15 +61,15 @@ type DNSClient struct {
 	client *dns.Client
 	// logger is a logger instance used by the DNSClient for logging purposes.
 	logger *slog.Logger
+	// conf is a pointer to the application configuration struct.
+	// It is used to access the configuration settings for the DNS client.
+	conf *config.Conf
 	// servers is a slice of DNS server addresses to be used for DNS lookups.
 	// If no custom servers are configured, it defaults to a single entry, "8.8.8.8:53" (Google's public DNS server).
 	servers []string
 	// currentServerIdx is the index of the current DNS server being used for lookups.
 	// It is used to keep track of the server being used and cycle through the list of configured servers.
 	currentServerIdx int
-	// conf is a pointer to the application configuration struct.
-	// It is used to access the configuration settings for the DNS client.
-	conf *config.Conf
 }
 
 // NewDNSClient creates a new DNSClient instance with the configured DNS servers and a logger.
@@ -260,6 +262,7 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 	}
 	return nil, false
 }
+
 func processResponse(r *dns.Msg, qtype uint16) []string {
 	var result []string
 	for _, a := range r.Answer {
@@ -706,6 +709,7 @@ func (c *DNSClient) EnumerateWithSubfinderCallback(
 	_, err = subfinder.EnumerateSingleDomainWithCtx(ctx, domain, nil)
 	return err
 }
+
 func (c *DNSClient) AttemptZoneTransfer(domain string) *dnsrecords.ZoneTransferResult {
 	fqdn := dns.Fqdn(domain)
 	result := dnsrecords.NewZoneTransferResult(domain)

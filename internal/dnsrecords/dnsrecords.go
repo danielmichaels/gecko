@@ -2,9 +2,10 @@ package dnsrecords
 
 import (
 	"fmt"
-	"github.com/miekg/dns"
 	"strconv"
 	"strings"
+
+	"github.com/miekg/dns"
 )
 
 type DNSSECResult struct {

@@ -1,8 +1,9 @@
 module github.com/danielmichaels/doublestag
 
-go 1.23.5
+go 1.24.0
 
 require (
+	github.com/MatusOllah/slogcolor v1.5.0
 	github.com/alecthomas/kong v1.8.1
 	github.com/danielgtaylor/huma/v2 v2.28.0
 	github.com/go-chi/chi/v5 v5.2.1
@@ -19,7 +20,6 @@ require (
 require (
 	aead.dev/minisign v0.2.0 // indirect
 	github.com/Masterminds/semver/v3 v3.2.1 // indirect
-	github.com/MatusOllah/slogcolor v1.5.0 // indirect
 	github.com/Mzack9999/gcache v0.0.0-20230410081825-519e28eab057 // indirect
 	github.com/Mzack9999/go-http-digest-auth-client v0.6.1-0.20220414142836-eb8883508809 // indirect
 	github.com/VividCortex/ewma v1.2.0 // indirect

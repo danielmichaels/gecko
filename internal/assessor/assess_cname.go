@@ -19,7 +19,11 @@ func (r DanglingCNAMEAssessmentResult) GetBaseResult() AssessmentResultBase {
 	return r.AssessmentResultBase
 }
 
-func NewDanglingCNAMEAssessmentResult(domain, reason string, cnameRecord, cnameTarget string, isVuln bool) *DanglingCNAMEAssessmentResult {
+func NewDanglingCNAMEAssessmentResult(
+	domain, reason string,
+	cnameRecord, cnameTarget string,
+	isVuln bool,
+) *DanglingCNAMEAssessmentResult {
 	return &DanglingCNAMEAssessmentResult{
 		AssessmentResultBase: AssessmentResultBase{
 			Domain:       domain,
@@ -34,14 +38,21 @@ func NewDanglingCNAMEAssessmentResult(domain, reason string, cnameRecord, cnameT
 		IsVulnerable:      isVuln,
 	}
 }
+
 func severityFromVulnerability(isVuln bool) string {
 	if isVuln {
 		return "High"
 	}
 	return "Info"
 }
+
 func generateDanglingCNAMEMessage(reason string, cnameRecord, cnameTarget string) string {
-	return fmt.Sprintf("Potential Dangling CNAME Vulnerability: CNAME Record '%s' pointing to target domain '%s' is considered dangling because: %s. Subdomain takeover risk exists.", cnameRecord, cnameTarget, reason)
+	return fmt.Sprintf(
+		"Potential Dangling CNAME Vulnerability: CNAME Record '%s' pointing to target domain '%s' is considered dangling because: %s. Subdomain takeover risk exists.",
+		cnameRecord,
+		cnameTarget,
+		reason,
+	)
 }
 
 // Stub methods - none are implemented, or complete. Placeholders for future work.

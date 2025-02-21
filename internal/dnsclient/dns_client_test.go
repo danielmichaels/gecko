@@ -2,9 +2,10 @@ package dnsclient
 
 import (
 	"fmt"
-	"github.com/danielmichaels/doublestag/internal/dnsrecords"
 	"reflect"
 	"testing"
+
+	"github.com/danielmichaels/doublestag/internal/dnsrecords"
 
 	"github.com/miekg/dns"
 )
@@ -382,7 +383,10 @@ func TestParsePTR(t *testing.T) {
 			name:   "valid PTR record",
 			domain: "1.2.3.4.in-addr.arpa",
 			record: "host.example.com",
-			want:   &dnsrecords.PTRRecord{Domain: "1.2.3.4.in-addr.arpa", Target: "host.example.com"},
+			want: &dnsrecords.PTRRecord{
+				Domain: "1.2.3.4.in-addr.arpa",
+				Target: "host.example.com",
+			},
 		},
 	}
 

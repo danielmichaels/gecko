@@ -3,9 +3,10 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"log/slog"
+
 	"github.com/danielmichaels/doublestag/internal/dnsclient"
 	"github.com/danielmichaels/doublestag/internal/dnsrecords"
-	"log/slog"
 
 	"github.com/danielmichaels/doublestag/internal/store"
 	"github.com/jackc/pgx/v5"
@@ -123,11 +124,13 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 		name    string
 		entries []string
 	}{
-		{func(d, r string) (interface{}, error) { return dnsrecords.ParseA(d, r) },
+		{
+			func(d, r string) (interface{}, error) { return dnsrecords.ParseA(d, r) },
 			"A",
 			result.A,
 		},
-		{func(d, r string) (interface{}, error) { return dnsrecords.ParseAAAA(d, r) },
+		{
+			func(d, r string) (interface{}, error) { return dnsrecords.ParseAAAA(d, r) },
 			"AAAA",
 			result.AAAA,
 		},
@@ -141,8 +144,16 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 			"TXT",
 			result.TXT,
 		},
-		{func(d, r string) (interface{}, error) { return dnsrecords.ParseNS(d, r) }, "NS", result.NS},
-		{func(d, r string) (interface{}, error) { return dnsrecords.ParseMX(d, r) }, "MX", result.MX},
+		{
+			func(d, r string) (interface{}, error) { return dnsrecords.ParseNS(d, r) },
+			"NS",
+			result.NS,
+		},
+		{
+			func(d, r string) (interface{}, error) { return dnsrecords.ParseMX(d, r) },
+			"MX",
+			result.MX,
+		},
 		{
 			func(d, r string) (interface{}, error) { return dnsrecords.ParseSOARecord(d, r) },
 			"SOA",
@@ -163,7 +174,11 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 			"DNSKEY",
 			result.DNSKEY,
 		},
-		{func(d, r string) (interface{}, error) { return dnsrecords.ParseDS(d, r) }, "DS", result.DS},
+		{
+			func(d, r string) (interface{}, error) { return dnsrecords.ParseDS(d, r) },
+			"DS",
+			result.DS,
+		},
 		{
 			func(d, r string) (interface{}, error) { return dnsrecords.ParseRRSIG(d, r) },
 			"RRSIG",
