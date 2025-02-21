@@ -1,7 +1,8 @@
-package scanner
+package dnsclient
 
 import (
 	"fmt"
+	"github.com/danielmichaels/doublestag/internal/dnsrecords"
 	"reflect"
 	"testing"
 
@@ -63,14 +64,14 @@ func TestParseSOARecord(t *testing.T) {
 		name    string
 		domain  string
 		record  string
-		want    *SOAResult
+		want    *dnsrecords.SOAResult
 		wantErr bool
 	}{
 		{
 			name:   "valid SOA record",
 			domain: "example.com",
 			record: "ns1.example.com admin.example.com 12345 7200 3600 1209600 3600",
-			want: &SOAResult{
+			want: &dnsrecords.SOAResult{
 				Domain:     "example.com",
 				NameServer: "ns1.example.com",
 				AdminEmail: "admin.example.com",
@@ -98,7 +99,7 @@ func TestParseSOARecord(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseSOARecord(tt.domain, tt.record)
+			got, err := dnsrecords.ParseSOARecord(tt.domain, tt.record)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseSOARecord() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -115,14 +116,14 @@ func TestParseMX(t *testing.T) {
 		name    string
 		domain  string
 		record  string
-		want    *MXRecord
+		want    *dnsrecords.MXRecord
 		wantErr bool
 	}{
 		{
 			name:   "valid MX record",
 			domain: "example.com",
 			record: "10 mail.example.com",
-			want: &MXRecord{
+			want: &dnsrecords.MXRecord{
 				Domain:     "example.com",
 				Target:     "mail.example.com",
 				Preference: 10,
@@ -150,7 +151,7 @@ func TestParseMX(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseMX(tt.domain, tt.record)
+			got, err := dnsrecords.ParseMX(tt.domain, tt.record)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseMX() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -167,14 +168,14 @@ func TestParseCAA(t *testing.T) {
 		name    string
 		domain  string
 		record  string
-		want    *CAAResult
+		want    *dnsrecords.CAAResult
 		wantErr bool
 	}{
 		{
 			name:   "valid CAA record",
 			domain: "example.com",
 			record: "letsencrypt.org 0 issue",
-			want: &CAAResult{
+			want: &dnsrecords.CAAResult{
 				Domain:  "example.com",
 				Value:   "letsencrypt.org",
 				Flag:    0,
@@ -186,7 +187,7 @@ func TestParseCAA(t *testing.T) {
 			name:   "valid CAA record with non-zero flag",
 			domain: "example.com",
 			record: "letsencrypt.org 128 issuewild",
-			want: &CAAResult{
+			want: &dnsrecords.CAAResult{
 				Domain:  "example.com",
 				Value:   "letsencrypt.org",
 				Flag:    128,
@@ -210,7 +211,7 @@ func TestParseCAA(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseCAA(tt.domain, tt.record)
+			got, err := dnsrecords.ParseCAA(tt.domain, tt.record)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseCAA() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -227,19 +228,19 @@ func TestParseA(t *testing.T) {
 		name   string
 		domain string
 		record string
-		want   *ARecord
+		want   *dnsrecords.ARecord
 	}{
 		{
 			name:   "valid A record",
 			domain: "example.com",
 			record: "192.0.2.1",
-			want:   &ARecord{Domain: "example.com", IP: "192.0.2.1"},
+			want:   &dnsrecords.ARecord{Domain: "example.com", IP: "192.0.2.1"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseA(tt.domain, tt.record)
+			got, err := dnsrecords.ParseA(tt.domain, tt.record)
 			if err != nil {
 				t.Errorf("ParseA() error = %v", err)
 				return
@@ -256,19 +257,19 @@ func TestParseAAAA(t *testing.T) {
 		name   string
 		domain string
 		record string
-		want   *AAAARecord
+		want   *dnsrecords.AAAARecord
 	}{
 		{
 			name:   "valid AAAA record",
 			domain: "example.com",
 			record: "2001:db8::1",
-			want:   &AAAARecord{Domain: "example.com", IP: "2001:db8::1"},
+			want:   &dnsrecords.AAAARecord{Domain: "example.com", IP: "2001:db8::1"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseAAAA(tt.domain, tt.record)
+			got, err := dnsrecords.ParseAAAA(tt.domain, tt.record)
 			if err != nil {
 				t.Errorf("ParseAAAA() error = %v", err)
 				return
@@ -285,19 +286,19 @@ func TestParseCNAME(t *testing.T) {
 		name   string
 		domain string
 		record string
-		want   *CNAMERecord
+		want   *dnsrecords.CNAMERecord
 	}{
 		{
 			name:   "valid CNAME record",
 			domain: "www.example.com",
 			record: "example.com",
-			want:   &CNAMERecord{Domain: "www.example.com", Target: "example.com"},
+			want:   &dnsrecords.CNAMERecord{Domain: "www.example.com", Target: "example.com"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseCNAME(tt.domain, tt.record)
+			got, err := dnsrecords.ParseCNAME(tt.domain, tt.record)
 			if err != nil {
 				t.Errorf("ParseCNAME() error = %v", err)
 				return
@@ -314,13 +315,13 @@ func TestParseTXT(t *testing.T) {
 		name   string
 		domain string
 		record string
-		want   *TXTRecord
+		want   *dnsrecords.TXTRecord
 	}{
 		{
 			name:   "valid TXT record",
 			domain: "example.com",
 			record: "v=spf1 include:_spf.example.com ~all",
-			want: &TXTRecord{
+			want: &dnsrecords.TXTRecord{
 				Domain:  "example.com",
 				Content: "v=spf1 include:_spf.example.com ~all",
 			},
@@ -329,7 +330,7 @@ func TestParseTXT(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseTXT(tt.domain, tt.record)
+			got, err := dnsrecords.ParseTXT(tt.domain, tt.record)
 			if err != nil {
 				t.Errorf("ParseTXT() error = %v", err)
 				return
@@ -346,19 +347,19 @@ func TestParseNS(t *testing.T) {
 		name   string
 		domain string
 		record string
-		want   *NSRecord
+		want   *dnsrecords.NSRecord
 	}{
 		{
 			name:   "valid NS record",
 			domain: "example.com",
 			record: "ns1.example.com",
-			want:   &NSRecord{Domain: "example.com", NameServer: "ns1.example.com"},
+			want:   &dnsrecords.NSRecord{Domain: "example.com", NameServer: "ns1.example.com"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseNS(tt.domain, tt.record)
+			got, err := dnsrecords.ParseNS(tt.domain, tt.record)
 			if err != nil {
 				t.Errorf("ParseNS() error = %v", err)
 				return
@@ -375,19 +376,19 @@ func TestParsePTR(t *testing.T) {
 		name   string
 		domain string
 		record string
-		want   *PTRRecord
+		want   *dnsrecords.PTRRecord
 	}{
 		{
 			name:   "valid PTR record",
 			domain: "1.2.3.4.in-addr.arpa",
 			record: "host.example.com",
-			want:   &PTRRecord{Domain: "1.2.3.4.in-addr.arpa", Target: "host.example.com"},
+			want:   &dnsrecords.PTRRecord{Domain: "1.2.3.4.in-addr.arpa", Target: "host.example.com"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParsePTR(tt.domain, tt.record)
+			got, err := dnsrecords.ParsePTR(tt.domain, tt.record)
 			if err != nil {
 				t.Errorf("ParsePTR() error = %v", err)
 				return
@@ -404,14 +405,14 @@ func TestParseSRV(t *testing.T) {
 		name    string
 		domain  string
 		record  string
-		want    *SRVResult
+		want    *dnsrecords.SRVResult
 		wantErr bool
 	}{
 		{
 			name:   "valid SRV record",
 			domain: "_sip._tcp.example.com",
 			record: "sipserver.example.com 5060 10 20",
-			want: &SRVResult{
+			want: &dnsrecords.SRVResult{
 				Domain:   "_sip._tcp.example.com",
 				Target:   "sipserver.example.com",
 				Port:     5060,
@@ -430,7 +431,7 @@ func TestParseSRV(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseSRV(tt.domain, tt.record)
+			got, err := dnsrecords.ParseSRV(tt.domain, tt.record)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseSRV() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -447,14 +448,14 @@ func TestParseDNSKEY(t *testing.T) {
 		name    string
 		domain  string
 		record  string
-		want    *DNSKEYResult
+		want    *dnsrecords.DNSKEYResult
 		wantErr bool
 	}{
 		{
 			name:   "valid DNSKEY record",
 			domain: "blog.cloudflare.com",
 			record: `oJMRESz5E4gYzS/q6XDrvU1qMPYIjCWzJaOau8XNEZeqCYKD5ar0IRd8KqXXFJkqmVfRvMGPmM1x8fGAa2XhSA== 256 3 13`,
-			want: &DNSKEYResult{
+			want: &dnsrecords.DNSKEYResult{
 				Domain:    "blog.cloudflare.com",
 				PublicKey: `oJMRESz5E4gYzS/q6XDrvU1qMPYIjCWzJaOau8XNEZeqCYKD5ar0IRd8KqXXFJkqmVfRvMGPmM1x8fGAa2XhSA==`,
 				Flags:     256,
@@ -473,7 +474,7 @@ func TestParseDNSKEY(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseDNSKEY(tt.domain, tt.record)
+			got, err := dnsrecords.ParseDNSKEY(tt.domain, tt.record)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseDNSKEY() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -490,14 +491,14 @@ func TestParseDS(t *testing.T) {
 		name    string
 		domain  string
 		record  string
-		want    *DSResult
+		want    *dnsrecords.DSResult
 		wantErr bool
 	}{
 		{
 			name:   "valid DS record",
 			domain: "example.com",
 			record: "60485 13 2 D4B7D520E7BB5F0F67674A0CCEB1E3E0614B93C4F9E99B8383F6A1E4469DA50A",
-			want: &DSResult{
+			want: &dnsrecords.DSResult{
 				Domain:     "example.com",
 				KeyTag:     60485,
 				Algorithm:  13,
@@ -516,7 +517,7 @@ func TestParseDS(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseDS(tt.domain, tt.record)
+			got, err := dnsrecords.ParseDS(tt.domain, tt.record)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseDS() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -533,14 +534,14 @@ func TestParseRRSIG(t *testing.T) {
 		name    string
 		domain  string
 		record  string
-		want    *RRSIGResult
+		want    *dnsrecords.RRSIGResult
 		wantErr bool
 	}{
 		{
 			name:   "valid RRSIG record",
 			domain: "blog.cloudflare.com",
 			record: `48 13 1 86400 1740582155 1739285855 com. 19718 hDFcFleAwABqYBsDMJhsXZbwYDylR6/BtoeWovtfB1jos44v5C1CDbZngIQ3N5I5wt2YKx7+lefeURpWXh0CaA==`,
-			want: &RRSIGResult{
+			want: &dnsrecords.RRSIGResult{
 				Domain:      "blog.cloudflare.com",
 				TypeCovered: 48, // DNSKEY
 				Algorithm:   13,
@@ -564,7 +565,7 @@ func TestParseRRSIG(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseRRSIG(tt.domain, tt.record)
+			got, err := dnsrecords.ParseRRSIG(tt.domain, tt.record)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseRRSIG() error = %v, wantErr %v", err, tt.wantErr)
 				return

@@ -3,9 +3,10 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"github.com/danielmichaels/doublestag/internal/dnsclient"
+	"github.com/danielmichaels/doublestag/internal/dnsrecords"
 	"log/slog"
 
-	"github.com/danielmichaels/doublestag/internal/scanner"
 	"github.com/danielmichaels/doublestag/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -36,7 +37,7 @@ func (w *EnumerateSubdomainWorker) Work(
 	ctx context.Context,
 	job *river.Job[EnumerateSubdomainArgs],
 ) error {
-	dnsClient := scanner.NewDNSClient()
+	dnsClient := dnsclient.NewDNSClient()
 	tx, err := w.DB.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -88,9 +89,9 @@ type ResolveDomainWorker struct {
 }
 
 func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDomainArgs]) error {
-	dnsClient := scanner.NewDNSClient()
+	dnsClient := dnsclient.NewDNSClient()
 
-	result := scanner.SubdomainResult{
+	result := dnsclient.SubdomainResult{
 		Name: job.Args.Domain,
 	}
 
@@ -122,52 +123,54 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 		name    string
 		entries []string
 	}{
-		{func(d, r string) (interface{}, error) { return scanner.ParseA(d, r) }, "A", result.A},
-		{
-			func(d, r string) (interface{}, error) { return scanner.ParseAAAA(d, r) },
+		{func(d, r string) (interface{}, error) { return dnsrecords.ParseA(d, r) },
+			"A",
+			result.A,
+		},
+		{func(d, r string) (interface{}, error) { return dnsrecords.ParseAAAA(d, r) },
 			"AAAA",
 			result.AAAA,
 		},
 		{
-			func(d, r string) (interface{}, error) { return scanner.ParseCNAME(d, r) },
+			func(d, r string) (interface{}, error) { return dnsrecords.ParseCNAME(d, r) },
 			"CNAME",
 			result.CNAME,
 		},
 		{
-			func(d, r string) (interface{}, error) { return scanner.ParseTXT(d, r) },
+			func(d, r string) (interface{}, error) { return dnsrecords.ParseTXT(d, r) },
 			"TXT",
 			result.TXT,
 		},
-		{func(d, r string) (interface{}, error) { return scanner.ParseNS(d, r) }, "NS", result.NS},
-		{func(d, r string) (interface{}, error) { return scanner.ParseMX(d, r) }, "MX", result.MX},
+		{func(d, r string) (interface{}, error) { return dnsrecords.ParseNS(d, r) }, "NS", result.NS},
+		{func(d, r string) (interface{}, error) { return dnsrecords.ParseMX(d, r) }, "MX", result.MX},
 		{
-			func(d, r string) (interface{}, error) { return scanner.ParseSOARecord(d, r) },
+			func(d, r string) (interface{}, error) { return dnsrecords.ParseSOARecord(d, r) },
 			"SOA",
 			result.SOA,
 		},
 		{
-			func(d, r string) (interface{}, error) { return scanner.ParsePTR(d, r) },
+			func(d, r string) (interface{}, error) { return dnsrecords.ParsePTR(d, r) },
 			"PTR",
 			result.PTR,
 		},
 		{
-			func(d, r string) (interface{}, error) { return scanner.ParseCAA(d, r) },
+			func(d, r string) (interface{}, error) { return dnsrecords.ParseCAA(d, r) },
 			"CAA",
 			result.CAA,
 		},
 		{
-			func(d, r string) (interface{}, error) { return scanner.ParseDNSKEY(d, r) },
+			func(d, r string) (interface{}, error) { return dnsrecords.ParseDNSKEY(d, r) },
 			"DNSKEY",
 			result.DNSKEY,
 		},
-		{func(d, r string) (interface{}, error) { return scanner.ParseDS(d, r) }, "DS", result.DS},
+		{func(d, r string) (interface{}, error) { return dnsrecords.ParseDS(d, r) }, "DS", result.DS},
 		{
-			func(d, r string) (interface{}, error) { return scanner.ParseRRSIG(d, r) },
+			func(d, r string) (interface{}, error) { return dnsrecords.ParseRRSIG(d, r) },
 			"RRSIG",
 			result.RRSIG,
 		},
 		{
-			func(d, r string) (interface{}, error) { return scanner.ParseSRV(d, r) },
+			func(d, r string) (interface{}, error) { return dnsrecords.ParseSRV(d, r) },
 			"SRV",
 			result.SRV,
 		},

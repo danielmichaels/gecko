@@ -1,12 +1,12 @@
-package scanner
+package dnsclient
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/danielmichaels/doublestag/internal/dnsrecords"
 	"log/slog"
 	"math/rand"
-	"strconv"
 	"strings"
 	"time"
 
@@ -46,6 +46,11 @@ var QTypeToString = map[uint16]string{
 	dns.TypeDS:     "DS",
 	dns.TypeRRSIG:  "RRSIG",
 }
+var (
+	ErrDNSSECNotImplemented           = errors.New("DNSSEC not implemented")
+	ErrDNSSECFailedZoneApexValidation = errors.New("DNSSEC failed zone apex validation")
+	ErrDNSSECFailedChainOfTrust       = errors.New("DNSSEC failed chain of trust validation")
+)
 
 // DNSClient is a struct that holds the DNS client, logger, and a list of DNS servers to use for lookups.
 // It provides methods to perform various DNS record lookups, such as CNAME, A, and AAAA.
@@ -371,9 +376,9 @@ func (c *DNSClient) sendDNSSECQuery(m *dns.Msg) (*dns.Msg, bool) {
 	return nil, false
 }
 
-// isZoneApex checks if the given domain is the zone apex by querying for the SOA record.
+// IsZoneApex checks if the given domain is the zone apex by querying for the SOA record.
 // It returns true if the domain is the zone apex, false otherwise.
-func (c *DNSClient) isZoneApex(domain string) bool {
+func (c *DNSClient) IsZoneApex(domain string) bool {
 	// Query for SOA record to determine if this is a zone apex
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(domain), dns.TypeSOA)
@@ -392,7 +397,7 @@ func (c *DNSClient) validateRRSIG(rrSet []dns.RR, dnskey *dns.DNSKEY, rrsig *dns
 
 // ValidateDNSSEC performs the complete DNSSEC validation for a given domain.
 func (c *DNSClient) ValidateDNSSEC(domain string) error {
-	return c.validateDNSSECRecursive(domain, dns.Fqdn(domain)) // Start recursive validation.
+	return c.validateDNSSECRecursive(domain, dns.Fqdn(domain))
 }
 
 // validateDNSSECRecursive is the recursive helper function for ValidateDNSSEC.
@@ -402,12 +407,12 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 	// end validation early for non-DNSSEC enabled domain, here we don't
 	// attempt any further validation
 	if !ok || len(dnskeyRRs) == 0 || len(rrsigRRs) == 0 {
-		return errors.New(DNSSECNotImplemented)
+		return ErrDNSSECNotImplemented
 	}
 
 	var dnskeys []*dns.DNSKEY
 	for _, key := range dnskeyRRs {
-		parsedKey, err := ParseDNSKEY(currentDomain, key)
+		parsedKey, err := dnsrecords.ParseDNSKEY(currentDomain, key)
 		if err != nil {
 			return fmt.Errorf("error parsing DNSKEY: %w", err)
 		}
@@ -437,7 +442,7 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 	// Parse RRSIG records
 	var rrsigs []*dns.RRSIG
 	for _, record := range rrsigRRs {
-		rrsigResult, err := ParseRRSIG(currentDomain, record)
+		rrsigResult, err := dnsrecords.ParseRRSIG(currentDomain, record)
 		if err != nil {
 			return fmt.Errorf("error parsing RRSIG: %w", err)
 		}
@@ -496,7 +501,7 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 		}
 	}
 	if !validated {
-		return errors.New(DNSSECFailedZoneApexValidation)
+		return ErrDNSSECFailedZoneApexValidation
 	}
 
 	// 4. Establish Chain of Trust.
@@ -521,7 +526,7 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 			if currentDomain == "." {
 				return nil
 			}
-			return errors.New(DNSSECNotImplemented)
+			return ErrDNSSECNotImplemented
 		}
 
 		// Parse DS records.
@@ -537,7 +542,7 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 				currentDomain,
 			)
 			// ds, err := ParseDS(parentZone, dsRecord)
-			ds, err := ParseDS(currentDomain, dsRecord)
+			ds, err := dnsrecords.ParseDS(currentDomain, dsRecord)
 			if err != nil {
 				c.logger.Warn("Error parsing DS record", "error", err)
 				continue // Skip invalid DS records.
@@ -564,7 +569,7 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 				"currentDomain",
 				currentDomain,
 			)
-			return errors.New(DNSSECFailedChainOfTrust)
+			return ErrDNSSECFailedChainOfTrust
 		}
 
 		// Verify DS against DNSKEY hash.
@@ -598,7 +603,7 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 				"currentDomain",
 				currentDomain,
 			)
-			return errors.New(DNSSECFailedChainOfTrust)
+			return ErrDNSSECFailedChainOfTrust
 		}
 
 		// 5. Repeat for higher zones (recursively).
@@ -633,6 +638,29 @@ func (c *DNSClient) generateDS(
 		"digest_type", ds.DigestType,
 		"digest", ds.Digest)
 	return ds, nil
+}
+
+// compareDS compares two DS records
+func (c *DNSClient) compareDS(ds1, ds2 *dns.DS) bool {
+	// Explicitly lowercase digests for comparison
+	digest1 := strings.ToLower(ds1.Digest)
+	digest2 := strings.ToLower(ds2.Digest)
+
+	result := ds1.KeyTag == ds2.KeyTag &&
+		ds1.Algorithm == ds2.Algorithm &&
+		ds1.DigestType == ds2.DigestType &&
+		digest1 == digest2
+
+	c.logger.Debug("compareDS",
+		"domain", ds1.Hdr.Name,
+		"result", result,
+		"digest1", digest1,
+		"digest2", digest2,
+		"algo1", ds1.Algorithm, "algo2", ds2.Algorithm,
+		"digestType1", ds1.DigestType, "digestType2", ds2.DigestType,
+	)
+
+	return result
 }
 
 type SubdomainResult struct {
@@ -678,308 +706,9 @@ func (c *DNSClient) EnumerateWithSubfinderCallback(
 	_, err = subfinder.EnumerateSingleDomainWithCtx(ctx, domain, nil)
 	return err
 }
-
-type ARecord struct {
-	Domain string
-	IP     string
-}
-
-func ParseA(domain, record string) (*ARecord, error) {
-	return &ARecord{Domain: domain, IP: record}, nil
-}
-
-type AAAARecord struct {
-	Domain string
-	IP     string
-}
-
-func ParseAAAA(domain, record string) (*AAAARecord, error) {
-	return &AAAARecord{Domain: domain, IP: record}, nil
-}
-
-type CNAMERecord struct {
-	Domain string
-	Target string
-}
-
-func ParseCNAME(domain, record string) (*CNAMERecord, error) {
-	return &CNAMERecord{Domain: domain, Target: record}, nil
-}
-
-type MXRecord struct {
-	Domain     string
-	Target     string
-	Preference uint16
-}
-
-func ParseMX(domain, record string) (*MXRecord, error) {
-	parts := strings.Fields(record)
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("invalid MX record format")
-	}
-	pref, _ := strconv.ParseUint(parts[0], 10, 16)
-	return &MXRecord{
-		Domain:     domain,
-		Preference: uint16(pref),
-		Target:     parts[1],
-	}, nil
-}
-
-type TXTRecord struct {
-	Domain  string
-	Content string
-}
-
-func ParseTXT(domain, record string) (*TXTRecord, error) {
-	return &TXTRecord{Domain: domain, Content: record}, nil
-}
-
-type NSRecord struct {
-	Domain     string
-	NameServer string
-}
-
-func ParseNS(domain, record string) (*NSRecord, error) {
-	return &NSRecord{Domain: domain, NameServer: record}, nil
-}
-
-type PTRRecord struct {
-	Domain string
-	Target string
-}
-
-func ParsePTR(domain, record string) (*PTRRecord, error) {
-	return &PTRRecord{Domain: domain, Target: record}, nil
-}
-
-type CAAResult struct {
-	Domain      string
-	Value       string
-	Tag         string
-	ErrorReason string
-	Flag        uint8
-	IsValid     bool
-}
-
-func ParseCAA(domain, record string) (*CAAResult, error) {
-	parts := strings.Fields(record)
-	if len(parts) < 3 {
-		return nil, fmt.Errorf("invalid CAA record format")
-	}
-
-	flag, _ := strconv.ParseUint(parts[1], 10, 8)
-	value := parts[0]
-	if len(parts) > 3 {
-		value = strings.Join(parts[3:], " ")
-	}
-
-	return &CAAResult{
-		Domain:  domain,
-		Value:   value,
-		Flag:    uint8(flag),
-		Tag:     parts[2],
-		IsValid: true,
-	}, nil
-}
-
-type DNSKEYResult struct {
-	Domain      string
-	PublicKey   string
-	ErrorReason string
-	Flags       uint16
-	Protocol    uint8
-	Algorithm   uint8
-	IsValid     bool
-}
-
-func ParseDNSKEY(domain, record string) (*DNSKEYResult, error) {
-	parts := strings.Fields(record)
-	if len(parts) != 4 {
-		return nil, fmt.Errorf("invalid DNSKEY record format")
-	}
-
-	flags, err := strconv.ParseUint(parts[1], 10, 16)
-	if err != nil {
-		return nil, fmt.Errorf("invalid Flags: %w", err)
-	}
-	protocol, err := strconv.ParseUint(parts[2], 10, 8)
-	if err != nil {
-		return nil, fmt.Errorf("invalid Protocol: %w", err)
-	}
-	algorithm, err := strconv.ParseUint(parts[3], 10, 8)
-	if err != nil {
-		return nil, fmt.Errorf("invalid Algorithm: %w", err)
-	}
-	result := &DNSKEYResult{
-		Domain:    domain,
-		PublicKey: parts[0],
-		Flags:     uint16(flags),
-		Protocol:  uint8(protocol),
-		Algorithm: uint8(algorithm),
-		IsValid:   true,
-	}
-	return result, nil
-}
-
-type DSResult struct {
-	Domain      string
-	Digest      string
-	ErrorReason string
-	KeyTag      uint16
-	Algorithm   uint8
-	DigestType  uint8
-	IsValid     bool
-}
-
-func ParseDS(domain, record string) (*DSResult, error) {
-	parts := strings.Fields(record)
-	if len(parts) != 4 {
-		return nil, fmt.Errorf("invalid DS record format")
-	}
-
-	keyTag, err := strconv.ParseUint(parts[0], 10, 16)
-	if err != nil {
-		return nil, fmt.Errorf("invalid KeyTag: %w", err)
-	}
-	algorithm, err := strconv.ParseUint(parts[1], 10, 8)
-	if err != nil {
-		return nil, fmt.Errorf("invalid Algorithm: %w", err)
-	}
-	digestType, err := strconv.ParseUint(parts[2], 10, 8)
-	if err != nil {
-		return nil, fmt.Errorf("invalid DigestType: %w", err)
-	}
-
-	return &DSResult{
-		Domain:     domain,
-		KeyTag:     uint16(keyTag),
-		Algorithm:  uint8(algorithm),
-		DigestType: uint8(digestType),
-		Digest:     parts[3],
-		IsValid:    true,
-	}, nil
-}
-
-type RRSIGResult struct {
-	Domain      string
-	SignerName  string
-	Signature   string
-	OriginalTTL uint32
-	Expiration  uint32
-	Inception   uint32
-	TypeCovered uint16
-	KeyTag      uint16
-	Algorithm   uint8
-	Labels      uint8
-	IsValid     bool
-}
-
-func ParseRRSIG(domain, record string) (*RRSIGResult, error) {
-	parts := strings.Fields(record)
-	if len(parts) != 9 {
-		return nil, fmt.Errorf("invalid RRSIG record format")
-	}
-
-	typeCovered, _ := strconv.ParseUint(parts[0], 10, 16)
-	algorithm, _ := strconv.ParseUint(parts[1], 10, 8)
-	labels, _ := strconv.ParseUint(parts[2], 10, 8)
-	originalTTL, _ := strconv.ParseUint(parts[3], 10, 32)
-	expiration, _ := strconv.ParseUint(parts[4], 10, 32)
-	inception, _ := strconv.ParseUint(parts[5], 10, 32)
-	signerName := parts[6]
-	keyTag, _ := strconv.ParseUint(parts[7], 10, 16)
-
-	result := &RRSIGResult{
-		Domain:      domain,
-		TypeCovered: uint16(typeCovered),
-		Algorithm:   uint8(algorithm),
-		Labels:      uint8(labels),
-		OriginalTTL: uint32(originalTTL),
-		Expiration:  uint32(expiration),
-		Inception:   uint32(inception),
-		KeyTag:      uint16(keyTag),
-		SignerName:  signerName,
-		Signature:   parts[8],
-		IsValid:     true,
-	}
-	return result, nil
-}
-
-type SRVResult struct {
-	Domain      string
-	Target      string
-	ErrorReason string
-	Port        uint16
-	Weight      uint16
-	Priority    uint16
-	IsValid     bool
-}
-
-func ParseSRV(domain, record string) (*SRVResult, error) {
-	parts := strings.Fields(record)
-	if len(parts) != 4 {
-		return nil, fmt.Errorf("invalid SRV record format")
-	}
-
-	port, _ := strconv.ParseUint(parts[1], 10, 16)
-	weight, _ := strconv.ParseUint(parts[2], 10, 16)
-	priority, _ := strconv.ParseUint(parts[3], 10, 16)
-
-	return &SRVResult{
-		Domain:   domain,
-		Target:   parts[0],
-		Port:     uint16(port),
-		Weight:   uint16(weight),
-		Priority: uint16(priority),
-		IsValid:  true,
-	}, nil
-}
-
-type SOAResult struct {
-	Domain      string
-	NameServer  string
-	AdminEmail  string
-	ErrorReason string
-	Serial      uint32
-	Refresh     uint32
-	Retry       uint32
-	Expire      uint32
-	MinimumTTL  uint32
-	IsValid     bool
-}
-
-// ParseSOARecord parses a SOA record string into a SOAResult struct.
-//
-// The SOA records arrive as a slice of strings, with each string
-// representing a field in the SOA record.
-func ParseSOARecord(domain, record string) (*SOAResult, error) {
-	parts := strings.Fields(record)
-	if len(parts) != 7 {
-		return nil, fmt.Errorf("invalid SOA record format")
-	}
-
-	serial, _ := strconv.ParseUint(parts[2], 10, 32)
-	refresh, _ := strconv.ParseUint(parts[3], 10, 32)
-	retry, _ := strconv.ParseUint(parts[4], 10, 32)
-	expire, _ := strconv.ParseUint(parts[5], 10, 32)
-	minTTL, _ := strconv.ParseUint(parts[6], 10, 32)
-
-	return &SOAResult{
-		Domain:     domain,
-		NameServer: parts[0],
-		AdminEmail: parts[1],
-		Serial:     uint32(serial),
-		Refresh:    uint32(refresh),
-		Retry:      uint32(retry),
-		Expire:     uint32(expire),
-		MinimumTTL: uint32(minTTL),
-		IsValid:    true,
-	}, nil
-}
-
-func (c *DNSClient) AttemptZoneTransfer(domain string) *ZoneTransferResult {
+func (c *DNSClient) AttemptZoneTransfer(domain string) *dnsrecords.ZoneTransferResult {
 	fqdn := dns.Fqdn(domain)
-	result := NewZoneTransferResult(domain)
+	result := dnsrecords.NewZoneTransferResult(domain)
 
 	nameservers, ok := c.LookupNS(fqdn)
 	if !ok || len(nameservers) == 0 {
@@ -1028,7 +757,7 @@ func (c *DNSClient) attemptIXFR(domain, nameserver string) []dns.RR {
 	}
 
 	// Parse SOA to get serial
-	soaResult, err := ParseSOARecord(domain, soa[0])
+	soaResult, err := dnsrecords.ParseSOARecord(domain, soa[0])
 	if err != nil {
 		return nil
 	}

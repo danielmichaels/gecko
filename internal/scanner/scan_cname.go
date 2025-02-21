@@ -1,6 +1,9 @@
 package scanner
 
-import "strings"
+import (
+	"github.com/danielmichaels/doublestag/internal/dnsclient"
+	"strings"
+)
 
 type CNAMEScanResult struct {
 	Domain string
@@ -16,7 +19,7 @@ func (s *Scan) ScanCNAME(domain string) *CNAMEScanResult {
 	res := CNAMEScanResult{
 		Domain: domain,
 	}
-	dc := NewDNSClient()
+	dc := dnsclient.NewDNSClient()
 	cname, ok := dc.LookupCNAME(res.Domain)
 	if !ok {
 		return &res
