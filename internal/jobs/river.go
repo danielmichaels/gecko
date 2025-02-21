@@ -15,6 +15,7 @@ const (
 	queueEnumeration = "queue_enumeration"
 	queueResolver    = "queue_resolver"
 	queueScanner     = "queue_scanner"
+	queueAssessor    = "queue_assessor"
 )
 
 type Config struct {
@@ -48,12 +49,15 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 	riverConfig := &river.Config{}
 	rw := river.NewWorkers()
 	if cfg.AddWorkers {
+		// scan workers
 		river.AddWorker(rw, &EnumerateSubdomainWorker{Logger: *cfg.Logger, DB: cfg.DB})
 		river.AddWorker(rw, &ResolveDomainWorker{Logger: *cfg.Logger, Store: cfg.Store})
 		river.AddWorker(rw, &ScanCertificateWorker{Logger: *cfg.Logger, Store: cfg.Store})
 		river.AddWorker(rw, &ScanCNAMEWorker{Logger: *cfg.Logger, Store: cfg.Store})
 		river.AddWorker(rw, &ScanDNSSECWorker{Logger: *cfg.Logger, Store: cfg.Store})
 		river.AddWorker(rw, &ScanZoneTransferWorker{Logger: *cfg.Logger, Store: cfg.Store})
+		// assess workers
+		river.AddWorker(rw, &AssessCNAMEDanglingWorker{Logger: *cfg.Logger, Store: cfg.Store})
 		riverConfig.Workers = rw
 		riverConfig.MaxAttempts = 5
 		riverConfig.Queues = map[string]river.QueueConfig{
@@ -64,6 +68,8 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 			queueEnumeration: {MaxWorkers: cfg.WorkerCount},
 			// reserved for scanners
 			queueScanner: {MaxWorkers: cfg.WorkerCount},
+			// reserved for assessors
+			queueAssessor: {MaxWorkers: cfg.WorkerCount},
 		}
 	}
 

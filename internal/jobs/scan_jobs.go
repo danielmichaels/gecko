@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"log/slog"
 	"time"
 
@@ -77,7 +78,12 @@ func (w *ScanCNAMEWorker) Work(ctx context.Context, job *river.Job[ScanCNAMEArgs
 		"duration", time.Since(start),
 		"result", result, // remove, debugging only pre-alpha
 	)
-	fmt.Printf("CNAME (dangling) scan complete for: %q\n%+v\n", job.Args.Domain, result)
+	rc := river.ClientFromContext[pgx.Tx](ctx)
+	// todo: This isn't done inside a tx so we can't InsertTx easily.
+	_, err := rc.Insert(ctx, &AssessCNAMEDanglingArgs{Domain: job.Args.Domain}, nil)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
