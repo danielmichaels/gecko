@@ -3,8 +3,9 @@ package server
 import (
 	"net/http"
 
+	"github.com/danielgtaylor/huma/v2/autopatch"
+
 	"github.com/danielmichaels/doublestag/assets"
-	"github.com/danielmichaels/doublestag/internal/config"
 	"github.com/danielmichaels/doublestag/internal/version"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -33,6 +34,10 @@ func (app *Server) routes() http.Handler {
 		},
 	}
 	api := humachi.New(router, cfg)
+	autopatch.AutoPatch(api)
+
+	cfg.Info.Title = "Doublestag API"
+	cfg.Info.Description = "API for the Doublestag application"
 
 	router.Get("/scalar", app.handleScalarDocsGet)
 
@@ -41,6 +46,30 @@ func (app *Server) routes() http.Handler {
 	router.Handle("/static/*", fileServer)
 
 	return router
+}
+
+// handleScalarDocsGet is an HTTP handler that serves the API reference documentation
+// for the application. It writes an HTML page that includes a script tag that loads
+// the Scalar API reference viewer, which will fetch the OpenAPI specification from
+// the "/openapi.json" endpoint.
+func (app *Server) handleScalarDocsGet(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+	_, _ = w.Write([]byte(`<!doctype html>
+<html>
+  <head>
+    <title>API Reference</title>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1" />
+  </head>
+  <body>
+    <script
+      id="api-reference"
+      data-url="/openapi.json"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+  </body>
+</html>`))
 }
 
 func (app *Server) registerEndpoints(api huma.API) {
@@ -62,46 +91,60 @@ func (app *Server) registerEndpoints(api huma.API) {
 		Description: "Return the version of the application.",
 		Tags:        []string{"Monitoring"},
 	}, app.handleVersionGet)
-
+	// Domain Handlers
 	huma.Register(api, huma.Operation{
 		OperationID:   "create_domain",
 		Method:        http.MethodPost,
-		Path:          "/domains",
+		Path:          "/api/domains",
 		Summary:       "Create a domain entry",
 		Description:   "Create a domain entry",
-		Tags:          []string{"domains"},
+		Tags:          []string{"Domains"},
 		DefaultStatus: http.StatusCreated,
 		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
 		Middlewares:   huma.Middlewares{ApiKeyAuth(api)},
 	}, app.handleDomainCreate)
-}
 
-func (app *Server) handleScalarDocsGet(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html")
-	_, _ = w.Write([]byte(`<!doctype html>
-<html>
-  <head>
-    <title>API Reference</title>
-    <meta charset="utf-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1" />
-  </head>
-  <body>
-    <script
-      id="api-reference"
-      data-url="/openapi.json"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
-  </body>
-</html>`))
-}
+	huma.Register(api, huma.Operation{
+		OperationID:   "list_domains",
+		Method:        http.MethodGet,
+		Path:          "/api/domains",
+		Summary:       "List all domains",
+		Tags:          []string{"Domains"},
+		DefaultStatus: http.StatusOK,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{ApiKeyAuth(api)},
+	}, app.handleDomainList)
 
-func ApiKeyAuth(api huma.API) func(ctx huma.Context, next func(huma.Context)) {
-	return func(ctx huma.Context, next func(huma.Context)) {
-		if ctx.Header("X-API-Key") != config.AppConfig().AppConf.XApiKey {
-			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "unauthorized")
-			return
-		}
-		next(ctx)
-	}
+	huma.Register(api, huma.Operation{
+		OperationID:   "get_domain",
+		Method:        http.MethodGet,
+		Path:          "/api/domains/{id}",
+		Summary:       "Get domain by ID",
+		Tags:          []string{"Domains"},
+		DefaultStatus: http.StatusOK,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{ApiKeyAuth(api)},
+	}, app.handleDomainGet)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "update_domain",
+		Method:        http.MethodPut,
+		Path:          "/api/domains/{id}",
+		Summary:       "Update domain",
+		Tags:          []string{"Domains"},
+		DefaultStatus: http.StatusOK,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{ApiKeyAuth(api)},
+	}, app.handleDomainUpdate)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "delete_domain",
+		Method:        http.MethodDelete,
+		Path:          "/api/domains/{id}",
+		Summary:       "Delete domain",
+		Tags:          []string{"Domains"},
+		DefaultStatus: http.StatusNoContent,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{ApiKeyAuth(api)},
+	}, app.handleDomainDelete)
 }
