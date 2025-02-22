@@ -200,6 +200,7 @@ tasks:
       - go install github.com/dkorunic/betteralign/cmd/betteralign@latest
       - go install mvdan.cc/gofumpt@latest
       - go install github.com/riverqueue/river/cmd/river@latest
+      - go install github.com/evilmartians/lefthook@latest
 
   api:domain:*:
     desc: Add a new domain via the API
