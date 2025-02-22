@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/danielmichaels/doublestag/internal/dnsclient"
 	"github.com/danielmichaels/doublestag/internal/dnsrecords"
 
@@ -203,7 +205,35 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 			}
 			w.Logger.Info("parsed record", "parsed", parsed, "type", r.name)
 			// Store parsed record using worker's services
-			// w.DB.StoreRecord(ctx, parsed)
+			if r.name == "A" {
+				// todo: example only - remove later
+				d, err := w.Store.DomainsCreate(ctx, store.DomainsCreateParams{
+					TenantID:   pgtype.Int4{Int32: 1, Valid: true},
+					Name:       result.Name,
+					DomainType: store.DomainTypeSubdomain,
+					Source:     store.DomainSourceUserSupplied,
+					Status:     store.DomainStatusActive,
+				})
+				if err != nil {
+					return err
+				}
+				a, err := w.Store.RecordsCreateA(ctx, store.RecordsCreateAParams{
+					DomainID:    pgtype.Int4{Int32: d.ID, Valid: true},
+					Ipv4Address: entry,
+				})
+				if err != nil {
+					return err
+				}
+				w.Logger.Debug(
+					"found A record",
+					"ip",
+					a.Ipv4Address,
+					"uid",
+					a.Uid,
+					"domain",
+					d.Name,
+				)
+			}
 		}
 	}
 

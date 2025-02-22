@@ -11,17 +11,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const createUser = `-- name: CreateUser :one
+const userCreate = `-- name: UserCreate :one
 INSERT INTO users (tenant_id, email, name, role)
 SELECT $1, $2, $3, $4
 WHERE EXISTS (SELECT 1
               FROM users u
               WHERE u.id = $5
-                AND u.role IN ('manager', 'owner'))
+                AND u.role IN ('manager', 'owner', 'superadmin'))
 RETURNING id, uid, tenant_id, email, name, role, created_at, updated_at
 `
 
-type CreateUserParams struct {
+type UserCreateParams struct {
 	TenantID pgtype.Int4 `json:"tenant_id"`
 	Email    string      `json:"email"`
 	Name     pgtype.Text `json:"name"`
@@ -29,9 +29,9 @@ type CreateUserParams struct {
 	ID       int32       `json:"id"`
 }
 
-// Create a new user (only allowed for 'manager' and 'owner')
-func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (Users, error) {
-	row := q.db.QueryRow(ctx, createUser,
+// Create a new user (only allowed for 'manager', 'manager' and 'superadmin')
+func (q *Queries) UserCreate(ctx context.Context, arg UserCreateParams) (Users, error) {
+	row := q.db.QueryRow(ctx, userCreate,
 		arg.TenantID,
 		arg.Email,
 		arg.Name,
@@ -52,27 +52,27 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (Users, 
 	return i, err
 }
 
-const deleteUser = `-- name: DeleteUser :one
+const userDeleteByID = `-- name: UserDeleteByID :one
 DELETE
 FROM users u
 WHERE u.id = $1
   AND EXISTS (SELECT 1
               FROM users auth
               WHERE auth.id = $2
-                AND auth.role IN ('manager', 'owner')
+                AND auth.role IN ('manager', 'owner', 'superadmin')
                 AND auth.tenant_id = $3)
 RETURNING id, uid, tenant_id, email, name, role, created_at, updated_at
 `
 
-type DeleteUserParams struct {
+type UserDeleteByIDParams struct {
 	ID       int32       `json:"id"`
 	ID_2     int32       `json:"id_2"`
 	TenantID pgtype.Int4 `json:"tenant_id"`
 }
 
 // Delete a user by ID (only allowed for 'manager' and 'owner' within their tenant)
-func (q *Queries) DeleteUser(ctx context.Context, arg DeleteUserParams) (Users, error) {
-	row := q.db.QueryRow(ctx, deleteUser, arg.ID, arg.ID_2, arg.TenantID)
+func (q *Queries) UserDeleteByID(ctx context.Context, arg UserDeleteByIDParams) (Users, error) {
+	row := q.db.QueryRow(ctx, userDeleteByID, arg.ID, arg.ID_2, arg.TenantID)
 	var i Users
 	err := row.Scan(
 		&i.ID,
@@ -87,21 +87,21 @@ func (q *Queries) DeleteUser(ctx context.Context, arg DeleteUserParams) (Users, 
 	return i, err
 }
 
-const getUserByID = `-- name: GetUserByID :one
+const userGetByID = `-- name: UserGetByID :one
 SELECT id, uid, tenant_id, email, name, role, created_at, updated_at
 FROM users u
 WHERE (id = $1 AND u.role = 'superadmin')
    OR (id = $1 AND u.tenant_id = $2)
 `
 
-type GetUserByIDParams struct {
+type UserGetByIDParams struct {
 	ID       int32       `json:"id"`
 	TenantID pgtype.Int4 `json:"tenant_id"`
 }
 
 // Read a user by ID (superadmin can see all, others can see within their tenant)
-func (q *Queries) GetUserByID(ctx context.Context, arg GetUserByIDParams) (Users, error) {
-	row := q.db.QueryRow(ctx, getUserByID, arg.ID, arg.TenantID)
+func (q *Queries) UserGetByID(ctx context.Context, arg UserGetByIDParams) (Users, error) {
+	row := q.db.QueryRow(ctx, userGetByID, arg.ID, arg.TenantID)
 	var i Users
 	err := row.Scan(
 		&i.ID,
@@ -116,7 +116,55 @@ func (q *Queries) GetUserByID(ctx context.Context, arg GetUserByIDParams) (Users
 	return i, err
 }
 
-const getUsers = `-- name: GetUsers :many
+const userUpdateByID = `-- name: UserUpdateByID :one
+UPDATE users u
+SET tenant_id = $2,
+    email     = $3,
+    name      = $4,
+    role      = $5
+WHERE u.id = $1
+  AND EXISTS (SELECT 1
+              FROM users auth
+              WHERE auth.id = $6
+                AND auth.role IN ('manager', 'owner', 'superadmin')
+                AND auth.tenant_id = $2)
+RETURNING id, uid, tenant_id, email, name, role, created_at, updated_at
+`
+
+type UserUpdateByIDParams struct {
+	ID       int32       `json:"id"`
+	TenantID pgtype.Int4 `json:"tenant_id"`
+	Email    string      `json:"email"`
+	Name     pgtype.Text `json:"name"`
+	Role     UserRole    `json:"role"`
+	ID_2     int32       `json:"id_2"`
+}
+
+// Update a user by ID (only allowed for 'manager' and 'owner' within their tenant)
+func (q *Queries) UserUpdateByID(ctx context.Context, arg UserUpdateByIDParams) (Users, error) {
+	row := q.db.QueryRow(ctx, userUpdateByID,
+		arg.ID,
+		arg.TenantID,
+		arg.Email,
+		arg.Name,
+		arg.Role,
+		arg.ID_2,
+	)
+	var i Users
+	err := row.Scan(
+		&i.ID,
+		&i.Uid,
+		&i.TenantID,
+		&i.Email,
+		&i.Name,
+		&i.Role,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const usersListByTenant = `-- name: UsersListByTenant :many
 SELECT id, uid, tenant_id, email, name, role, created_at, updated_at
 FROM users u
 WHERE u.role = 'superadmin'
@@ -124,8 +172,8 @@ WHERE u.role = 'superadmin'
 `
 
 // Read all users (superadmin can see all, others can see within their tenant)
-func (q *Queries) GetUsers(ctx context.Context, tenantID pgtype.Int4) ([]Users, error) {
-	rows, err := q.db.Query(ctx, getUsers, tenantID)
+func (q *Queries) UsersListByTenant(ctx context.Context, tenantID pgtype.Int4) ([]Users, error) {
+	rows, err := q.db.Query(ctx, usersListByTenant, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -151,52 +199,4 @@ func (q *Queries) GetUsers(ctx context.Context, tenantID pgtype.Int4) ([]Users, 
 		return nil, err
 	}
 	return items, nil
-}
-
-const updateUser = `-- name: UpdateUser :one
-UPDATE users u
-SET tenant_id = $2,
-    email     = $3,
-    name      = $4,
-    role      = $5
-WHERE u.id = $1
-  AND EXISTS (SELECT 1
-              FROM users auth
-              WHERE auth.id = $6
-                AND auth.role IN ('manager', 'owner')
-                AND auth.tenant_id = $2)
-RETURNING id, uid, tenant_id, email, name, role, created_at, updated_at
-`
-
-type UpdateUserParams struct {
-	ID       int32       `json:"id"`
-	TenantID pgtype.Int4 `json:"tenant_id"`
-	Email    string      `json:"email"`
-	Name     pgtype.Text `json:"name"`
-	Role     UserRole    `json:"role"`
-	ID_2     int32       `json:"id_2"`
-}
-
-// Update a user by ID (only allowed for 'manager' and 'owner' within their tenant)
-func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (Users, error) {
-	row := q.db.QueryRow(ctx, updateUser,
-		arg.ID,
-		arg.TenantID,
-		arg.Email,
-		arg.Name,
-		arg.Role,
-		arg.ID_2,
-	)
-	var i Users
-	err := row.Scan(
-		&i.ID,
-		&i.Uid,
-		&i.TenantID,
-		&i.Email,
-		&i.Name,
-		&i.Role,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
 }
