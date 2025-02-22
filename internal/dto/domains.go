@@ -1,6 +1,7 @@
 package dto
 
 import (
+	"fmt"
 	"github.com/danielmichaels/doublestag/internal/store"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -70,6 +71,11 @@ type Domain struct {
 	Status     string `json:"status"`
 	CreatedAt  string `json:"created_at"`
 	UpdatedAt  string `json:"updated_at"`
+}
+
+func (d Domain) String() string {
+	return fmt.Sprintf("%-20s %-20s %-10s %-15s %-10s %-25s %-25s",
+		d.ID, d.Domain, d.DomainType, d.Source, d.Status, d.CreatedAt, d.UpdatedAt)
 }
 
 type DomainRecord struct {

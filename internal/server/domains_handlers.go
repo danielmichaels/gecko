@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"errors"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielmichaels/doublestag/internal/dto"
@@ -79,25 +81,32 @@ func (app *Server) handleDomainUpdate(
 	ctx context.Context,
 	i *DomainUpdateInput,
 ) (*DomainOutput, error) {
-	status := store.DomainStatusActive
+	patchDomain, err := app.Db.DomainsGetByID(ctx, i.ID)
+	if err != nil {
+		app.Log.Error("failed to get domain", "error", err)
+		return nil, huma.Error404NotFound("domain not found")
+	}
+	status := patchDomain.Status
 	if i.Body.Status != "" {
 		status = store.DomainStatus(i.Body.Status)
 	}
-	domainSource := store.DomainSourceUserSupplied
+	domainSource := patchDomain.Source
 	if i.Body.Source != "" {
 		domainSource = store.DomainSource(i.Body.Source)
 	}
-	domainType := store.DomainTypeSubdomain
+	domainType := patchDomain.DomainType
 	if i.Body.DomainType != "" {
 		domainType = store.DomainType(i.Body.DomainType)
 	}
-	domain, err := app.Db.DomainsUpdateByID(ctx, store.DomainsUpdateByIDParams{
+	params := store.DomainsUpdateByIDParams{
 		Uid:        i.ID,
+		Status:     status,
 		DomainType: domainType,
 		Source:     domainSource,
-		Status:     status,
-	})
+	}
+	domain, err := app.Db.DomainsUpdateByID(ctx, params)
 	if err != nil {
+		app.Log.Error("failed to update domain", "error", err)
 		return nil, huma.Error500InternalServerError("failed to create domain", err)
 	}
 
@@ -126,7 +135,11 @@ func (app *Server) handleDomainDelete(
 ) (*struct{}, error) {
 	_, err := app.Db.DomainsDeleteByID(ctx, i.ID)
 	if err != nil {
-		return nil, huma.Error404NotFound("domain not found")
+		app.Log.Error("failed to delete domain", "error", err, "id", i.ID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, huma.Error404NotFound("domain not found")
+		}
+		return nil, huma.Error500InternalServerError("failed to delete domain")
 	}
 	return nil, nil
 }
@@ -134,9 +147,9 @@ func (app *Server) handleDomainDelete(
 type DomainCreateInput struct {
 	Body struct {
 		Domain     string `json:"domain" required:"true" example:"example.com" doc:"Name of the domain."`
-		DomainType string `json:"domain_type" example:"tld" doc:"Domain category such as TLD, subdomain, or wildcard."`
-		Source     string `json:"source" example:"user_supplied" doc:"Source of the domain."`
-		Status     string `json:"status" example:"active" doc:"Status of the domain."`
+		DomainType string `json:"domain_type" required:"false" example:"tld" doc:"Domain category such as TLD, subdomain, or wildcard."`
+		Source     string `json:"source" required:"false" example:"user_supplied" doc:"Source of the domain."`
+		Status     string `json:"status" required:"false" example:"active" doc:"Status of the domain."`
 	}
 }
 
@@ -176,6 +189,8 @@ func (app *Server) handleDomainCreate(
 			DomainType: domain.DomainType,
 			Source:     domain.Source,
 			Status:     domain.Status,
+			CreatedAt:  domain.CreatedAt,
+			UpdatedAt:  domain.UpdatedAt,
 		}),
 	}
 	return resp, nil

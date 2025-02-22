@@ -264,6 +264,7 @@ type AaaaRecordsHistory struct {
 
 type Certificates struct {
 	ID            int32              `json:"id"`
+	Uid           string             `json:"uid"`
 	DomainID      pgtype.Int4        `json:"domain_id"`
 	NotBefore     pgtype.Timestamptz `json:"not_before"`
 	NotAfter      pgtype.Timestamptz `json:"not_after"`

@@ -5,16 +5,20 @@ go 1.24.0
 require (
 	github.com/MatusOllah/slogcolor v1.5.0
 	github.com/alecthomas/kong v1.8.1
+	github.com/alecthomas/kong-yaml v0.2.0
+	github.com/carlmjohnson/requests v0.24.3
 	github.com/danielgtaylor/huma/v2 v2.28.0
 	github.com/go-chi/chi/v5 v5.2.1
 	github.com/go-chi/httplog/v2 v2.1.1
 	github.com/jackc/pgx/v5 v5.7.2
 	github.com/joeshaw/envdecode v0.0.0-20200121155833-099f1fc765bd
 	github.com/miekg/dns v1.1.63
+	github.com/olekukonko/tablewriter v0.0.5
 	github.com/projectdiscovery/subfinder/v2 v2.6.8
 	github.com/riverqueue/river v0.16.0
 	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.16.0
 	github.com/rs/xid v1.5.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -145,5 +149,4 @@ require (
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.35.1 // indirect
 	gopkg.in/djherbis/times.v1 v1.3.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

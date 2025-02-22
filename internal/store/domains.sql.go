@@ -16,7 +16,7 @@ INSERT INTO domains (tenant_id, name, domain_type, source, status)
 VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (tenant_id, name)
     DO UPDATE SET updated_at = NOW()
-RETURNING id, uid, name, domain_type, source, status
+RETURNING id, uid, name, domain_type, source, status, created_at, updated_at
 `
 
 type DomainsCreateParams struct {
@@ -28,12 +28,14 @@ type DomainsCreateParams struct {
 }
 
 type DomainsCreateRow struct {
-	ID         int32        `json:"id"`
-	Uid        string       `json:"uid"`
-	Name       string       `json:"name"`
-	DomainType DomainType   `json:"domain_type"`
-	Source     DomainSource `json:"source"`
-	Status     DomainStatus `json:"status"`
+	ID         int32              `json:"id"`
+	Uid        string             `json:"uid"`
+	Name       string             `json:"name"`
+	DomainType DomainType         `json:"domain_type"`
+	Source     DomainSource       `json:"source"`
+	Status     DomainStatus       `json:"status"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
 }
 
 // Create a new domain (no auth)
@@ -53,6 +55,8 @@ func (q *Queries) DomainsCreate(ctx context.Context, arg DomainsCreateParams) (D
 		&i.DomainType,
 		&i.Source,
 		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }

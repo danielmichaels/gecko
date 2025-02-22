@@ -26,7 +26,7 @@ INSERT INTO domains (tenant_id, name, domain_type, source, status)
 VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (tenant_id, name)
     DO UPDATE SET updated_at = NOW()
-RETURNING id, uid, name, domain_type, source, status;
+RETURNING id, uid, name, domain_type, source, status, created_at, updated_at;
 
 -- name: DomainsGetByID :one
 SELECT id,

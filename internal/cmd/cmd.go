@@ -2,8 +2,14 @@ package cmd
 
 import (
 	"context"
+	"fmt"
+	"github.com/alecthomas/kong"
 	"io"
 	"log/slog"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
 
 	"github.com/danielmichaels/doublestag/internal/config"
 	"github.com/danielmichaels/doublestag/internal/jobs"
@@ -14,8 +20,13 @@ import (
 	"github.com/riverqueue/river"
 )
 
-type Globals struct{}
-
+type Globals struct {
+	ServerURL  string          `help:"Server URL"`
+	Username   string          `help:"Username for authentication"`
+	Password   string          `help:"Password for authentication"`
+	ConfigFile kong.ConfigFlag `short:"c" help:"Location of client config files" type:"path" default:"${config_path}"`
+	Format     string          `help:"Output format" short:"f" default:"text" enum:"text,json"`
+}
 type Setup struct {
 	Config *config.Conf
 	Logger *slog.Logger
@@ -103,4 +114,41 @@ func (s *Setup) Close() {
 	s.Cancel()
 	s.DB.Close()
 	s.Logger.Info("shutdown complete")
+}
+
+// createCancellableContext creates a new context.Context that is cancelled when an interrupt signal is received.
+// The returned context and cancel function can be used to control the lifetime of long-running operations.
+func createCancellableContext() (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.Background())
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-sigChan
+		cancel()
+	}()
+
+	return ctx, cancel
+}
+
+// HandleRequestError provides consistent error messages for CLI commands
+func HandleRequestError(err error, serverURL string) error {
+	switch {
+	case strings.Contains(err.Error(), "connection refused"):
+		return fmt.Errorf("server is not running at %s", serverURL)
+	case strings.Contains(err.Error(), "no such host"):
+		return fmt.Errorf("could not resolve host %s", serverURL)
+	case strings.Contains(err.Error(), "timeout"):
+		return fmt.Errorf("connection timed out to %s", serverURL)
+	case strings.Contains(err.Error(), "404"):
+		return fmt.Errorf("resource not found at %s", serverURL)
+	case strings.Contains(err.Error(), "401"):
+		return fmt.Errorf("authentication failed - please check your credentials")
+	case strings.Contains(err.Error(), "403"):
+		return fmt.Errorf("you don't have permission to access this resource")
+	case strings.Contains(err.Error(), "404"):
+		return fmt.Errorf("resource not found")
+	default:
+		return fmt.Errorf("connection error: %v", err)
+	}
 }
