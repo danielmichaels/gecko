@@ -60,13 +60,13 @@ func (q *Queries) DomainsCreate(ctx context.Context, arg DomainsCreateParams) (D
 const domainsDeleteByID = `-- name: DomainsDeleteByID :one
 DELETE
 FROM domains
-WHERE id = $1
+WHERE uid = $1
 RETURNING id, uid, tenant_id, name, domain_type, source, status, created_at, updated_at
 `
 
 // Delete a domain (no auth)
-func (q *Queries) DomainsDeleteByID(ctx context.Context, id int32) (Domains, error) {
-	row := q.db.QueryRow(ctx, domainsDeleteByID, id)
+func (q *Queries) DomainsDeleteByID(ctx context.Context, uid string) (Domains, error) {
+	row := q.db.QueryRow(ctx, domainsDeleteByID, uid)
 	var i Domains
 	err := row.Scan(
 		&i.ID,
@@ -145,6 +145,75 @@ func (q *Queries) DomainsGetAllRecordsByTenantID(ctx context.Context, tenantID p
 		return nil, err
 	}
 	return items, nil
+}
+
+const domainsGetByID = `-- name: DomainsGetByID :one
+SELECT id,
+       uid,
+       tenant_id,
+       name,
+       domain_type,
+       source,
+       status,
+       created_at,
+       updated_at
+FROM domains
+WHERE uid = $1
+`
+
+func (q *Queries) DomainsGetByID(ctx context.Context, uid string) (Domains, error) {
+	row := q.db.QueryRow(ctx, domainsGetByID, uid)
+	var i Domains
+	err := row.Scan(
+		&i.ID,
+		&i.Uid,
+		&i.TenantID,
+		&i.Name,
+		&i.DomainType,
+		&i.Source,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const domainsGetByName = `-- name: DomainsGetByName :one
+SELECT id,
+       uid,
+       tenant_id,
+       name,
+       domain_type,
+       source,
+       status,
+       created_at,
+       updated_at
+FROM domains
+WHERE tenant_id = $1
+  AND name = $2
+`
+
+type DomainsGetByNameParams struct {
+	TenantID pgtype.Int4 `json:"tenant_id"`
+	Name     string      `json:"name"`
+}
+
+// Read a domain by name and tenant ID (no auth)
+func (q *Queries) DomainsGetByName(ctx context.Context, arg DomainsGetByNameParams) (Domains, error) {
+	row := q.db.QueryRow(ctx, domainsGetByName, arg.TenantID, arg.Name)
+	var i Domains
+	err := row.Scan(
+		&i.ID,
+		&i.Uid,
+		&i.TenantID,
+		&i.Name,
+		&i.DomainType,
+		&i.Source,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const domainsListAll = `-- name: DomainsListAll :many
@@ -245,90 +314,30 @@ func (q *Queries) DomainsListByTenantID(ctx context.Context, arg DomainsListByTe
 	return items, nil
 }
 
-const domainsReadByID = `-- name: DomainsReadByID :one
-SELECT id,
-       uid,
-       tenant_id,
-       name,
-       domain_type,
-       source,
-       status,
-       created_at,
-       updated_at
-FROM domains
-WHERE id = $1
-`
-
-func (q *Queries) DomainsReadByID(ctx context.Context, id int32) (Domains, error) {
-	row := q.db.QueryRow(ctx, domainsReadByID, id)
-	var i Domains
-	err := row.Scan(
-		&i.ID,
-		&i.Uid,
-		&i.TenantID,
-		&i.Name,
-		&i.DomainType,
-		&i.Source,
-		&i.Status,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const domainsReadByName = `-- name: DomainsReadByName :one
-SELECT id,
-       uid,
-       tenant_id,
-       name,
-       domain_type,
-       source,
-       status,
-       created_at,
-       updated_at
-FROM domains
-WHERE tenant_id = $1
-  AND name = $2
-`
-
-type DomainsReadByNameParams struct {
-	TenantID pgtype.Int4 `json:"tenant_id"`
-	Name     string      `json:"name"`
-}
-
-// Read a domain by name and tenant ID (no auth)
-func (q *Queries) DomainsReadByName(ctx context.Context, arg DomainsReadByNameParams) (Domains, error) {
-	row := q.db.QueryRow(ctx, domainsReadByName, arg.TenantID, arg.Name)
-	var i Domains
-	err := row.Scan(
-		&i.ID,
-		&i.Uid,
-		&i.TenantID,
-		&i.Name,
-		&i.DomainType,
-		&i.Source,
-		&i.Status,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const domainsUpdateByID = `-- name: DomainsUpdateByID :one
 UPDATE domains
-SET status = $2
-WHERE id = $1
+SET status = $2,
+    domain_type = $3,
+    source      = $4
+WHERE uid = $1
 RETURNING id, uid, tenant_id, name, domain_type, source, status, created_at, updated_at
 `
 
 type DomainsUpdateByIDParams struct {
-	ID     int32        `json:"id"`
-	Status DomainStatus `json:"status"`
+	Uid        string       `json:"uid"`
+	Status     DomainStatus `json:"status"`
+	DomainType DomainType   `json:"domain_type"`
+	Source     DomainSource `json:"source"`
 }
 
 // Update a domain's status (no auth)
 func (q *Queries) DomainsUpdateByID(ctx context.Context, arg DomainsUpdateByIDParams) (Domains, error) {
-	row := q.db.QueryRow(ctx, domainsUpdateByID, arg.ID, arg.Status)
+	row := q.db.QueryRow(ctx, domainsUpdateByID,
+		arg.Uid,
+		arg.Status,
+		arg.DomainType,
+		arg.Source,
+	)
 	var i Domains
 	err := row.Scan(
 		&i.ID,
@@ -348,19 +357,19 @@ const domainsUpdateByIDTypeSource = `-- name: DomainsUpdateByIDTypeSource :one
 UPDATE domains
 SET domain_type = $2,
     source      = $3
-WHERE id = $1
+WHERE uid = $1
 RETURNING id, uid, tenant_id, name, domain_type, source, status, created_at, updated_at
 `
 
 type DomainsUpdateByIDTypeSourceParams struct {
-	ID         int32        `json:"id"`
+	Uid        string       `json:"uid"`
 	DomainType DomainType   `json:"domain_type"`
 	Source     DomainSource `json:"source"`
 }
 
 // Update a domain's type and source (no auth)
 func (q *Queries) DomainsUpdateByIDTypeSource(ctx context.Context, arg DomainsUpdateByIDTypeSourceParams) (Domains, error) {
-	row := q.db.QueryRow(ctx, domainsUpdateByIDTypeSource, arg.ID, arg.DomainType, arg.Source)
+	row := q.db.QueryRow(ctx, domainsUpdateByIDTypeSource, arg.Uid, arg.DomainType, arg.Source)
 	var i Domains
 	err := row.Scan(
 		&i.ID,

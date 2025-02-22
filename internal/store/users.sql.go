@@ -18,7 +18,7 @@ WHERE EXISTS (SELECT 1
               FROM users u
               WHERE u.id = $5
                 AND u.role IN ('manager', 'owner', 'superadmin'))
-RETURNING id, uid, tenant_id, email, name, role, created_at, updated_at
+RETURNING id, uid, tenant_id, email, name, role, status, created_at, updated_at
 `
 
 type UserCreateParams struct {
@@ -46,6 +46,7 @@ func (q *Queries) UserCreate(ctx context.Context, arg UserCreateParams) (Users, 
 		&i.Email,
 		&i.Name,
 		&i.Role,
+		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -61,7 +62,7 @@ WHERE u.id = $1
               WHERE auth.id = $2
                 AND auth.role IN ('manager', 'owner', 'superadmin')
                 AND auth.tenant_id = $3)
-RETURNING id, uid, tenant_id, email, name, role, created_at, updated_at
+RETURNING id, uid, tenant_id, email, name, role, status, created_at, updated_at
 `
 
 type UserDeleteByIDParams struct {
@@ -81,6 +82,7 @@ func (q *Queries) UserDeleteByID(ctx context.Context, arg UserDeleteByIDParams) 
 		&i.Email,
 		&i.Name,
 		&i.Role,
+		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -88,7 +90,7 @@ func (q *Queries) UserDeleteByID(ctx context.Context, arg UserDeleteByIDParams) 
 }
 
 const userGetByID = `-- name: UserGetByID :one
-SELECT id, uid, tenant_id, email, name, role, created_at, updated_at
+SELECT id, uid, tenant_id, email, name, role, status, created_at, updated_at
 FROM users u
 WHERE (id = $1 AND u.role = 'superadmin')
    OR (id = $1 AND u.tenant_id = $2)
@@ -110,6 +112,7 @@ func (q *Queries) UserGetByID(ctx context.Context, arg UserGetByIDParams) (Users
 		&i.Email,
 		&i.Name,
 		&i.Role,
+		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -128,7 +131,7 @@ WHERE u.id = $1
               WHERE auth.id = $6
                 AND auth.role IN ('manager', 'owner', 'superadmin')
                 AND auth.tenant_id = $2)
-RETURNING id, uid, tenant_id, email, name, role, created_at, updated_at
+RETURNING id, uid, tenant_id, email, name, role, status, created_at, updated_at
 `
 
 type UserUpdateByIDParams struct {
@@ -158,6 +161,7 @@ func (q *Queries) UserUpdateByID(ctx context.Context, arg UserUpdateByIDParams) 
 		&i.Email,
 		&i.Name,
 		&i.Role,
+		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -165,7 +169,7 @@ func (q *Queries) UserUpdateByID(ctx context.Context, arg UserUpdateByIDParams) 
 }
 
 const usersListByTenant = `-- name: UsersListByTenant :many
-SELECT id, uid, tenant_id, email, name, role, created_at, updated_at
+SELECT id, uid, tenant_id, email, name, role, status, created_at, updated_at
 FROM users u
 WHERE u.role = 'superadmin'
    OR u.tenant_id = $1
@@ -188,6 +192,7 @@ func (q *Queries) UsersListByTenant(ctx context.Context, tenantID pgtype.Int4) (
 			&i.Email,
 			&i.Name,
 			&i.Role,
+			&i.Status,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
