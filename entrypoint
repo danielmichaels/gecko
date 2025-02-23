@@ -1,20 +1,23 @@
 #!/bin/bash
 
 set -ex
-server_type=${1}
+command=${1}
 
 DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?sslmode=${POSTGRES_SSL_MODE}"
-
-goose -dir /app/migrations postgres "${DATABASE_URL}" up
-case "${server_type}" in
+case "${command}" in
   "worker")
-    gecko workers
+    goose -dir /app/migrations postgres "${DATABASE_URL}" up
+    gecko worker
     ;;
-  "web")
+  "serve")
+    goose -dir /app/migrations postgres "${DATABASE_URL}" up
     gecko serve
     ;;
+  "migrate")
+    goose -dir /app/migrations postgres "${DATABASE_URL}" up
+    ;;
   *)
-    echo "Invalid server type: ${server_type}"
-    exit 1
+    # Pass through all arguments to gecko
+    gecko "$@"
     ;;
 esac
