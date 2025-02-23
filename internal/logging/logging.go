@@ -7,8 +7,8 @@ import (
 	"os"
 
 	"github.com/MatusOllah/slogcolor"
-	"github.com/danielmichaels/doublestag/internal/config"
-	"github.com/danielmichaels/doublestag/internal/tracing"
+	"github.com/danielmichaels/gecko/internal/config"
+	"github.com/danielmichaels/gecko/internal/tracing"
 )
 
 type SlogHandler struct{ slog.Handler }

@@ -1,4 +1,4 @@
-module dagger/doublestag
+module dagger/gecko
 
 go 1.23.2
 

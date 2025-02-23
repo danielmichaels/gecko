@@ -8,8 +8,8 @@ import (
 )
 
 type AuthCmd struct {
-	Login  LoginCmd  `cmd:"" help:"Login to doublestag server"`
-	Logout LogoutCmd `cmd:"" help:"Logout from doublestag server"`
+	Login  LoginCmd  `cmd:"" help:"Login to gecko server"`
+	Logout LogoutCmd `cmd:"" help:"Logout from gecko server"`
 	Status StatusCmd `cmd:"" help:"Show authentication status"`
 }
 
@@ -26,11 +26,9 @@ func (l *LoginCmd) Run(g *Globals, ac *AuthCmd) error {
 		return fmt.Errorf("password is required")
 	}
 	config := map[string]interface{}{
-		"server": map[string]string{
-			"url":      g.ServerURL,
-			"username": g.Username,
-			"password": g.Password,
-		},
+		"server-url": g.ServerURL,
+		"username":   g.Username,
+		"password":   g.Password,
 	}
 
 	yamlData, err := yaml.Marshal(config)

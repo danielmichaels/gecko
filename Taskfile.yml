@@ -4,7 +4,7 @@ dotenv:
   - .env
 
 vars:
-  APP_NAME: doublestag
+  APP_NAME: gecko
   DATABASE_TYPE: "postgres"
   DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?sslmode=${POSTGRES_SSL_MODE}
   DATABASE_CONTAINER_NAME: db

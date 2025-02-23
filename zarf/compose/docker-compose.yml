@@ -1,14 +1,14 @@
 services:
   db:
     image: postgres:16
-    container_name: doublestag-db
+    container_name: gecko-db
     restart: always
     env_file:
       - ../../.env
     ports:
       - "5432:5432"
     networks:
-      - doublestag
+      - gecko
     deploy:
       restart_policy:
         condition: on-failure
@@ -19,7 +19,7 @@ services:
       retries: 5
       timeout: 5s
     volumes:
-      - doublestag_db:/var/lib/postgresql/data
+      - gecko_db:/var/lib/postgresql/data
   riverui:
     image: ghcr.io/riverqueue/riverui:master
     container_name: riverui
@@ -33,10 +33,10 @@ services:
       - PGHOST=db
       - PGPORT=$POSTGRES_PORT
     networks:
-      - doublestag
+      - gecko
 volumes:
-  doublestag_db:
+  gecko_db:
 
 networks:
-  doublestag:
+  gecko:
 

@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/danielmichaels/doublestag/internal/store"
+	"github.com/danielmichaels/gecko/internal/store"
 )
 
 // Output interface to ensure all assessors return a structured result

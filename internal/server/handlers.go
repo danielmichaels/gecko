@@ -3,7 +3,7 @@ package server
 import (
 	"context"
 
-	"github.com/danielmichaels/doublestag/internal/version"
+	"github.com/danielmichaels/gecko/internal/version"
 )
 
 func (app *Server) handleHealthzGet(_ context.Context, _ *struct{}) (*struct{}, error) {

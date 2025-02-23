@@ -8,9 +8,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/danielmichaels/doublestag/internal/scanner"
-	"github.com/danielmichaels/doublestag/internal/store"
-	"github.com/danielmichaels/doublestag/internal/tracing"
+	"github.com/danielmichaels/gecko/internal/scanner"
+	"github.com/danielmichaels/gecko/internal/store"
+	"github.com/danielmichaels/gecko/internal/tracing"
 	"github.com/riverqueue/river"
 )
 

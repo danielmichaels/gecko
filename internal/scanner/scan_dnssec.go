@@ -3,11 +3,11 @@ package scanner
 import (
 	"log/slog"
 
-	"github.com/danielmichaels/doublestag/internal/dnsclient"
-	"github.com/danielmichaels/doublestag/internal/dnsrecords"
+	"github.com/danielmichaels/gecko/internal/dnsclient"
+	"github.com/danielmichaels/gecko/internal/dnsrecords"
 
-	"github.com/danielmichaels/doublestag/internal/config"
-	"github.com/danielmichaels/doublestag/internal/logging"
+	"github.com/danielmichaels/gecko/internal/config"
+	"github.com/danielmichaels/gecko/internal/logging"
 	"github.com/miekg/dns"
 )
 

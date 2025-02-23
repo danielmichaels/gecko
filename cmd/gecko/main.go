@@ -8,13 +8,13 @@ import (
 
 	kongyaml "github.com/alecthomas/kong-yaml"
 
-	"github.com/danielmichaels/doublestag/internal/cmd"
-	"github.com/danielmichaels/doublestag/internal/version"
+	"github.com/danielmichaels/gecko/internal/cmd"
+	"github.com/danielmichaels/gecko/internal/version"
 
 	"github.com/alecthomas/kong"
 )
 
-const appName = "doublestag"
+const appName = "gecko"
 
 type VersionFlag string
 
@@ -89,7 +89,7 @@ func initialiseConfigFile(configPath, configFileName string, globals cmd.Globals
 		return err
 	}
 	fd := FileData{globals}
-	tfile, err := os.ReadFile("./config.yaml")
+	tfile, err := os.ReadFile("./zarf/files/default_config.yaml")
 	if err != nil {
 		return err
 	}
@@ -111,7 +111,7 @@ func doesNotExist(path string) bool {
 }
 
 func CreateDirectoryIfNotExist(dirPath string) error {
-	if err := os.Mkdir(dirPath, 0755); err != nil {
+	if err := os.MkdirAll(dirPath, 0755); err != nil && !os.IsExist(err) {
 		return err
 	}
 	return nil

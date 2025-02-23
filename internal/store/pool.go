@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/danielmichaels/doublestag/internal/config"
+	"github.com/danielmichaels/gecko/internal/config"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )

@@ -1,8 +1,8 @@
 package scanner
 
 import (
-	"github.com/danielmichaels/doublestag/internal/dnsclient"
-	"github.com/danielmichaels/doublestag/internal/dnsrecords"
+	"github.com/danielmichaels/gecko/internal/dnsclient"
+	"github.com/danielmichaels/gecko/internal/dnsrecords"
 )
 
 func (s *Scan) ScanZoneTransfer(domain string) *dnsrecords.ZoneTransferResult {

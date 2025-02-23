@@ -4,8 +4,8 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/danielmichaels/doublestag/internal/assessor"
-	"github.com/danielmichaels/doublestag/internal/store"
+	"github.com/danielmichaels/gecko/internal/assessor"
+	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/riverqueue/river"
 )
 

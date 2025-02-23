@@ -13,7 +13,7 @@ COPY ../.. .
 RUN apt-get install git -y &&\
     go build  \
     -ldflags="-s -w" \
-    -o app ./cmd/app
+    -o gecko ./cmd/gecko
 
 FROM debian:bookworm-slim
 WORKDIR /app
@@ -24,7 +24,7 @@ COPY --from=builder ["/build/assets/migrations", "/app/migrations"]
 COPY --from=builder ["/build/app", "/usr/bin/app"]
 
 RUN apt-get update && apt-get install ca-certificates curl -y &&\
-    chmod +x /app/entrypoint
+    chmod +x /gecko/entrypoint
 
 # ensures that migrations are run using the embedded files
 ENV DOCKER=1
