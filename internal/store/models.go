@@ -58,6 +58,7 @@ type DomainStatus string
 const (
 	DomainStatusActive   DomainStatus = "active"
 	DomainStatusInactive DomainStatus = "inactive"
+	DomainStatusPending  DomainStatus = "pending"
 )
 
 func (e *DomainStatus) Scan(src interface{}) error {
@@ -101,6 +102,8 @@ const (
 	DomainTypeTld       DomainType = "tld"
 	DomainTypeSubdomain DomainType = "subdomain"
 	DomainTypeWildcard  DomainType = "wildcard"
+	DomainTypeOld       DomainType = "old"
+	DomainTypeOther     DomainType = "other"
 )
 
 func (e *DomainType) Scan(src interface{}) error {
@@ -182,6 +185,49 @@ func (ns NullUserRole) Value() (driver.Value, error) {
 	return string(ns.UserRole), nil
 }
 
+type UserStatus string
+
+const (
+	UserStatusActive   UserStatus = "active"
+	UserStatusInactive UserStatus = "inactive"
+	UserStatusPending  UserStatus = "pending"
+)
+
+func (e *UserStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = UserStatus(s)
+	case string:
+		*e = UserStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for UserStatus: %T", src)
+	}
+	return nil
+}
+
+type NullUserStatus struct {
+	UserStatus UserStatus `json:"user_status"`
+	Valid      bool       `json:"valid"` // Valid is true if UserStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullUserStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.UserStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.UserStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullUserStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.UserStatus), nil
+}
+
 type ARecords struct {
 	ID          int32              `json:"id"`
 	Uid         string             `json:"uid"`
@@ -218,6 +264,7 @@ type AaaaRecordsHistory struct {
 
 type Certificates struct {
 	ID            int32              `json:"id"`
+	Uid           string             `json:"uid"`
 	DomainID      pgtype.Int4        `json:"domain_id"`
 	NotBefore     pgtype.Timestamptz `json:"not_before"`
 	NotAfter      pgtype.Timestamptz `json:"not_after"`
@@ -471,7 +518,7 @@ type SrvRecordsHistory struct {
 	ChangedAt  pgtype.Timestamptz `json:"changed_at"`
 }
 
-type Tenant struct {
+type Tenants struct {
 	ID        int32              `json:"id"`
 	Uid       string             `json:"uid"`
 	Name      string             `json:"name"`
@@ -503,6 +550,7 @@ type Users struct {
 	Email     string             `json:"email"`
 	Name      pgtype.Text        `json:"name"`
 	Role      UserRole           `json:"role"`
+	Status    string             `json:"status"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }

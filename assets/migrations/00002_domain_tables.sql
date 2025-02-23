@@ -1,13 +1,13 @@
 -- +goose Up
 -- +goose StatementBegin
-CREATE TYPE domain_type AS ENUM ('tld', 'subdomain', 'wildcard');
+CREATE TYPE domain_type AS ENUM ('tld', 'subdomain', 'wildcard', 'old', 'other');
 CREATE TYPE domain_source AS ENUM ('user_supplied', 'discovered');
-CREATE TYPE domain_status AS ENUM ('active', 'inactive');
+CREATE TYPE domain_status AS ENUM ('active', 'inactive', 'pending');
 CREATE TABLE IF NOT EXISTS domains
 (
     id          SERIAL PRIMARY KEY,
-    uid         TEXT UNIQUE                 NOT NULL DEFAULT ('domain_' || generate_uid(16)),
-    tenant_id   INTEGER REFERENCES tenant (id) ON DELETE CASCADE,
+    uid         TEXT UNIQUE                 NOT NULL DEFAULT ('domain_' || generate_uid(8)),
+    tenant_id   INTEGER REFERENCES tenants (id) ON DELETE CASCADE,
     name        VARCHAR(255)                NOT NULL,
     domain_type domain_type                 NOT NULL DEFAULT 'subdomain',
     source      domain_source               NOT NULL DEFAULT 'discovered',
@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS domains
 CREATE TABLE a_records
 (
     id           SERIAL PRIMARY KEY,
-    uid          TEXT UNIQUE                 NOT NULL DEFAULT ('a_' || generate_uid(16)),
+    uid          TEXT UNIQUE                 NOT NULL DEFAULT ('a_' || generate_uid(8)),
     domain_id    INT REFERENCES domains (id) ON DELETE CASCADE,
     ipv4_address TEXT                        NOT NULL,
     created_at   TIMESTAMP(0) WITH TIME ZONE NOT NULL DEFAULT NOW(),
@@ -30,7 +30,7 @@ CREATE TABLE a_records
 CREATE TABLE aaaa_records
 (
     id           SERIAL PRIMARY KEY,
-    uid          TEXT UNIQUE                 NOT NULL DEFAULT ('aaaa_' || generate_uid(16)),
+    uid          TEXT UNIQUE                 NOT NULL DEFAULT ('aaaa_' || generate_uid(8)),
     domain_id    INT REFERENCES domains (id) ON DELETE CASCADE,
     ipv6_address TEXT                        NOT NULL,
     created_at   TIMESTAMP(0) WITH TIME ZONE NOT NULL DEFAULT NOW(),
@@ -40,7 +40,7 @@ CREATE TABLE aaaa_records
 CREATE TABLE IF NOT EXISTS cname_records
 (
     id         SERIAL PRIMARY KEY,
-    uid        TEXT UNIQUE                 NOT NULL DEFAULT ('cname_' || generate_uid(16)),
+    uid        TEXT UNIQUE                 NOT NULL DEFAULT ('cname_' || generate_uid(8)),
     domain_id  INT REFERENCES domains (id) ON DELETE CASCADE,
     target     TEXT                        NOT NULL,
     created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL DEFAULT NOW(),
@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS cname_records
 CREATE TABLE IF NOT EXISTS mx_records
 (
     id         SERIAL PRIMARY KEY,
-    uid        TEXT UNIQUE                 NOT NULL DEFAULT ('mx_' || generate_uid(16)),
+    uid        TEXT UNIQUE                 NOT NULL DEFAULT ('mx_' || generate_uid(8)),
     domain_id  INT REFERENCES domains (id) ON DELETE CASCADE,
     preference INT                         NOT NULL,
     target     TEXT                        NOT NULL,
@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS mx_records
 CREATE TABLE IF NOT EXISTS txt_records
 (
     id         SERIAL PRIMARY KEY,
-    uid        TEXT UNIQUE                 NOT NULL DEFAULT ('txt_' || generate_uid(16)),
+    uid        TEXT UNIQUE                 NOT NULL DEFAULT ('txt_' || generate_uid(8)),
     domain_id  INT REFERENCES domains (id) ON DELETE CASCADE,
     value      TEXT                        NOT NULL,
     created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL DEFAULT NOW(),
@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS txt_records
 CREATE TABLE IF NOT EXISTS ns_records
 (
     id         SERIAL PRIMARY KEY,
-    uid        TEXT UNIQUE                 NOT NULL DEFAULT ('ns_' || generate_uid(16)),
+    uid        TEXT UNIQUE                 NOT NULL DEFAULT ('ns_' || generate_uid(8)),
     domain_id  INT REFERENCES domains (id) ON DELETE CASCADE,
     nameserver TEXT                        NOT NULL,
     created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL DEFAULT NOW(),
@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS ns_records
 CREATE TABLE IF NOT EXISTS ptr_records
 (
     id         SERIAL PRIMARY KEY,
-    uid        TEXT UNIQUE                 NOT NULL DEFAULT ('ptr_' || generate_uid(16)),
+    uid        TEXT UNIQUE                 NOT NULL DEFAULT ('ptr_' || generate_uid(8)),
     domain_id  INT REFERENCES domains (id) ON DELETE CASCADE,
     target     TEXT                        NOT NULL,
     created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL DEFAULT NOW(),
@@ -94,7 +94,7 @@ CREATE TABLE IF NOT EXISTS ptr_records
 CREATE TABLE IF NOT EXISTS srv_records
 (
     id         SERIAL PRIMARY KEY,
-    uid        TEXT UNIQUE                 NOT NULL DEFAULT ('srv_' || generate_uid(16)),
+    uid        TEXT UNIQUE                 NOT NULL DEFAULT ('srv_' || generate_uid(8)),
     domain_id  INT REFERENCES domains (id) ON DELETE CASCADE,
     target     TEXT                        NOT NULL,
     port       INTEGER                     NOT NULL,
@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS srv_records
 CREATE TABLE IF NOT EXISTS soa_records
 (
     id          SERIAL PRIMARY KEY,
-    uid         TEXT UNIQUE                 NOT NULL DEFAULT ('soa_' || generate_uid(16)),
+    uid         TEXT UNIQUE                 NOT NULL DEFAULT ('soa_' || generate_uid(8)),
     domain_id   INT REFERENCES domains (id) ON DELETE CASCADE,
     nameserver  TEXT                        NOT NULL,
     email       TEXT                        NOT NULL,
@@ -124,7 +124,7 @@ CREATE TABLE IF NOT EXISTS soa_records
 CREATE TABLE IF NOT EXISTS dnskey_records
 (
     id         SERIAL PRIMARY KEY,
-    uid        TEXT UNIQUE                 NOT NULL DEFAULT ('dnskey_' || generate_uid(16)),
+    uid        TEXT UNIQUE                 NOT NULL DEFAULT ('dnskey_' || generate_uid(8)),
     domain_id  INT REFERENCES domains (id) ON DELETE CASCADE,
     public_key TEXT                        NOT NULL,
     flags      INTEGER                     NOT NULL,
@@ -138,7 +138,7 @@ CREATE TABLE IF NOT EXISTS dnskey_records
 CREATE TABLE IF NOT EXISTS ds_records
 (
     id          SERIAL PRIMARY KEY,
-    uid         TEXT UNIQUE                 NOT NULL DEFAULT ('ds_' || generate_uid(16)),
+    uid         TEXT UNIQUE                 NOT NULL DEFAULT ('ds_' || generate_uid(8)),
     domain_id   INT REFERENCES domains (id) ON DELETE CASCADE,
     key_tag     INTEGER                     NOT NULL,
     algorithm   INTEGER                     NOT NULL,
@@ -152,7 +152,7 @@ CREATE TABLE IF NOT EXISTS ds_records
 CREATE TABLE IF NOT EXISTS rrsig_records
 (
     id           SERIAL PRIMARY KEY,
-    uid          TEXT UNIQUE                 NOT NULL DEFAULT ('rrsig_' || generate_uid(16)),
+    uid          TEXT UNIQUE                 NOT NULL DEFAULT ('rrsig_' || generate_uid(8)),
     domain_id    INT REFERENCES domains (id) ON DELETE CASCADE,
     type_covered INTEGER                     NOT NULL,
     algorithm    INTEGER                     NOT NULL,
@@ -737,7 +737,7 @@ CREATE TRIGGER rrsig_records_history_trigger
     FOR EACH ROW
 EXECUTE FUNCTION record_rrsig_history();
 
-CREATE INDEX idx_domains_tenant ON domains (tenant_id);
+CREATE INDEX idx_domains_tenants ON domains (tenant_id);
 CREATE INDEX idx_domains_type ON domains (domain_type);
 CREATE INDEX idx_domains_source ON domains (source);
 CREATE INDEX idx_domains_status ON domains (status);

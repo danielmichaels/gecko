@@ -3,6 +3,7 @@
 CREATE TABLE certificates
 (
     id              SERIAL PRIMARY KEY,
+    uid             TEXT UNIQUE                 NOT NULL DEFAULT ('cert_' || generate_uid(8)),
     domain_id       INT REFERENCES domains (id) ON DELETE CASCADE,
     not_before      TIMESTAMP(0) WITH TIME ZONE NOT NULL,
     not_after       TIMESTAMP(0) WITH TIME ZONE NOT NULL,

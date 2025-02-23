@@ -26,9 +26,9 @@ INSERT INTO domains (tenant_id, name, domain_type, source, status)
 VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (tenant_id, name)
     DO UPDATE SET updated_at = NOW()
-RETURNING id, uid, name, domain_type, source, status;
+RETURNING id, uid, name, domain_type, source, status, created_at, updated_at;
 
--- name: DomainsReadByID :one
+-- name: DomainsGetByID :one
 SELECT id,
        uid,
        tenant_id,
@@ -39,9 +39,9 @@ SELECT id,
        created_at,
        updated_at
 FROM domains
-WHERE id = $1;
+WHERE uid = $1;
 
--- name: DomainsReadByName :one
+-- name: DomainsGetByName :one
 -- Read a domain by name and tenant ID (no auth)
 SELECT id,
        uid,
@@ -59,8 +59,10 @@ WHERE tenant_id = $1
 -- name: DomainsUpdateByID :one
 -- Update a domain's status (no auth)
 UPDATE domains
-SET status = $2
-WHERE id = $1
+SET status = $2,
+    domain_type = $3,
+    source      = $4
+WHERE uid = $1
 RETURNING id, uid, tenant_id, name, domain_type, source, status, created_at, updated_at;
 
 -- name: DomainsUpdateByIDTypeSource :one
@@ -68,14 +70,14 @@ RETURNING id, uid, tenant_id, name, domain_type, source, status, created_at, upd
 UPDATE domains
 SET domain_type = $2,
     source      = $3
-WHERE id = $1
+WHERE uid = $1
 RETURNING id, uid, tenant_id, name, domain_type, source, status, created_at, updated_at;
 
 -- name: DomainsDeleteByID :one
 -- Delete a domain (no auth)
 DELETE
 FROM domains
-WHERE id = $1
+WHERE uid = $1
 RETURNING id, uid, tenant_id, name, domain_type, source, status, created_at, updated_at;
 
 -- name: DomainsListByTenantID :many

@@ -48,7 +48,7 @@ tasks:
       - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} exec {{.DATABASE_CONTAINER_NAME}} /bin/sh -c 'until pg_isready; do sleep 1; done'
       - task: db:migration:up
       - task: river:migration:up
-#      - task: db:local:seed
+      - task: db:local:seed
       - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} logs -f
 
   compose:down:
@@ -67,8 +67,14 @@ tasks:
     desc: Seed data into the local development DB
     cmds:
       - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} cp ./sql/tests/test-data.sql {{.DATABASE_CONTAINER_NAME}}:/tmp/test-data.sql
-      - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} exec -it {{.DATABASE_CONTAINER_NAME}} psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -f /tmp/test-data.sql
-      - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} exec -it {{.DATABASE_CONTAINER_NAME}} rm -rf /tmp/test-data.sql
+      - sleep 1
+      - |
+        docker compose -f {{.DOCKER_COMPOSE_LOCAL}} exec -it {{.DATABASE_CONTAINER_NAME}} psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -f /tmp/test-data.sql
+        if [ $? -ne 0 ]; then
+          echo "Error: Failed to seed the database."
+          exit 1
+        fi
+#      - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} exec -it {{.DATABASE_CONTAINER_NAME}} rm -rf /tmp/test-data.sql
 
   db:local:down:
     desc: Stop the local database for development
@@ -200,8 +206,7 @@ tasks:
       - go install github.com/dkorunic/betteralign/cmd/betteralign@latest
       - go install mvdan.cc/gofumpt@latest
       - go install github.com/riverqueue/river/cmd/river@latest
-      - go install github.com/evilmartians/lefthook@latest
-
+      - go install github.com/danielgtaylor/restish@latest
   api:domain:*:
     desc: Add a new domain via the API
     summary: |
@@ -210,5 +215,5 @@ tasks:
       ARG_1: "{{index .MATCH 0}}"
     cmds:
       - |
-        curlie :9090/domains domain="{{.ARG_1}}" -H "X-API-Key: changeme" -v
+        curlie :9090/domains/"{{.ARG_1}}" -H "X-API-Key: changeme" -v
 

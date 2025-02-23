@@ -36,7 +36,12 @@ CREATE TYPE user_role AS ENUM (
     'viewer', -- lowest level of access
     'superadmin' -- doublestag super admin
     );
-CREATE TABLE IF NOT EXISTS tenant
+CREATE TYPE user_status AS ENUM (
+    'active',
+    'inactive',
+    'pending'
+    );
+CREATE TABLE IF NOT EXISTS tenants
 (
     id         SERIAL PRIMARY KEY,
     uid        TEXT UNIQUE                 NOT NULL DEFAULT ('tenant_' || generate_uid(8)),
@@ -49,10 +54,11 @@ CREATE TABLE IF NOT EXISTS users
 (
     id         SERIAL PRIMARY KEY,
     uid        TEXT UNIQUE                 NOT NULL DEFAULT ('user_' || generate_uid(8)),
-    tenant_id  INTEGER REFERENCES tenant (id) ON DELETE CASCADE,
+    tenant_id  INTEGER REFERENCES tenants (id) ON DELETE CASCADE,
     email      VARCHAR(255) UNIQUE         NOT NULL,
     name       VARCHAR(255),
     role       user_role                   NOT NULL DEFAULT 'viewer',
+    status     VARCHAR(20)                 NOT NULL DEFAULT 'active',
     created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP(0) WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
@@ -60,7 +66,7 @@ CREATE INDEX idx_user_tenant_id ON users (tenant_id);
 CREATE UNIQUE INDEX idx_user_email ON users (email);
 CREATE TRIGGER trigger_updated_at_entity
     BEFORE UPDATE
-    ON tenant
+    ON tenants
     FOR EACH ROW
 EXECUTE FUNCTION updated_at_trigger();
 CREATE TRIGGER trigger_updated_at_users
@@ -72,9 +78,10 @@ EXECUTE FUNCTION updated_at_trigger();
 
 -- +goose Down
 -- +goose StatementBegin
-DROP TABLE IF EXISTS tenant CASCADE;
+DROP TABLE IF EXISTS tenants CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 DROP TYPE IF EXISTS user_role;
+DROP TYPE IF EXISTS user_status;
 DROP INDEX IF EXISTS idx_user_tenant_id;
 DROP INDEX IF EXISTS idx_user_email;
 DROP EXTENSION IF EXISTS "pgcrypto";
