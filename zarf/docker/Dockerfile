@@ -21,10 +21,10 @@ WORKDIR /app
 COPY --from=toolkit ["/usr/local/bin/goose", "/usr/local/bin/goose"]
 COPY --from=builder ["/build/entrypoint", "/app/entrypoint"]
 COPY --from=builder ["/build/assets/migrations", "/app/migrations"]
-COPY --from=builder ["/build/app", "/usr/bin/app"]
+COPY --from=builder ["/build/gecko", "/usr/bin/gecko"]
 
 RUN apt-get update && apt-get install ca-certificates curl -y &&\
-    chmod +x /gecko/entrypoint
+    chmod +x /app/entrypoint
 
 # ensures that migrations are run using the embedded files
 ENV DOCKER=1
