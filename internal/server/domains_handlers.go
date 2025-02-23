@@ -7,8 +7,8 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/danielmichaels/doublestag/internal/dto"
-	"github.com/danielmichaels/doublestag/internal/store"
+	"github.com/danielmichaels/gecko/internal/dto"
+	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 

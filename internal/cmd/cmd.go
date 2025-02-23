@@ -12,10 +12,10 @@ import (
 
 	"github.com/alecthomas/kong"
 
-	"github.com/danielmichaels/doublestag/internal/config"
-	"github.com/danielmichaels/doublestag/internal/jobs"
-	"github.com/danielmichaels/doublestag/internal/logging"
-	"github.com/danielmichaels/doublestag/internal/store"
+	"github.com/danielmichaels/gecko/internal/config"
+	"github.com/danielmichaels/gecko/internal/jobs"
+	"github.com/danielmichaels/gecko/internal/logging"
+	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
@@ -25,9 +25,29 @@ type Globals struct {
 	ServerURL  string          `help:"Server URL"`
 	Username   string          `help:"Username for authentication"`
 	Password   string          `help:"Password for authentication"`
-	ConfigFile kong.ConfigFlag `short:"c" help:"Location of client config files" type:"path" default:"${config_path}"`
+	ConfigFile kong.ConfigFlag `short:"c" help:"Location of client config files" type:"yamlfile" default:"${config_path}"`
 	Format     string          `help:"Output format" short:"f" default:"text" enum:"text,json"`
 }
+
+func ValidateStartup(g *Globals) error {
+	if g.ServerURL == "" {
+		return fmt.Errorf(
+			"server-url is required - set via config, GECKO_SERVER_URL or --server-url flag",
+		)
+	}
+	if g.Username == "" {
+		return fmt.Errorf(
+			"username is required - set via config, GECKO_USERNAME or --username flag",
+		)
+	}
+	if g.Password == "" {
+		return fmt.Errorf(
+			"password is required - set via config, GECKO_PASSWORD or --password flag",
+		)
+	}
+	return nil
+}
+
 type Setup struct {
 	Config *config.Conf
 	Logger *slog.Logger

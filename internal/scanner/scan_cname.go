@@ -3,7 +3,7 @@ package scanner
 import (
 	"strings"
 
-	"github.com/danielmichaels/doublestag/internal/dnsclient"
+	"github.com/danielmichaels/gecko/internal/dnsclient"
 )
 
 type CNAMEScanResult struct {

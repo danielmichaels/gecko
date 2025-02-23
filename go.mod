@@ -1,4 +1,4 @@
-module github.com/danielmichaels/doublestag
+module github.com/danielmichaels/gecko
 
 go 1.24.0
 

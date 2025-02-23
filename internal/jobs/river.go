@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/danielmichaels/doublestag/internal/store"
+	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"

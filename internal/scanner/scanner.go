@@ -3,7 +3,7 @@ package scanner
 import (
 	"log/slog"
 
-	"github.com/danielmichaels/doublestag/internal/store"
+	"github.com/danielmichaels/gecko/internal/store"
 )
 
 type Config struct {

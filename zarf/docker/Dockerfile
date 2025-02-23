@@ -13,7 +13,7 @@ COPY ../.. .
 RUN apt-get install git -y &&\
     go build  \
     -ldflags="-s -w" \
-    -o app ./cmd/app
+    -o gecko ./cmd/gecko
 
 FROM debian:bookworm-slim
 WORKDIR /app
@@ -21,7 +21,7 @@ WORKDIR /app
 COPY --from=toolkit ["/usr/local/bin/goose", "/usr/local/bin/goose"]
 COPY --from=builder ["/build/entrypoint", "/app/entrypoint"]
 COPY --from=builder ["/build/assets/migrations", "/app/migrations"]
-COPY --from=builder ["/build/app", "/usr/bin/app"]
+COPY --from=builder ["/build/gecko", "/usr/bin/gecko"]
 
 RUN apt-get update && apt-get install ca-certificates curl -y &&\
     chmod +x /app/entrypoint

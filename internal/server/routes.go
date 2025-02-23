@@ -5,8 +5,8 @@ import (
 
 	"github.com/danielgtaylor/huma/v2/autopatch"
 
-	"github.com/danielmichaels/doublestag/assets"
-	"github.com/danielmichaels/doublestag/internal/version"
+	"github.com/danielmichaels/gecko/assets"
+	"github.com/danielmichaels/gecko/internal/version"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-chi/chi/v5"
@@ -25,7 +25,7 @@ func (app *Server) routes() http.Handler {
 	router.Use(middleware.Compress(5))
 	router.Use(httplog.RequestLogger(httpLogger(app.Conf)))
 
-	cfg := huma.DefaultConfig("Doublestag", version.Get())
+	cfg := huma.DefaultConfig("gecko", version.Get())
 	cfg.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
 		"xApiKey": {
 			Type: "apiKey",
@@ -36,8 +36,8 @@ func (app *Server) routes() http.Handler {
 	api := humachi.New(router, cfg)
 	autopatch.AutoPatch(api)
 
-	cfg.Info.Title = "Doublestag API"
-	cfg.Info.Description = "API for the Doublestag application"
+	cfg.Info.Title = "gecko API"
+	cfg.Info.Description = "API for the gecko application"
 
 	router.Get("/scalar", app.handleScalarDocsGet)
 

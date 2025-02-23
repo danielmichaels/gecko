@@ -34,7 +34,7 @@ CREATE TYPE user_role AS ENUM (
     'owner', -- highest level of access in tenant
     'manager', -- manager level of access
     'viewer', -- lowest level of access
-    'superadmin' -- doublestag super admin
+    'superadmin' -- super admin
     );
 CREATE TYPE user_status AS ENUM (
     'active',

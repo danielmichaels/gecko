@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/danielmichaels/doublestag/internal/dnsrecords"
+	"github.com/danielmichaels/gecko/internal/dnsrecords"
 
 	"github.com/miekg/dns"
 )

@@ -6,11 +6,8 @@ import (
 	"net/http"
 
 	"github.com/carlmjohnson/requests"
-	"github.com/danielmichaels/doublestag/internal/dto"
+	"github.com/danielmichaels/gecko/internal/dto"
 )
-
-// todo: develop only remove later
-const baseURL = "http://localhost:9090"
 
 // FIXME: this needs auth with server but for now is unauthenticated
 type DomainCmd struct {
@@ -27,11 +24,14 @@ type AddDomainCmd struct {
 }
 
 func (a *AddDomainCmd) Run(g *Globals, dc *DomainCmd) error {
+	if err := ValidateStartup(g); err != nil {
+		return err
+	}
 	ctx, cancel := createCancellableContext()
 	defer cancel()
 	var domain dto.Domain
 	err := requests.
-		URL(baseURL + "/api/domains").
+		URL(g.ServerURL + "/api/domains").
 		BodyJSON(map[string]string{"domain": a.Name}).
 		ToJSON(&domain).
 		Fetch(ctx)
@@ -114,6 +114,9 @@ type DomainGetCmd struct {
 }
 
 func (d *DomainGetCmd) Run(g *Globals, dc *DomainCmd) error {
+	if err := ValidateStartup(g); err != nil {
+		return err
+	}
 	ctx, cancel := createCancellableContext()
 	defer cancel()
 	var domain dto.Domain
@@ -136,6 +139,9 @@ type UpdateDomainCmd struct {
 }
 
 func (d *UpdateDomainCmd) Run(g *Globals, dc *DomainCmd) error {
+	if err := ValidateStartup(g); err != nil {
+		return err
+	}
 	ctx, cancel := createCancellableContext()
 	defer cancel()
 	if d.Status == "" && d.DomainType == "" {
@@ -150,7 +156,7 @@ func (d *UpdateDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 	}
 	var domain dto.Domain
 	if err := requests.
-		URL(baseURL + "/api/domains/" + d.ID).
+		URL(g.ServerURL + "/api/domains/" + d.ID).
 		Method(http.MethodPut).
 		BodyJSON(body).
 		ToJSON(&domain).
@@ -168,6 +174,9 @@ type RemoveDomainCmd struct {
 }
 
 func (d *RemoveDomainCmd) Run(g *Globals, dc *DomainCmd) error {
+	if err := ValidateStartup(g); err != nil {
+		return err
+	}
 	ctx, cancel := createCancellableContext()
 	defer cancel()
 	if !d.Force {
@@ -181,7 +190,7 @@ func (d *RemoveDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 	}
 
 	if err := requests.
-		URL(fmt.Sprintf("%s/api/domains/%s", baseURL, d.DomainID)).
+		URL(g.ServerURL + "/api/domains/" + d.DomainID).
 		Method("DELETE").
 		Fetch(ctx); err != nil {
 		return HandleRequestError(err, g.ServerURL)
@@ -204,6 +213,9 @@ func (d *RemoveDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 type ListDomainCmd struct{}
 
 func (d *ListDomainCmd) Run(g *Globals, dc *DomainCmd) error {
+	if err := ValidateStartup(g); err != nil {
+		return err
+	}
 	ctx, cancel := createCancellableContext()
 	defer cancel()
 
@@ -211,7 +223,7 @@ func (d *ListDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 		Domains []dto.Domain `json:"domains"`
 	}
 	if err := requests.
-		URL(baseURL + "/api/domains").
+		URL(g.ServerURL + "/api/domains").
 		ToJSON(&domains).
 		Fetch(ctx); err != nil {
 		return HandleRequestError(err, g.ServerURL)

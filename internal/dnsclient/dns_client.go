@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/danielmichaels/doublestag/internal/dnsrecords"
+	"github.com/danielmichaels/gecko/internal/dnsrecords"
 
-	"github.com/danielmichaels/doublestag/internal/config"
-	"github.com/danielmichaels/doublestag/internal/logging"
+	"github.com/danielmichaels/gecko/internal/config"
+	"github.com/danielmichaels/gecko/internal/logging"
 	"github.com/projectdiscovery/subfinder/v2/pkg/resolve"
 
 	"github.com/miekg/dns"

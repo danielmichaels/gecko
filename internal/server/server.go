@@ -13,9 +13,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/danielmichaels/doublestag/internal/config"
-	"github.com/danielmichaels/doublestag/internal/store"
-	"github.com/danielmichaels/doublestag/internal/version"
+	"github.com/danielmichaels/gecko/internal/config"
+	"github.com/danielmichaels/gecko/internal/store"
+	"github.com/danielmichaels/gecko/internal/version"
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
 

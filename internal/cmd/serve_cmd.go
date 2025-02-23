@@ -3,8 +3,8 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/danielmichaels/doublestag/internal/server"
-	"github.com/danielmichaels/doublestag/internal/store"
+	"github.com/danielmichaels/gecko/internal/server"
+	"github.com/danielmichaels/gecko/internal/store"
 )
 
 const svcAPI = "serve"

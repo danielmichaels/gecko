@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"dagger/doublestag/internal/dagger"
+	"dagger/gecko/internal/dagger"
 	"fmt"
 )
 
