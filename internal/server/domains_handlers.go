@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+
 	"github.com/jackc/pgx/v5"
 
 	"github.com/danielgtaylor/huma/v2"

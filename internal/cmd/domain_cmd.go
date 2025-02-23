@@ -3,9 +3,10 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
+
 	"github.com/carlmjohnson/requests"
 	"github.com/danielmichaels/doublestag/internal/dto"
-	"net/http"
 )
 
 // todo: develop only remove later

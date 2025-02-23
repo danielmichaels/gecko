@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/olekukonko/tablewriter"
 	"reflect"
 	"strings"
+
+	"github.com/olekukonko/tablewriter"
 )
 
 type Formatter interface {

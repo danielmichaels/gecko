@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
-	kongyaml "github.com/alecthomas/kong-yaml"
 	"os"
 	"path/filepath"
 	"text/template"
+
+	kongyaml "github.com/alecthomas/kong-yaml"
 
 	"github.com/danielmichaels/doublestag/internal/cmd"
 	"github.com/danielmichaels/doublestag/internal/version"
@@ -26,13 +27,13 @@ func (v VersionFlag) BeforeApply(app *kong.Kong, vars kong.Vars) error {
 }
 
 type CLI struct {
+	Auth cmd.AuthCmd `cmd:"" help:"Run auth commands"`
 	cmd.Globals
 
 	Version VersionFlag   `       help:"Print version information and quit" short:"v" name:"version"`
 	Domain  cmd.DomainCmd `cmd:"" help:"Run domain operations"`
 	Serve   cmd.ServeCmd  `cmd:"" help:"Run server"`
 	Worker  cmd.WorkerCmd `cmd:"" help:"Run jobs worker"`
-	Auth    cmd.AuthCmd   `cmd:"" help:"Run auth commands"`
 }
 
 func run() error {
@@ -89,6 +90,9 @@ func initialiseConfigFile(configPath, configFileName string, globals cmd.Globals
 	}
 	fd := FileData{globals}
 	tfile, err := os.ReadFile("./config.yaml")
+	if err != nil {
+		return err
+	}
 	tmpl := template.Must(template.New("config").Parse(string(tfile)))
 	err = generateDefaultConfigFile(configFileName, tmpl, fd)
 	if err != nil {
@@ -131,6 +135,7 @@ func generateDefaultConfigFile(fp string, tmpl *template.Template, data FileData
 	}
 	return nil
 }
+
 func main() {
 	if err := run(); err != nil {
 		os.Exit(1)

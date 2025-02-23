@@ -2,8 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"gopkg.in/yaml.v3"
 	"os"
+
+	"gopkg.in/yaml.v3"
 )
 
 type AuthCmd struct {
@@ -12,8 +13,7 @@ type AuthCmd struct {
 	Status StatusCmd `cmd:"" help:"Show authentication status"`
 }
 
-type LoginCmd struct {
-}
+type LoginCmd struct{}
 
 func (l *LoginCmd) Run(g *Globals, ac *AuthCmd) error {
 	if g.ServerURL == "" {
@@ -38,7 +38,7 @@ func (l *LoginCmd) Run(g *Globals, ac *AuthCmd) error {
 		return fmt.Errorf("failed to marshal config: %v", err)
 	}
 
-	if err := os.WriteFile(fmt.Sprintf("%s", g.ConfigFile), yamlData, 0600); err != nil {
+	if err := os.WriteFile(string(g.ConfigFile), yamlData, 0600); err != nil {
 		return fmt.Errorf("failed to write config file: %v", err)
 	}
 
@@ -46,16 +46,14 @@ func (l *LoginCmd) Run(g *Globals, ac *AuthCmd) error {
 	return nil
 }
 
-type LogoutCmd struct {
-}
+type LogoutCmd struct{}
 
 func (l *LogoutCmd) Run(ac *AuthCmd) error {
 	// TODO: implement logout logic
 	return nil
 }
 
-type StatusCmd struct {
-}
+type StatusCmd struct{}
 
 func (s *StatusCmd) Run(ac *AuthCmd) error {
 	// TODO: implement status logic

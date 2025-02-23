@@ -2,6 +2,7 @@ package dto
 
 import (
 	"fmt"
+
 	"github.com/danielmichaels/doublestag/internal/store"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -82,10 +83,10 @@ type DomainRecord struct {
 	Name        string `json:"name"`
 	Ipv4Address string `json:"ipv4_address"`
 	Ipv6Address string `json:"ipv6_address"`
-	MxPref      int32  `json:"mx_pref"`
 	MxTarget    string `json:"mx_target"`
 	TxtRecord   string `json:"txt_record"`
 	PtrTarget   string `json:"ptr_target"`
 	CnameTarget string `json:"cname_target"`
 	Nameserver  string `json:"nameserver"`
+	MxPref      int32  `json:"mx_pref"`
 }

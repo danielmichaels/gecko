@@ -3,13 +3,14 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"github.com/alecthomas/kong"
 	"io"
 	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
+
+	"github.com/alecthomas/kong"
 
 	"github.com/danielmichaels/doublestag/internal/config"
 	"github.com/danielmichaels/doublestag/internal/jobs"
