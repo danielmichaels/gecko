@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"text/template"
 
+	"github.com/danielmichaels/gecko/assets"
+
 	kongyaml "github.com/alecthomas/kong-yaml"
 
 	"github.com/danielmichaels/gecko/internal/cmd"
@@ -89,7 +91,8 @@ func initialiseConfigFile(configPath, configFileName string, globals cmd.Globals
 		return err
 	}
 	fd := FileData{globals}
-	tfile, err := os.ReadFile("./zarf/files/default_config.yaml")
+	// tfile, err := os.ReadFile("./zarf/files/default_config.yaml")
+	tfile, err := assets.EmbeddedAssets.ReadFile("files/default_config.yaml")
 	if err != nil {
 		return err
 	}

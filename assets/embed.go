@@ -2,5 +2,5 @@ package assets
 
 import "embed"
 
-//go:embed "migrations"
+//go:embed "migrations" "files"
 var EmbeddedAssets embed.FS

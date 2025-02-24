@@ -155,19 +155,19 @@ tasks:
 
   ci:lint:
     cmds:
-      - dagger call lint --src .
+      - dagger call lint --src . {{.CLI_ARGS}}
   ci:test:
     cmds:
-      - dagger call test --src .
+      - dagger call test --src . {{.CLI_ARGS}}
   ci:build:
     cmds:
-      - dagger call build --src . --dockerfile {{.DOCKERFILE}}
+      - dagger call build --src . --dockerfile {{.DOCKERFILE}} {{.CLI_ARGS}}
   ci:all:
     cmds:
-      - dagger call lint-test-build --src . --dockerfile {{.DOCKERFILE}}
+      - dagger call lint-test-build --src . --dockerfile {{.DOCKERFILE}} {{.CLI_ARGS}}
   ci:publish:
     cmds:
-      - dagger call publish --build-context . --dockerfile {{.DOCKERFILE}} --register ttl.sh --image-name {{.APP_NAME}} --registry-username "fake" --registry-password env:USER --tags "latest"
+      - dagger call publish --build-context . --dockerfile {{.DOCKERFILE}} --register ttl.sh --image-name {{.APP_NAME}} --registry-username "fake" --registry-password env:USER --tags "latest" {{.CLI_ARGS}}
 
   audit:
     desc: Run linters and betteralign
