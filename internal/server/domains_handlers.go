@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"github.com/danielmichaels/gecko/internal/jobs"
 
 	"github.com/jackc/pgx/v5"
 
@@ -158,6 +159,13 @@ func (app *Server) handleDomainCreate(
 	ctx context.Context,
 	i *DomainCreateInput,
 ) (*DomainOutput, error) {
+	_, err := app.Db.DomainsGetByName(ctx, store.DomainsGetByNameParams{
+		TenantID: pgtype.Int4{Int32: 1, Valid: true}, // todo: get from context
+		Name:     i.Body.Domain,
+	})
+	if err == nil {
+		return nil, huma.Error409Conflict("domain already exists")
+	}
 	status := store.DomainStatusActive
 	if i.Body.Status != "" {
 		status = store.DomainStatus(i.Body.Status)
@@ -181,7 +189,28 @@ func (app *Server) handleDomainCreate(
 		return nil, huma.Error500InternalServerError("failed to create domain", err)
 	}
 
-	// todo: trigger scanners
+	tx, err := app.PgxPool.BeginTx(ctx, pgx.TxOptions{})
+	defer func(tx pgx.Tx, ctx context.Context) {
+		_ = tx.Rollback(ctx)
+	}(tx, ctx)
+	_, err = app.RC.InsertTx(ctx, tx, jobs.ScanNewDomainArgs{
+		Domain: domain.Name,
+	}, nil)
+	if err != nil {
+		app.Log.Error("failed to schedule scan", "error", err, "domain", domain.Name, "domain_id", domain.Uid, "job_kind", jobs.ScanNewDomainArgs{}.Kind())
+		return nil, huma.Error500InternalServerError("failed to schedule scan", err)
+	}
+	_, err = app.RC.InsertTx(ctx, tx, jobs.EnumerateSubdomainArgs{
+		Domain:      domain.Name,
+		Concurrency: 100,
+	}, nil)
+	if err != nil {
+		app.Log.Error("failed to schedule scan", "error", err, "domain", domain.Name, "domain_id", domain.Uid, "job_kind", jobs.ScanNewDomainArgs{}.Kind())
+		return nil, huma.Error500InternalServerError("failed to schedule scan", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, huma.Error500InternalServerError("failed to commit transaction", err)
+	}
 	resp := &DomainOutput{
 		Body: dto.DomainToAPI(store.Domains{
 			ID:         domain.ID,

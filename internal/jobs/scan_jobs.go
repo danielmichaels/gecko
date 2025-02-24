@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"log/slog"
 	"time"
 
@@ -161,7 +162,7 @@ func (w *ScanZoneTransferWorker) Work(
 	)
 
 	if result.Vulnerable {
-		// todo: insert to DB here
+		// todo: insert to PgxPool here
 		w.Logger.WarnContext(ctx,
 			"zone transfer vulnerability detected",
 			"domain", job.Args.Domain,
@@ -173,4 +174,47 @@ func (w *ScanZoneTransferWorker) Work(
 	}
 
 	return nil
+}
+
+type ScanNewDomainArgs struct {
+	Domain string `json:"domain"`
+}
+
+func (ScanNewDomainArgs) Kind() string { return "new_domain_scanner" }
+func (ScanNewDomainArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		Queue: queueScanner,
+	}
+}
+
+type ScanNewDomainWorker struct {
+	river.WorkerDefaults[ScanNewDomainArgs]
+	Logger  slog.Logger
+	Store   *store.Queries
+	PgxPool *pgxpool.Pool
+}
+
+func (w *ScanNewDomainWorker) Work(ctx context.Context, job *river.Job[ScanNewDomainArgs]) error {
+	tx, err := w.PgxPool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	rc := river.ClientFromContext[pgx.Tx](ctx)
+
+	if _, err := rc.InsertTx(ctx, tx, &ScanCertificateArgs{Domain: job.Args.Domain}, nil); err != nil {
+		return err
+	}
+	if _, err := rc.InsertTx(ctx, tx, &ScanCNAMEArgs{Domain: job.Args.Domain}, nil); err != nil {
+		return err
+	}
+	if _, err := rc.InsertTx(ctx, tx, &ScanDNSSECArgs{Domain: job.Args.Domain}, nil); err != nil {
+		return err
+	}
+	if _, err := rc.InsertTx(ctx, tx, &ScanZoneTransferArgs{Domain: job.Args.Domain}, nil); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }

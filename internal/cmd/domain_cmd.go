@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/danielgtaylor/huma/v2"
 	"net/http"
 
 	"github.com/carlmjohnson/requests"
@@ -11,7 +12,7 @@ import (
 
 // FIXME: this needs auth with server but for now is unauthenticated
 type DomainCmd struct {
-	Add     AddDomainCmd    `cmd:"" help:"Add a new domain"`
+	Add     AddDomainCmd    `cmd:"" help:"Add a new domain. Duplicate domains are ignored. Use 'domain scan <domainID>' to re-scan a previously added domain"`
 	Get     DomainGetCmd    `cmd:"" help:"Get a domain by ID"`
 	Update  UpdateDomainCmd `cmd:"" help:"Update a domain by ID"`
 	Remove  RemoveDomainCmd `cmd:"" help:"Remove a domain"`
@@ -20,92 +21,40 @@ type DomainCmd struct {
 }
 
 type AddDomainCmd struct {
-	Name string `arg:"" help:"Domain name to add"`
+	Name       string `arg:"" help:"Domain name to add"`
+	DomainType string `help:"The type of the domain" default:"tld" enum:"tld,subdomain,wildcard"`
+	Status     string `help:"The status of the domain" default:"active" enum:"active,inactive"`
 }
 
-func (a *AddDomainCmd) Run(g *Globals, dc *DomainCmd) error {
+func (d *AddDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 	if err := ValidateStartup(g); err != nil {
 		return err
 	}
 	ctx, cancel := createCancellableContext()
 	defer cancel()
+
+	body := map[string]string{"source": "user_supplied", "domain": d.Name}
+	if d.DomainType != "" {
+		body["domain_type"] = d.DomainType
+	}
+	if d.Status != "" {
+		body["status"] = d.Status
+	}
+	var apiErr huma.ErrorModel
 	var domain dto.Domain
 	err := requests.
 		URL(g.ServerURL + "/api/domains").
-		BodyJSON(map[string]string{"domain": a.Name}).
+		BodyJSON(body).
 		ToJSON(&domain).
+		ErrorJSON(&apiErr).
 		Fetch(ctx)
 	if err != nil {
-		return err
+		if apiErr.Status != 0 {
+			return handleHumaError(apiErr)
+		}
+		return HandleRequestError(err, g.ServerURL)
 	}
 	fmt.Println(formatOutput(domain, g.Format))
-
-	//opts := []SetupOption{
-	//	WithRiver(100, true),
-	//}
-	//if !dc.Verbose {
-	//	opts = append(opts, WithSilentLogging())
-	//}
-	//setup, err := NewSetup("domain-cli", opts...)
-	//if err != nil {
-	//	return err
-	//}
-	//defer setup.Close()
-	//
-	//// validate user auth
-	//// validate domain
-	//// does domain exist in db?
-	//fmt.Println("Adding domain:", a.Name)
-	//
-	//tx, err := setup.DB.BeginTx(setup.Ctx, pgx.TxOptions{})
-	//if err != nil {
-	//	return err
-	//}
-	//defer func(tx pgx.Tx, ctx context.Context) {
-	//	_ = tx.Rollback(ctx)
-	//}(tx, setup.Ctx)
-
-	//_, err = setup.RC.InsertTx(setup.Ctx, tx, jobs.ScanCertificateArgs{
-	//	Domain: a.Name,
-	//}, nil)
-	//if err != nil {
-	//	return err
-	//}
-	//_, err = setup.RC.InsertTx(setup.Ctx, tx, jobs.ScanCNAMEArgs{
-	//	Domain: a.Name,
-	//}, nil)
-	//if err != nil {
-	//	return err
-	//}
-	//_, err = setup.RC.InsertTx(setup.Ctx, tx, jobs.ResolveDomainArgs{
-	//	Domain: a.Name,
-	//}, nil)
-	//if err != nil {
-	//	return err
-	//}
-	//_, err = setup.RC.InsertTx(setup.Ctx, tx, jobs.ScanZoneTransferArgs{
-	//	Domain: a.Name,
-	//}, nil)
-	//if err != nil {
-	//	return err
-	//}
-	//_, err = setup.RC.InsertTx(setup.Ctx, tx, jobs.ScanDNSSECArgs{
-	//	Domain: a.Name,
-	//}, nil)
-	//if err != nil {
-	//	return err
-	//}
-	//_, err = setup.RC.InsertTx(setup.Ctx, tx, jobs.EnumerateSubdomainArgs{
-	//	Domain:      a.Name,
-	//	Concurrency: 100,
-	//}, nil)
-	//if err != nil {
-	//	return err
-	//}
-
-	//if err := tx.Commit(setup.Ctx); err != nil {
-	//	return err
-	//}
 	return nil
 }
 
@@ -119,12 +68,18 @@ func (d *DomainGetCmd) Run(g *Globals, dc *DomainCmd) error {
 	}
 	ctx, cancel := createCancellableContext()
 	defer cancel()
+
+	var apiErr huma.ErrorModel
 	var domain dto.Domain
 	err := requests.
 		URL(g.ServerURL + "/api/domains/" + d.ID).
 		ToJSON(&domain).
+		ErrorJSON(&apiErr).
 		Fetch(ctx)
 	if err != nil {
+		if apiErr.Status != 0 {
+			return handleHumaError(apiErr)
+		}
 		return HandleRequestError(err, g.ServerURL)
 	}
 
@@ -154,13 +109,18 @@ func (d *UpdateDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 	if d.Status != "" {
 		body["status"] = d.Status
 	}
+	var apiErr huma.ErrorModel
 	var domain dto.Domain
 	if err := requests.
 		URL(g.ServerURL + "/api/domains/" + d.ID).
 		Method(http.MethodPut).
 		BodyJSON(body).
 		ToJSON(&domain).
+		ErrorJSON(&apiErr).
 		Fetch(ctx); err != nil {
+		if apiErr.Status != 0 {
+			return handleHumaError(apiErr)
+		}
 		return HandleRequestError(err, g.ServerURL)
 	}
 
@@ -189,10 +149,15 @@ func (d *RemoveDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 		}
 	}
 
+	var apiErr huma.ErrorModel
 	if err := requests.
 		URL(g.ServerURL + "/api/domains/" + d.DomainID).
 		Method("DELETE").
+		ErrorJSON(&apiErr).
 		Fetch(ctx); err != nil {
+		if apiErr.Status != 0 {
+			return handleHumaError(apiErr)
+		}
 		return HandleRequestError(err, g.ServerURL)
 	}
 
@@ -219,13 +184,18 @@ func (d *ListDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 	ctx, cancel := createCancellableContext()
 	defer cancel()
 
+	var apiErr huma.ErrorModel
 	var domains struct {
 		Domains []dto.Domain `json:"domains"`
 	}
 	if err := requests.
 		URL(g.ServerURL + "/api/domains").
 		ToJSON(&domains).
+		ErrorJSON(&apiErr).
 		Fetch(ctx); err != nil {
+		if apiErr.Status != 0 {
+			return handleHumaError(apiErr)
+		}
 		return HandleRequestError(err, g.ServerURL)
 	}
 

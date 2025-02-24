@@ -20,7 +20,7 @@ const (
 )
 
 type Config struct {
-	DB          *pgxpool.Pool
+	PgxPool     *pgxpool.Pool
 	Logger      *slog.Logger
 	Store       *store.Queries
 	WorkerCount int
@@ -29,7 +29,7 @@ type Config struct {
 
 // New creates a new River client.
 func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
-	migrator, err := rivermigrate.New(riverpgxv5.New(cfg.DB), nil)
+	migrator, err := rivermigrate.New(riverpgxv5.New(cfg.PgxPool), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -50,8 +50,10 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 	riverConfig := &river.Config{}
 	rw := river.NewWorkers()
 	if cfg.AddWorkers {
+		// special case: scan orchestrator
+		river.AddWorker(rw, &ScanNewDomainWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool})
 		// scan workers
-		river.AddWorker(rw, &EnumerateSubdomainWorker{Logger: *cfg.Logger, DB: cfg.DB})
+		river.AddWorker(rw, &EnumerateSubdomainWorker{Logger: *cfg.Logger, DB: cfg.PgxPool})
 		river.AddWorker(rw, &ResolveDomainWorker{Logger: *cfg.Logger, Store: cfg.Store})
 		river.AddWorker(rw, &ScanCertificateWorker{Logger: *cfg.Logger, Store: cfg.Store})
 		river.AddWorker(rw, &ScanCNAMEWorker{Logger: *cfg.Logger, Store: cfg.Store})
@@ -74,7 +76,7 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 		}
 	}
 
-	rc, err := river.NewClient(riverpgxv5.New(cfg.DB), riverConfig)
+	rc, err := river.NewClient(riverpgxv5.New(cfg.PgxPool), riverConfig)
 	if err != nil {
 		return nil, err
 	}

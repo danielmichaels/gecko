@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"github.com/danielgtaylor/huma/v2"
 	"io"
 	"log/slog"
 	"os"
@@ -49,13 +50,13 @@ func ValidateStartup(g *Globals) error {
 }
 
 type Setup struct {
-	Config *config.Conf
-	Logger *slog.Logger
-	DB     *pgxpool.Pool
-	Store  *store.Queries
-	Ctx    context.Context
-	Cancel context.CancelFunc
-	RC     *river.Client[pgx.Tx]
+	Config  *config.Conf
+	Logger  *slog.Logger
+	PgxPool *pgxpool.Pool
+	Store   *store.Queries
+	Ctx     context.Context
+	Cancel  context.CancelFunc
+	RC      *river.Client[pgx.Tx]
 }
 type SetupOption func(*Setup)
 
@@ -67,7 +68,7 @@ type SetupOption func(*Setup)
 func WithRiver(workerCount int, addWorkers bool) SetupOption {
 	return func(s *Setup) {
 		riverCfg := jobs.Config{
-			DB:          s.DB,
+			PgxPool:     s.PgxPool,
 			Logger:      s.Logger,
 			Store:       s.Store,
 			WorkerCount: workerCount,
@@ -112,12 +113,12 @@ func NewSetup(service string, opts ...SetupOption) (*Setup, error) {
 		return nil, err
 	}
 	s := &Setup{
-		Config: cfg,
-		Logger: logger,
-		DB:     db,
-		Store:  store.New(db),
-		Ctx:    ctx,
-		Cancel: cancel,
+		Config:  cfg,
+		Logger:  logger,
+		PgxPool: db,
+		Store:   store.New(db),
+		Ctx:     ctx,
+		Cancel:  cancel,
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -126,14 +127,14 @@ func NewSetup(service string, opts ...SetupOption) (*Setup, error) {
 }
 
 func (s *Setup) Close() {
-	s.Logger.Info("shutting down DB and River")
+	s.Logger.Info("shutting down PgxPool and River")
 	if s.RC != nil {
 		if err := s.RC.Stop(s.Ctx); err != nil { // Use Stop instead of Close
 			s.Logger.Error("failed to stop River client", "error", err)
 		}
 	}
 	s.Cancel()
-	s.DB.Close()
+	s.PgxPool.Close()
 	s.Logger.Info("shutdown complete")
 }
 
@@ -150,6 +151,25 @@ func createCancellableContext() (context.Context, context.CancelFunc) {
 	}()
 
 	return ctx, cancel
+}
+
+// handleHumaError provides consistent error messages for CLI commands.
+//
+// Huma conforms to RFC 9457 Problem Details for HTTP APIs. We continue this
+// consistency and parse the errors into human-readable messages.
+//
+// ref: https://huma.rocks/features/response-errors/?h=errors#error-model
+func handleHumaError(apiErr huma.ErrorModel) error {
+	msg := fmt.Sprintf("%s: %s\n", apiErr.Title, apiErr.Detail)
+
+	if len(apiErr.Errors) > 0 {
+		msg += "Validation errors:\n"
+		for _, e := range apiErr.Errors {
+			msg += fmt.Sprintf("- %s at %s (value: %v)\n",
+				e.Message, e.Location, e.Value)
+		}
+	}
+	return fmt.Errorf(msg)
 }
 
 // HandleRequestError provides consistent error messages for CLI commands
@@ -169,6 +189,8 @@ func HandleRequestError(err error, serverURL string) error {
 		return fmt.Errorf("you don't have permission to access this resource")
 	case strings.Contains(err.Error(), "404"):
 		return fmt.Errorf("resource not found")
+	case strings.Contains(err.Error(), "422"):
+		return fmt.Errorf("unprocessable entity - invalid data submitted")
 	default:
 		return fmt.Errorf("connection error: %v", err)
 	}

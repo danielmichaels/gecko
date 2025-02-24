@@ -35,6 +35,8 @@ type appConf struct {
 	LogLevel            slog.Level `env:"LOG_LEVEL,default=info"`
 	LogJson             bool       `env:"LOG_JSON,default=false"`
 	LogConcise          bool       `env:"LOG_CONCISE,default=false"`
+	LogResponseHeaders  bool       `env:"LOG_RESPONSE_HEADERS,default=false"`
+	LogRequestHeaders   bool       `env:"LOG_REQUEST_HEADERS,default=true"`
 }
 type serverConf struct {
 	APIPort      int           `env:"API_SERVER_PORT,default=9090"`

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"io"
 	"log/slog"
 	"net/http"
@@ -23,14 +24,15 @@ import (
 )
 
 type Server struct {
-	Conf *config.Conf
-	Log  *slog.Logger
-	Db   *store.Queries
-	RC   *river.Client[pgx.Tx]
+	Conf    *config.Conf
+	Log     *slog.Logger
+	Db      *store.Queries
+	PgxPool *pgxpool.Pool
+	RC      *river.Client[pgx.Tx]
 }
 
-func New(c *config.Conf, l *slog.Logger, db *store.Queries, RC *river.Client[pgx.Tx]) *Server {
-	return &Server{Conf: c, Log: l, Db: db, RC: RC}
+func New(c *config.Conf, l *slog.Logger, db *store.Queries, pgxPool *pgxpool.Pool, RC *river.Client[pgx.Tx]) *Server {
+	return &Server{Conf: c, Log: l, Db: db, RC: RC, PgxPool: pgxPool}
 }
 
 func httpLogger(cfg *config.Conf) *httplog.Logger {
@@ -39,7 +41,8 @@ func httpLogger(cfg *config.Conf) *httplog.Logger {
 		JSON:             cfg.AppConf.LogJson,
 		LogLevel:         cfg.AppConf.LogLevel,
 		Concise:          cfg.AppConf.LogConcise,
-		RequestHeaders:   true,
+		RequestHeaders:   cfg.AppConf.LogRequestHeaders,
+		ResponseHeaders:  cfg.AppConf.LogResponseHeaders,
 		MessageFieldName: "message",
 		TimeFieldFormat:  time.RFC3339,
 		Tags: map[string]string{
