@@ -148,7 +148,7 @@ func (app *Server) handleDomainDelete(
 
 type DomainCreateInput struct {
 	Body struct {
-		Domain     string `json:"domain" required:"true" example:"example.com" doc:"Name of the domain."`
+		Domain     string `json:"domain" required:"true" format:"hostname" example:"example.com" doc:"Name of the domain."`
 		DomainType string `json:"domain_type" required:"false" example:"tld" doc:"Domain category such as TLD, subdomain, or wildcard."`
 		Source     string `json:"source" required:"false" example:"user_supplied" doc:"Source of the domain."`
 		Status     string `json:"status" required:"false" example:"active" doc:"Status of the domain."`
