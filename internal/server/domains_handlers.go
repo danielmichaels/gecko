@@ -3,8 +3,6 @@ package server
 import (
 	"context"
 	"errors"
-	"github.com/danielmichaels/gecko/internal/jobs"
-
 	"github.com/jackc/pgx/v5"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -111,20 +109,21 @@ func (app *Server) handleDomainUpdate(
 		app.Log.Error("failed to update domain", "error", err)
 		return nil, huma.Error500InternalServerError("failed to create domain", err)
 	}
-
-	// todo: trigger re-run of scans
-
-	resp := &DomainOutput{
-		Body: dto.DomainToAPI(store.Domains{
-			ID:         domain.ID,
-			Uid:        domain.Uid,
-			Name:       domain.Name,
-			DomainType: domain.DomainType,
-			Source:     domain.Source,
-			Status:     domain.Status,
-		}),
+	domainObj := store.Domains{
+		ID:         domain.ID,
+		Uid:        domain.Uid,
+		TenantID:   pgtype.Int4{Int32: 1, Valid: true},
+		Name:       domain.Name,
+		DomainType: domain.DomainType,
+		Source:     domain.Source,
+		Status:     domain.Status,
+		CreatedAt:  domain.CreatedAt,
+		UpdatedAt:  domain.UpdatedAt,
 	}
-	return resp, nil
+	if err := app.scheduleDomainJobs(ctx, domainObj); err != nil {
+		return nil, huma.Error500InternalServerError("failed to commit transaction", err)
+	}
+	return &DomainOutput{Body: dto.DomainToAPI(domainObj)}, nil
 }
 
 type DomainDeleteInput struct {
@@ -188,40 +187,19 @@ func (app *Server) handleDomainCreate(
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to create domain", err)
 	}
-
-	tx, err := app.PgxPool.BeginTx(ctx, pgx.TxOptions{})
-	defer func(tx pgx.Tx, ctx context.Context) {
-		_ = tx.Rollback(ctx)
-	}(tx, ctx)
-	_, err = app.RC.InsertTx(ctx, tx, jobs.ScanNewDomainArgs{
-		Domain: domain.Name,
-	}, nil)
-	if err != nil {
-		app.Log.Error("failed to schedule scan", "error", err, "domain", domain.Name, "domain_id", domain.Uid, "job_kind", jobs.ScanNewDomainArgs{}.Kind())
-		return nil, huma.Error500InternalServerError("failed to schedule scan", err)
+	domainObj := store.Domains{
+		ID:         domain.ID,
+		Uid:        domain.Uid,
+		TenantID:   pgtype.Int4{Int32: 1, Valid: true},
+		Name:       domain.Name,
+		DomainType: domain.DomainType,
+		Source:     domain.Source,
+		Status:     domain.Status,
+		CreatedAt:  domain.CreatedAt,
+		UpdatedAt:  domain.UpdatedAt,
 	}
-	_, err = app.RC.InsertTx(ctx, tx, jobs.EnumerateSubdomainArgs{
-		Domain:      domain.Name,
-		Concurrency: 100,
-	}, nil)
-	if err != nil {
-		app.Log.Error("failed to schedule scan", "error", err, "domain", domain.Name, "domain_id", domain.Uid, "job_kind", jobs.ScanNewDomainArgs{}.Kind())
-		return nil, huma.Error500InternalServerError("failed to schedule scan", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
+	if err := app.scheduleDomainJobs(ctx, domainObj); err != nil {
 		return nil, huma.Error500InternalServerError("failed to commit transaction", err)
 	}
-	resp := &DomainOutput{
-		Body: dto.DomainToAPI(store.Domains{
-			ID:         domain.ID,
-			Uid:        domain.Uid,
-			Name:       domain.Name,
-			DomainType: domain.DomainType,
-			Source:     domain.Source,
-			Status:     domain.Status,
-			CreatedAt:  domain.CreatedAt,
-			UpdatedAt:  domain.UpdatedAt,
-		}),
-	}
-	return resp, nil
+	return &DomainOutput{Body: dto.DomainToAPI(domainObj)}, nil
 }
