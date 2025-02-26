@@ -112,7 +112,7 @@ CREATE TABLE IF NOT EXISTS soa_records
     domain_id   INT REFERENCES domains (id) ON DELETE CASCADE,
     nameserver  TEXT                        NOT NULL,
     email       TEXT                        NOT NULL,
-    serial      INTEGER                     NOT NULL,
+    serial      BIGINT                      NOT NULL,
     refresh     INTEGER                     NOT NULL,
     retry       INTEGER                     NOT NULL,
     expire      INTEGER                     NOT NULL,
@@ -166,6 +166,18 @@ CREATE TABLE IF NOT EXISTS rrsig_records
     created_at   TIMESTAMP(0) WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at   TIMESTAMP(0) WITH TIME ZONE NOT NULL DEFAULT NOW(),
     UNIQUE (domain_id, type_covered, signer_name)
+);
+CREATE TABLE IF NOT EXISTS caa_records
+(
+    id         SERIAL PRIMARY KEY,
+    uid        TEXT UNIQUE                 NOT NULL DEFAULT ('caa_' || generate_uid(8)),
+    domain_id  INT REFERENCES domains (id) ON DELETE CASCADE,
+    flags      INTEGER                     NOT NULL,
+    tag        TEXT                        NOT NULL,
+    value      TEXT                        NOT NULL,
+    created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP(0) WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    UNIQUE (domain_id, tag, value)
 );
 -- History tables
 CREATE TABLE a_records_history
@@ -249,7 +261,7 @@ CREATE TABLE soa_records_history
     record_id   INT REFERENCES soa_records (id) ON DELETE CASCADE,
     nameserver  TEXT    NOT NULL,
     email       TEXT    NOT NULL,
-    serial      INTEGER NOT NULL,
+    serial      BIGINT  NOT NULL,
     refresh     INTEGER NOT NULL,
     retry       INTEGER NOT NULL,
     expire      INTEGER NOT NULL,
@@ -296,6 +308,16 @@ CREATE TABLE rrsig_records_history
     signature    TEXT    NOT NULL,
     change_type  TEXT    NOT NULL,
     changed_at   TIMESTAMP(0) WITH TIME ZONE DEFAULT NOW()
+);
+CREATE TABLE caa_records_history
+(
+    id          SERIAL PRIMARY KEY,
+    record_id   INT REFERENCES caa_records (id) ON DELETE CASCADE,
+    flags       INTEGER NOT NULL,
+    tag         TEXT    NOT NULL,
+    value       TEXT    NOT NULL,
+    change_type TEXT    NOT NULL,
+    changed_at  TIMESTAMP(0) WITH TIME ZONE DEFAULT NOW()
 );
 CREATE TRIGGER trigger_updated_at_a
     BEFORE UPDATE
@@ -355,6 +377,11 @@ EXECUTE FUNCTION updated_at_trigger();
 CREATE TRIGGER trigger_updated_at_rrsig
     BEFORE UPDATE
     ON rrsig_records
+    FOR EACH ROW
+EXECUTE FUNCTION updated_at_trigger();
+CREATE TRIGGER trigger_updated_at_caa
+    BEFORE UPDATE
+    ON caa_records
     FOR EACH ROW
 EXECUTE FUNCTION updated_at_trigger();
 -- AAAA Record Trigger
@@ -673,6 +700,29 @@ BEGIN
     RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION record_caa_history() RETURNS TRIGGER AS
+$$
+BEGIN
+    IF (TG_OP = 'INSERT') THEN
+        INSERT INTO caa_records_history (record_id, flags, tag, value, change_type)
+        VALUES (NEW.id, NEW.flags, NEW.tag, NEW.value, 'created');
+        RETURN NEW;
+    ELSIF (TG_OP = 'UPDATE') THEN
+        IF (OLD.flags IS DISTINCT FROM NEW.flags OR
+            OLD.tag IS DISTINCT FROM NEW.tag OR
+            OLD.value IS DISTINCT FROM NEW.value) THEN
+            INSERT INTO caa_records_history (record_id, flags, tag, value, change_type)
+            VALUES (NEW.id, NEW.flags, NEW.tag, NEW.value, 'updated');
+        END IF;
+        RETURN NEW;
+    ELSIF (TG_OP = 'DELETE') THEN
+        INSERT INTO caa_records_history (record_id, flags, tag, value, change_type)
+        VALUES (OLD.id, OLD.flags, OLD.tag, OLD.value, 'deleted');
+        RETURN OLD;
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
 -- update triggers
 CREATE TRIGGER a_records_history_trigger
     AFTER INSERT OR UPDATE OR DELETE
@@ -737,6 +787,12 @@ CREATE TRIGGER rrsig_records_history_trigger
     FOR EACH ROW
 EXECUTE FUNCTION record_rrsig_history();
 
+CREATE TRIGGER caa_records_history_trigger
+    AFTER INSERT OR UPDATE OR DELETE
+    ON caa_records
+    FOR EACH ROW
+EXECUTE FUNCTION record_caa_history();
+
 CREATE INDEX idx_domains_tenants ON domains (tenant_id);
 CREATE INDEX idx_domains_type ON domains (domain_type);
 CREATE INDEX idx_domains_source ON domains (source);
@@ -762,6 +818,9 @@ CREATE INDEX idx_ds_key_tag ON ds_records (key_tag);
 CREATE INDEX idx_rrsig_type_covered ON rrsig_records (type_covered);
 CREATE INDEX idx_rrsig_expiration ON rrsig_records (expiration);
 CREATE INDEX idx_rrsig_signer_name ON rrsig_records (signer_name);
+CREATE INDEX idx_caa_domain_id ON caa_records (domain_id);
+CREATE INDEX idx_caa_tag ON caa_records (tag);
+CREATE INDEX idx_caa_tag_value ON caa_records (tag, value);
 -- Index for searching by target/value
 CREATE INDEX idx_cname_target ON cname_records (target);
 CREATE INDEX idx_mx_target ON mx_records (target);
@@ -784,6 +843,7 @@ DROP TRIGGER IF EXISTS mx_records_history_trigger ON mx_records;
 DROP TRIGGER IF EXISTS cname_records_history_trigger ON cname_records;
 DROP TRIGGER IF EXISTS aaaa_records_history_trigger ON aaaa_records;
 DROP TRIGGER IF EXISTS a_records_history_trigger ON a_records;
+DROP TRIGGER IF EXISTS caa_records_history_trigger ON caa_records;
 
 DROP TRIGGER IF EXISTS trigger_updated_at_rrsig ON rrsig_records;
 DROP TRIGGER IF EXISTS trigger_updated_at_ds ON ds_records;
@@ -797,6 +857,7 @@ DROP TRIGGER IF EXISTS trigger_updated_at_mx ON mx_records;
 DROP TRIGGER IF EXISTS trigger_updated_at_cname ON cname_records;
 DROP TRIGGER IF EXISTS trigger_updated_at_aaaa ON aaaa_records;
 DROP TRIGGER IF EXISTS trigger_updated_at_a ON a_records;
+DROP TRIGGER IF EXISTS trigger_updated_at_caa ON caa_records;
 
 -- Then drop all functions
 DROP FUNCTION IF EXISTS record_rrsig_history();
@@ -811,6 +872,7 @@ DROP FUNCTION IF EXISTS record_mx_history();
 DROP FUNCTION IF EXISTS record_cname_history();
 DROP FUNCTION IF EXISTS record_aaaa_history();
 DROP FUNCTION IF EXISTS record_a_history();
+DROP FUNCTION IF EXISTS record_caa_history();
 
 DROP TABLE IF EXISTS rrsig_records_history;
 DROP TABLE IF EXISTS ds_records_history;
@@ -824,6 +886,7 @@ DROP TABLE IF EXISTS mx_records_history;
 DROP TABLE IF EXISTS cname_records_history;
 DROP TABLE IF EXISTS aaaa_records_history;
 DROP TABLE IF EXISTS a_records_history;
+DROP TABLE IF EXISTS caa_records_history;
 
 DROP TABLE IF EXISTS rrsig_records;
 DROP TABLE IF EXISTS ds_records;
@@ -837,6 +900,7 @@ DROP TABLE IF EXISTS mx_records;
 DROP TABLE IF EXISTS cname_records;
 DROP TABLE IF EXISTS aaaa_records;
 DROP TABLE IF EXISTS a_records;
+DROP TABLE IF EXISTS caa_records;
 DROP TABLE IF EXISTS domains;
 
 DROP TYPE IF EXISTS domain_type;

@@ -67,6 +67,44 @@ func (q *Queries) RecordsCreateAAAA(ctx context.Context, arg RecordsCreateAAAAPa
 	return i, err
 }
 
+const recordsCreateCAA = `-- name: RecordsCreateCAA :one
+INSERT INTO caa_records (domain_id, flags, tag, value)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (domain_id, tag, value)
+    DO UPDATE SET flags      = $2,
+                  updated_at = NOW()
+RETURNING id, uid, domain_id, flags, tag, value, created_at, updated_at
+`
+
+type RecordsCreateCAAParams struct {
+	DomainID pgtype.Int4 `json:"domain_id"`
+	Flags    int32       `json:"flags"`
+	Tag      string      `json:"tag"`
+	Value    string      `json:"value"`
+}
+
+// CAA Records
+func (q *Queries) RecordsCreateCAA(ctx context.Context, arg RecordsCreateCAAParams) (CaaRecords, error) {
+	row := q.db.QueryRow(ctx, recordsCreateCAA,
+		arg.DomainID,
+		arg.Flags,
+		arg.Tag,
+		arg.Value,
+	)
+	var i CaaRecords
+	err := row.Scan(
+		&i.ID,
+		&i.Uid,
+		&i.DomainID,
+		&i.Flags,
+		&i.Tag,
+		&i.Value,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const recordsCreateCNAME = `-- name: RecordsCreateCNAME :one
 INSERT INTO cname_records (domain_id, target)
 VALUES ($1, $2)
@@ -348,7 +386,7 @@ type RecordsCreateSOAParams struct {
 	DomainID   pgtype.Int4 `json:"domain_id"`
 	Nameserver string      `json:"nameserver"`
 	Email      string      `json:"email"`
-	Serial     int32       `json:"serial"`
+	Serial     int64       `json:"serial"`
 	Refresh    int32       `json:"refresh"`
 	Retry      int32       `json:"retry"`
 	Expire     int32       `json:"expire"`
@@ -534,7 +572,7 @@ type RecordsGetAllByDomainIDRow struct {
 	SrvPort       pgtype.Int4 `json:"srv_port"`
 	SrvPriority   pgtype.Int4 `json:"srv_priority"`
 	SoaNameserver pgtype.Text `json:"soa_nameserver"`
-	SoaSerial     pgtype.Int4 `json:"soa_serial"`
+	SoaSerial     pgtype.Int8 `json:"soa_serial"`
 }
 
 func (q *Queries) RecordsGetAllByDomainID(ctx context.Context, id int32) ([]RecordsGetAllByDomainIDRow, error) {
@@ -570,6 +608,28 @@ func (q *Queries) RecordsGetAllByDomainID(ctx context.Context, id int32) ([]Reco
 		return nil, err
 	}
 	return items, nil
+}
+
+const recordsGetCAAByDomainID = `-- name: RecordsGetCAAByDomainID :one
+SELECT id, uid, domain_id, flags, tag, value, created_at, updated_at
+FROM caa_records
+WHERE domain_id = $1
+`
+
+func (q *Queries) RecordsGetCAAByDomainID(ctx context.Context, domainID pgtype.Int4) (CaaRecords, error) {
+	row := q.db.QueryRow(ctx, recordsGetCAAByDomainID, domainID)
+	var i CaaRecords
+	err := row.Scan(
+		&i.ID,
+		&i.Uid,
+		&i.DomainID,
+		&i.Flags,
+		&i.Tag,
+		&i.Value,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const recordsGetCNAMEByDomainID = `-- name: RecordsGetCNAMEByDomainID :one

@@ -269,3 +269,17 @@ FROM domains d
          LEFT JOIN srv_records srv ON d.id = srv.domain_id
          LEFT JOIN soa_records soa ON d.id = soa.domain_id
 WHERE d.id = $1;
+
+-- name: RecordsCreateCAA :one
+-- CAA Records
+INSERT INTO caa_records (domain_id, flags, tag, value)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (domain_id, tag, value)
+    DO UPDATE SET flags      = $2,
+                  updated_at = NOW()
+RETURNING id, uid, domain_id, flags, tag, value, created_at, updated_at;
+
+-- name: RecordsGetCAAByDomainID :one
+SELECT id, uid, domain_id, flags, tag, value, created_at, updated_at
+FROM caa_records
+WHERE domain_id = $1;
