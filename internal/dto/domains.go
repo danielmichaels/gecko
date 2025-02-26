@@ -29,7 +29,6 @@ func DomainsToAPI(domains []store.Domains) []Domain {
 	return dtos
 }
 
-// helper function to safely convert pgtype.Text to string
 func pgTextToString(t pgtype.Text) string {
 	if t.Valid {
 		return t.String
@@ -37,7 +36,6 @@ func pgTextToString(t pgtype.Text) string {
 	return ""
 }
 
-// helper function to safely convert pgtype.Int4 to int32
 func pgInt4ToInt32(i pgtype.Int4) int32 {
 	if i.Valid {
 		return i.Int32
@@ -62,6 +60,48 @@ func DomainRecordsToAPI(records []store.DomainsGetAllRecordsByTenantIDRow) []Dom
 		}
 	}
 	return dtos
+}
+
+// DomainSearchByNameRowToDomains converts a slice of store.DomainsSearchByNameRow to a slice of store.Domains.
+// It iterates over the input slice and creates a new slice of store.Domains, populating the fields
+// from the corresponding fields in the input slice.
+func DomainSearchByNameRowToDomains(rows []store.DomainsSearchByNameRow) []store.Domains {
+	domains := make([]store.Domains, len(rows))
+	for i, row := range rows {
+		domains[i] = store.Domains{
+			ID:         row.ID,
+			Uid:        row.Uid,
+			TenantID:   row.TenantID,
+			Name:       row.Name,
+			DomainType: row.DomainType,
+			Source:     row.Source,
+			Status:     row.Status,
+			CreatedAt:  row.CreatedAt,
+			UpdatedAt:  row.UpdatedAt,
+		}
+	}
+	return domains
+}
+
+// DomainsListByTenantIDToDomains converts a slice of store.DomainsListByTenantIDRow to a slice of store.Domains.
+// It iterates over the input slice and creates a new slice of store.Domains, populating the fields
+// from the corresponding fields in the input slice.
+func DomainsListByTenantIDToDomains(rows []store.DomainsListByTenantIDRow) []store.Domains {
+	domains := make([]store.Domains, len(rows))
+	for i, row := range rows {
+		domains[i] = store.Domains{
+			ID:         row.ID,
+			Uid:        row.Uid,
+			TenantID:   row.TenantID,
+			Name:       row.Name,
+			DomainType: row.DomainType,
+			Source:     row.Source,
+			Status:     row.Status,
+			CreatedAt:  row.CreatedAt,
+			UpdatedAt:  row.UpdatedAt,
+		}
+	}
+	return domains
 }
 
 type Domain struct {

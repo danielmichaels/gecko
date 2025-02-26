@@ -17,6 +17,10 @@ tasks:
       - task --list-all
     silent: true
 
+  cli:
+    desc: Run webserver
+    cmds:
+      - go run ./cmd/gecko/main.go {{.CLI_ARGS}}
   serve:
     desc: Run webserver
     cmds:

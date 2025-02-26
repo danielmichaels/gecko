@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/jackc/pgx/v5"
 
 	"github.com/danielmichaels/gecko/internal/scanner"
@@ -27,8 +29,9 @@ func (ScanCertificateArgs) Kind() string { return "scan_certificate" }
 
 type ScanCertificateWorker struct {
 	river.WorkerDefaults[ScanCertificateArgs]
-	Logger slog.Logger
-	Store  *store.Queries
+	Logger  slog.Logger
+	Store   *store.Queries
+	PgxPool *pgxpool.Pool
 }
 
 func (w *ScanCertificateWorker) Work(
@@ -62,8 +65,9 @@ func (ScanCNAMEArgs) Kind() string { return "scan_cname" }
 
 type ScanCNAMEWorker struct {
 	river.WorkerDefaults[ScanCNAMEArgs]
-	Logger slog.Logger
-	Store  *store.Queries
+	Logger  slog.Logger
+	Store   *store.Queries
+	PgxPool *pgxpool.Pool
 }
 
 func (w *ScanCNAMEWorker) Work(ctx context.Context, job *river.Job[ScanCNAMEArgs]) error {
@@ -101,8 +105,9 @@ func (ScanDNSSECArgs) Kind() string { return "scan_dnssec" }
 
 type ScanDNSSECWorker struct {
 	river.WorkerDefaults[ScanDNSSECArgs]
-	Logger slog.Logger
-	Store  *store.Queries
+	Logger  slog.Logger
+	Store   *store.Queries
+	PgxPool *pgxpool.Pool
 }
 
 func (w *ScanDNSSECWorker) Work(ctx context.Context, job *river.Job[ScanDNSSECArgs]) error {
@@ -138,8 +143,9 @@ func (ScanZoneTransferArgs) Kind() string { return "scan_zone_transfer" }
 
 type ScanZoneTransferWorker struct {
 	river.WorkerDefaults[ScanZoneTransferArgs]
-	Logger slog.Logger
-	Store  *store.Queries
+	Logger  slog.Logger
+	Store   *store.Queries
+	PgxPool *pgxpool.Pool
 }
 
 func (w *ScanZoneTransferWorker) Work(
@@ -161,7 +167,7 @@ func (w *ScanZoneTransferWorker) Work(
 	)
 
 	if result.Vulnerable {
-		// todo: insert to DB here
+		// todo: insert to PgxPool here
 		w.Logger.WarnContext(ctx,
 			"zone transfer vulnerability detected",
 			"domain", job.Args.Domain,
@@ -173,4 +179,55 @@ func (w *ScanZoneTransferWorker) Work(
 	}
 
 	return nil
+}
+
+type ScanNewDomainArgs struct {
+	Domain string `json:"domain"`
+}
+
+func (ScanNewDomainArgs) Kind() string { return "new_domain_scanner" }
+func (ScanNewDomainArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		Queue: queueScanner,
+	}
+}
+
+type ScanNewDomainWorker struct {
+	river.WorkerDefaults[ScanNewDomainArgs]
+	Logger  slog.Logger
+	Store   *store.Queries
+	PgxPool *pgxpool.Pool
+}
+
+func (w *ScanNewDomainWorker) Work(ctx context.Context, job *river.Job[ScanNewDomainArgs]) error {
+	tx, err := w.PgxPool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer func(tx pgx.Tx, ctx context.Context) {
+		err := tx.Rollback(ctx)
+		if err != nil {
+			w.Logger.ErrorContext(ctx, "failed to rollback tx", "err", err)
+		}
+	}(tx, ctx)
+
+	rc := river.ClientFromContext[pgx.Tx](ctx)
+
+	if _, err := rc.InsertTx(ctx, tx, &ResolveDomainArgs{Domain: job.Args.Domain}, nil); err != nil {
+		return err
+	}
+	if _, err := rc.InsertTx(ctx, tx, &ScanCertificateArgs{Domain: job.Args.Domain}, nil); err != nil {
+		return err
+	}
+	if _, err := rc.InsertTx(ctx, tx, &ScanCNAMEArgs{Domain: job.Args.Domain}, nil); err != nil {
+		return err
+	}
+	if _, err := rc.InsertTx(ctx, tx, &ScanDNSSECArgs{Domain: job.Args.Domain}, nil); err != nil {
+		return err
+	}
+	if _, err := rc.InsertTx(ctx, tx, &ScanZoneTransferArgs{Domain: job.Args.Domain}, nil); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }

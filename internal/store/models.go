@@ -262,6 +262,27 @@ type AaaaRecordsHistory struct {
 	ChangedAt   pgtype.Timestamptz `json:"changed_at"`
 }
 
+type CaaRecords struct {
+	ID        int32              `json:"id"`
+	Uid       string             `json:"uid"`
+	DomainID  pgtype.Int4        `json:"domain_id"`
+	Flags     int32              `json:"flags"`
+	Tag       string             `json:"tag"`
+	Value     string             `json:"value"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+type CaaRecordsHistory struct {
+	ID         int32              `json:"id"`
+	RecordID   pgtype.Int4        `json:"record_id"`
+	Flags      int32              `json:"flags"`
+	Tag        string             `json:"tag"`
+	Value      string             `json:"value"`
+	ChangeType string             `json:"change_type"`
+	ChangedAt  pgtype.Timestamptz `json:"changed_at"`
+}
+
 type Certificates struct {
 	ID            int32              `json:"id"`
 	Uid           string             `json:"uid"`
@@ -472,7 +493,7 @@ type SoaRecords struct {
 	DomainID   pgtype.Int4        `json:"domain_id"`
 	Nameserver string             `json:"nameserver"`
 	Email      string             `json:"email"`
-	Serial     int32              `json:"serial"`
+	Serial     int64              `json:"serial"`
 	Refresh    int32              `json:"refresh"`
 	Retry      int32              `json:"retry"`
 	Expire     int32              `json:"expire"`
@@ -486,7 +507,7 @@ type SoaRecordsHistory struct {
 	RecordID   pgtype.Int4        `json:"record_id"`
 	Nameserver string             `json:"nameserver"`
 	Email      string             `json:"email"`
-	Serial     int32              `json:"serial"`
+	Serial     int64              `json:"serial"`
 	Refresh    int32              `json:"refresh"`
 	Retry      int32              `json:"retry"`
 	Expire     int32              `json:"expire"`

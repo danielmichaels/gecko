@@ -508,7 +508,6 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 	}
 
 	// 4. Establish Chain of Trust.
-	// Separate KSKs and ZSKs.
 	var ksks []*dns.DNSKEY
 	for _, key := range dnskeys {
 		if key.Flags == 257 {
@@ -516,23 +515,20 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 		}
 	}
 
-	if len(ksks) > 0 { // Only if KSKs exist, try to validate DS records.
+	if len(ksks) > 0 {
 		parentZone, err := c.GetParentZone(currentDomain)
 		if err != nil {
 			return fmt.Errorf("getting parent zone: %w", err)
 		}
 
 		dsRecords, ok := c.LookupDS(currentDomain) // LookupDS now queries the parent.
-		// dsRecords, ok := c.LookupDS(parentZone) // LookupDS now queries the parent.
 		if !ok {
-			// If we are at the root, we don't expect DS records
 			if currentDomain == "." {
 				return nil
 			}
 			return ErrDNSSECNotImplemented
 		}
 
-		// Parse DS records.
 		var dsSet []*dns.DS
 		for _, dsRecord := range dsRecords {
 			c.logger.Debug(
@@ -544,13 +540,11 @@ func (c *DNSClient) validateDNSSECRecursive(originalDomain, currentDomain string
 				"currentDomain",
 				currentDomain,
 			)
-			// ds, err := ParseDS(parentZone, dsRecord)
 			ds, err := dnsrecords.ParseDS(currentDomain, dsRecord)
 			if err != nil {
 				c.logger.Warn("Error parsing DS record", "error", err)
-				continue // Skip invalid DS records.
+				continue
 			}
-			// ds.Domain = parentZone
 			dsSet = append(dsSet, &dns.DS{
 				Hdr: dns.RR_Header{
 					Name:   dns.Fqdn(currentDomain),
