@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"log/slog"
 
 	"github.com/danielmichaels/gecko/internal/assessor"
@@ -22,8 +23,9 @@ func (AssessCNAMEDanglingArgs) Kind() string { return "assess_cname_dangling" }
 
 type AssessCNAMEDanglingWorker struct {
 	river.WorkerDefaults[AssessCNAMEDanglingArgs]
-	Logger slog.Logger
-	Store  *store.Queries
+	Logger  slog.Logger
+	Store   *store.Queries
+	PgxPool *pgxpool.Pool
 }
 
 func (w *AssessCNAMEDanglingWorker) Work(

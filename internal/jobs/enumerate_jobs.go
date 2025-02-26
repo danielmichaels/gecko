@@ -32,8 +32,8 @@ func (EnumerateSubdomainArgs) InsertOpts() river.InsertOpts {
 
 type EnumerateSubdomainWorker struct {
 	river.WorkerDefaults[EnumerateSubdomainArgs]
-	Logger slog.Logger
-	DB     *pgxpool.Pool
+	Logger  slog.Logger
+	PgxPool *pgxpool.Pool
 }
 
 func (w *EnumerateSubdomainWorker) Work(
@@ -41,7 +41,7 @@ func (w *EnumerateSubdomainWorker) Work(
 	job *river.Job[EnumerateSubdomainArgs],
 ) error {
 	dnsClient := dnsclient.NewDNSClient()
-	tx, err := w.DB.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := w.PgxPool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
@@ -87,8 +87,9 @@ func (ResolveDomainArgs) Kind() string { return "resolve_domain" }
 
 type ResolveDomainWorker struct {
 	river.WorkerDefaults[ResolveDomainArgs]
-	Logger slog.Logger
-	Store  *store.Queries
+	Logger  slog.Logger
+	Store   *store.Queries
+	PgxPool *pgxpool.Pool
 }
 
 func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDomainArgs]) error {

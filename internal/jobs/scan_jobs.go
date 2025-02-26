@@ -28,8 +28,9 @@ func (ScanCertificateArgs) Kind() string { return "scan_certificate" }
 
 type ScanCertificateWorker struct {
 	river.WorkerDefaults[ScanCertificateArgs]
-	Logger slog.Logger
-	Store  *store.Queries
+	Logger  slog.Logger
+	Store   *store.Queries
+	PgxPool *pgxpool.Pool
 }
 
 func (w *ScanCertificateWorker) Work(
@@ -63,8 +64,9 @@ func (ScanCNAMEArgs) Kind() string { return "scan_cname" }
 
 type ScanCNAMEWorker struct {
 	river.WorkerDefaults[ScanCNAMEArgs]
-	Logger slog.Logger
-	Store  *store.Queries
+	Logger  slog.Logger
+	Store   *store.Queries
+	PgxPool *pgxpool.Pool
 }
 
 func (w *ScanCNAMEWorker) Work(ctx context.Context, job *river.Job[ScanCNAMEArgs]) error {
@@ -102,8 +104,9 @@ func (ScanDNSSECArgs) Kind() string { return "scan_dnssec" }
 
 type ScanDNSSECWorker struct {
 	river.WorkerDefaults[ScanDNSSECArgs]
-	Logger slog.Logger
-	Store  *store.Queries
+	Logger  slog.Logger
+	Store   *store.Queries
+	PgxPool *pgxpool.Pool
 }
 
 func (w *ScanDNSSECWorker) Work(ctx context.Context, job *river.Job[ScanDNSSECArgs]) error {
@@ -139,8 +142,9 @@ func (ScanZoneTransferArgs) Kind() string { return "scan_zone_transfer" }
 
 type ScanZoneTransferWorker struct {
 	river.WorkerDefaults[ScanZoneTransferArgs]
-	Logger slog.Logger
-	Store  *store.Queries
+	Logger  slog.Logger
+	Store   *store.Queries
+	PgxPool *pgxpool.Pool
 }
 
 func (w *ScanZoneTransferWorker) Work(
@@ -203,6 +207,9 @@ func (w *ScanNewDomainWorker) Work(ctx context.Context, job *river.Job[ScanNewDo
 
 	rc := river.ClientFromContext[pgx.Tx](ctx)
 
+	if _, err := rc.InsertTx(ctx, tx, &ResolveDomainArgs{Domain: job.Args.Domain}, nil); err != nil {
+		return err
+	}
 	if _, err := rc.InsertTx(ctx, tx, &ScanCertificateArgs{Domain: job.Args.Domain}, nil); err != nil {
 		return err
 	}

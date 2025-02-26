@@ -1,9 +1,8 @@
 package server
 
 import (
-	"net/http"
-
 	"github.com/danielgtaylor/huma/v2/autopatch"
+	"net/http"
 
 	"github.com/danielmichaels/gecko/assets"
 	"github.com/danielmichaels/gecko/internal/version"
