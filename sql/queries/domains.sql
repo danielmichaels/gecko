@@ -1,15 +1,46 @@
 -- name: DomainsGetAllRecordsByTenantID :many
 -- Get domains with all their DNS records
--- todo: add pagination
+-- todo: develop only; reconsider need for this
 SELECT d.name,
        a.ipv4_address,
        aaaa.ipv6_address,
-       mx.preference as mx_pref,
-       mx.target     as mx_target,
-       txt.value     as txt_record,
-       ptr.target    as ptr_target,
-       cname.target  as cname_target,
-       ns.nameserver
+       mx.preference AS mx_pref,
+       mx.target     AS mx_target,
+       txt.value     AS txt_record,
+       ptr.target    AS ptr_target,
+       cname.target  AS cname_target,
+       ns.nameserver,
+       soa.nameserver      AS soa_nameserver,
+       soa.email           AS soa_email,
+       soa.serial          AS soa_serial,
+       soa.refresh         AS soa_refresh,
+       soa.retry           AS soa_retry,
+       soa.expire          AS soa_expire,
+       soa.minimum_ttl     AS soa_minimum_ttl,
+       srv.target          AS srv_target,
+       srv.port            AS srv_port,
+       srv.weight          AS srv_weight,
+       srv.priority        AS srv_priority,
+       caa.flags           AS caa_flags,
+       caa.tag             AS caa_tag,
+       caa.value           AS caa_value,
+       dnskey.public_key   AS dnskey_public_key,
+       dnskey.flags        AS dnskey_flags,
+       dnskey.protocol     AS dnskey_protocol,
+       dnskey.algorithm    AS dnskey_algorithm,
+       ds.key_tag           AS ds_keytag,
+       ds.algorithm        AS ds_algorithm,
+       ds.digest_type      AS ds_digest_type,
+       ds.digest           AS ds_digest,
+       rrsig.type_covered  AS rrsig_type_covered,
+       rrsig.algorithm     AS rrsig_algorithm,
+       rrsig.labels        AS rrsig_labels,
+       rrsig.original_ttl  AS rrsig_original_ttl,
+       rrsig.expiration    AS rrsig_expiration,
+       rrsig.inception     AS rrsig_inception,
+       rrsig.key_tag        AS rrsig_keytag,
+       rrsig.signer_name   AS rrsig_signer_name,
+       rrsig.signature     AS rrsig_signature
 FROM domains d
          LEFT JOIN a_records a ON d.id = a.domain_id
          LEFT JOIN aaaa_records aaaa ON d.id = aaaa.domain_id
@@ -18,7 +49,16 @@ FROM domains d
          LEFT JOIN ptr_records ptr ON d.id = ptr.domain_id
          LEFT JOIN cname_records cname ON d.id = cname.domain_id
          LEFT JOIN ns_records ns ON d.id = ns.domain_id
-WHERE d.tenant_id = $1;
+         LEFT JOIN soa_records soa ON d.id = soa.domain_id
+         LEFT JOIN srv_records srv ON d.id = srv.domain_id
+         LEFT JOIN caa_records caa ON d.id = caa.domain_id
+         LEFT JOIN dnskey_records dnskey ON d.id = dnskey.domain_id
+         LEFT JOIN ds_records ds ON d.id = ds.domain_id
+         LEFT JOIN rrsig_records rrsig ON d.id = rrsig.domain_id
+WHERE d.tenant_id = $1
+ORDER BY d.name ASC
+LIMIT $2 OFFSET $3;
+
 
 -- name: DomainsCreate :one
 -- Create a new domain (no auth)

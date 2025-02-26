@@ -244,20 +244,41 @@ FROM domains d
 WHERE d.id = $1;
 
 -- name: RecordsGetAllByDomainID :many
-SELECT d.name         as domain_name,
+-- todo: develop only; reconsider need for this
+SELECT d.name             AS domain_name,
        a.ipv4_address,
        aaaa.ipv6_address,
-       mx.preference  as mx_pref,
-       mx.target      as mx_target,
-       txt.value      as txt_value,
+       mx.preference      AS mx_pref,
+       mx.target          AS mx_target,
+       txt.value          AS txt_value,
        ns.nameserver,
-       cname.target   as cname_target,
-       ptr.target     as ptr_target,
-       srv.target     as srv_target,
-       srv.port       as srv_port,
-       srv.priority   as srv_priority,
-       soa.nameserver as soa_nameserver,
-       soa.serial     as soa_serial
+       cname.target       AS cname_target,
+       ptr.target         AS ptr_target,
+       srv.target         AS srv_target,
+       srv.port           AS srv_port,
+       srv.priority       AS srv_priority,
+       soa.nameserver     AS soa_nameserver,
+       soa.serial         AS soa_serial,
+       caa.flags          AS caa_flags,
+       caa.tag            AS caa_tag,
+       caa.value          AS caa_value,
+       dnskey.public_key  AS dnskey_public_key,
+       dnskey.flags       AS dnskey_flags,
+       dnskey.protocol    AS dnskey_protocol,
+       dnskey.algorithm   AS dnskey_algorithm,
+       ds.key_tag         AS ds_keytag,
+       ds.algorithm       AS ds_algorithm,
+       ds.digest_type     AS ds_digest_type,
+       ds.digest          AS ds_digest,
+       rrsig.type_covered AS rrsig_type_covered,
+       rrsig.algorithm    AS rrsig_algorithm,
+       rrsig.labels       AS rrsig_labels,
+       rrsig.original_ttl AS rrsig_original_ttl,
+       rrsig.expiration   AS rrsig_expiration,
+       rrsig.inception    AS rrsig_inception,
+       rrsig.key_tag      AS rrsig_keytag,
+       rrsig.signer_name  AS rrsig_signer_name,
+       rrsig.signature    AS rrsig_signature
 FROM domains d
          LEFT JOIN a_records a ON d.id = a.domain_id
          LEFT JOIN aaaa_records aaaa ON d.id = aaaa.domain_id
@@ -268,7 +289,14 @@ FROM domains d
          LEFT JOIN ptr_records ptr ON d.id = ptr.domain_id
          LEFT JOIN srv_records srv ON d.id = srv.domain_id
          LEFT JOIN soa_records soa ON d.id = soa.domain_id
-WHERE d.id = $1;
+         LEFT JOIN caa_records caa ON d.id = caa.domain_id
+         LEFT JOIN dnskey_records dnskey ON d.id = dnskey.domain_id
+         LEFT JOIN ds_records ds ON d.id = ds.domain_id
+         LEFT JOIN rrsig_records rrsig ON d.id = rrsig.domain_id
+WHERE d.id = $1
+ORDER BY d.name
+LIMIT $2 OFFSET $3;
+
 
 -- name: RecordsCreateCAA :one
 -- CAA Records
@@ -280,6 +308,13 @@ ON CONFLICT (domain_id, tag, value)
 RETURNING id, uid, domain_id, flags, tag, value, created_at, updated_at;
 
 -- name: RecordsGetCAAByDomainID :one
-SELECT id, uid, domain_id, flags, tag, value, created_at, updated_at
+SELECT id,
+       uid,
+       domain_id,
+       flags,
+       tag,
+       value,
+       created_at,
+       updated_at
 FROM caa_records
 WHERE domain_id = $1;
