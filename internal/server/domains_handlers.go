@@ -21,7 +21,8 @@ type DomainOutput struct {
 }
 type DomainListOutput struct {
 	Body struct {
-		Domains []dto.Domain `json:"domains"`
+		Domains    []dto.Domain        `json:"domains"`
+		Pagination *PaginationMetadata `json:"pagination"`
 	}
 }
 type DomainBody struct {
@@ -34,24 +35,84 @@ type DomainBody struct {
 	UpdatedAt  string `json:"updated_at" example:"2021-01-01T00:00:00Z" doc:"Last update date of the domain."`
 }
 
-func (app *Server) handleDomainList(ctx context.Context, _ *struct{}) (*DomainListOutput, error) {
-	domains, err := app.Db.DomainsListByTenantID(ctx, store.DomainsListByTenantIDParams{
-		TenantID: pgtype.Int4{Int32: 1, Valid: true}, // TODO: get from context
-		Limit:    100,                                // TODO: pagination
-		Offset:   0,
-	})
+func (app *Server) handleDomainList(ctx context.Context, i *struct {
+	FilterName string `query:"name" example:"example.com" doc:"Filter by domain name. Optional."`
+	PaginationQuery
+}) (*DomainListOutput, error) {
+	tenantID := pgtype.Int4{Int32: 1, Valid: true} // fixme: Replace with actual tenant ID
+	pageSize, pageNumber, offset := i.PaginationQuery.GetPaginationParams()
+	var result domainsSearchQueryResult
+	var err error
+	if i.FilterName != "" {
+		result, err = app.executeSearchQuery(ctx, tenantID, i.FilterName, pageSize, offset)
+	} else {
+		result, err = app.executeListQuery(ctx, tenantID, pageSize, offset)
+	}
+
 	if err != nil {
 		return nil, err
 	}
 
+	paginationMetadata := NewPaginationMetadata(result.TotalCount, pageSize, pageNumber, int32(len(result.Domains)))
 	resp := &DomainListOutput{
 		Body: struct {
-			Domains []dto.Domain `json:"domains"`
+			Domains    []dto.Domain        `json:"domains"`
+			Pagination *PaginationMetadata `json:"pagination"`
 		}{
-			Domains: dto.DomainsToAPI(domains),
+			Domains:    dto.DomainsToAPI(result.Domains),
+			Pagination: &paginationMetadata,
 		},
 	}
 	return resp, nil
+}
+
+type domainsSearchQueryResult struct {
+	Domains    []store.Domains
+	TotalCount int64
+}
+
+func (app *Server) executeSearchQuery(ctx context.Context, tenantID pgtype.Int4, filter string, limit, offset int32) (domainsSearchQueryResult, error) {
+	rows, err := app.Db.DomainsSearchByName(ctx, store.DomainsSearchByNameParams{
+		TenantID: tenantID,
+		Name:     "%" + filter + "%",
+		Limit:    limit,
+		Offset:   offset,
+	})
+	if err != nil {
+		return domainsSearchQueryResult{}, err
+	}
+
+	var totalCount int64
+	if len(rows) > 0 {
+		totalCount = rows[0].TotalCount
+	}
+
+	return domainsSearchQueryResult{
+		Domains:    dto.DomainSearchByNameRowToDomains(rows),
+		TotalCount: totalCount,
+	}, nil
+}
+
+// Helper function for list query
+func (app *Server) executeListQuery(ctx context.Context, tenantID pgtype.Int4, limit, offset int32) (domainsSearchQueryResult, error) {
+	rows, err := app.Db.DomainsListByTenantID(ctx, store.DomainsListByTenantIDParams{
+		TenantID: tenantID,
+		Limit:    limit,
+		Offset:   offset,
+	})
+	if err != nil {
+		return domainsSearchQueryResult{}, err
+	}
+
+	var totalCount int64
+	if len(rows) > 0 {
+		totalCount = rows[0].TotalCount
+	}
+
+	return domainsSearchQueryResult{
+		Domains:    dto.DomainsListByTenantIDToDomains(rows),
+		TotalCount: totalCount,
+	}, nil
 }
 
 type DomainGetInput struct {

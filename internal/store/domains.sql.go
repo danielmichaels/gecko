@@ -90,12 +90,43 @@ const domainsGetAllRecordsByTenantID = `-- name: DomainsGetAllRecordsByTenantID 
 SELECT d.name,
        a.ipv4_address,
        aaaa.ipv6_address,
-       mx.preference as mx_pref,
-       mx.target     as mx_target,
-       txt.value     as txt_record,
-       ptr.target    as ptr_target,
-       cname.target  as cname_target,
-       ns.nameserver
+       mx.preference      AS mx_pref,
+       mx.target          AS mx_target,
+       txt.value          AS txt_record,
+       ptr.target         AS ptr_target,
+       cname.target       AS cname_target,
+       ns.nameserver,
+       soa.nameserver     AS soa_nameserver,
+       soa.email          AS soa_email,
+       soa.serial         AS soa_serial,
+       soa.refresh        AS soa_refresh,
+       soa.retry          AS soa_retry,
+       soa.expire         AS soa_expire,
+       soa.minimum_ttl    AS soa_minimum_ttl,
+       srv.target         AS srv_target,
+       srv.port           AS srv_port,
+       srv.weight         AS srv_weight,
+       srv.priority       AS srv_priority,
+       caa.flags          AS caa_flags,
+       caa.tag            AS caa_tag,
+       caa.value          AS caa_value,
+       dnskey.public_key  AS dnskey_public_key,
+       dnskey.flags       AS dnskey_flags,
+       dnskey.protocol    AS dnskey_protocol,
+       dnskey.algorithm   AS dnskey_algorithm,
+       ds.key_tag         AS ds_keytag,
+       ds.algorithm       AS ds_algorithm,
+       ds.digest_type     AS ds_digest_type,
+       ds.digest          AS ds_digest,
+       rrsig.type_covered AS rrsig_type_covered,
+       rrsig.algorithm    AS rrsig_algorithm,
+       rrsig.labels       AS rrsig_labels,
+       rrsig.original_ttl AS rrsig_original_ttl,
+       rrsig.expiration   AS rrsig_expiration,
+       rrsig.inception    AS rrsig_inception,
+       rrsig.key_tag      AS rrsig_keytag,
+       rrsig.signer_name  AS rrsig_signer_name,
+       rrsig.signature    AS rrsig_signature
 FROM domains d
          LEFT JOIN a_records a ON d.id = a.domain_id
          LEFT JOIN aaaa_records aaaa ON d.id = aaaa.domain_id
@@ -104,25 +135,70 @@ FROM domains d
          LEFT JOIN ptr_records ptr ON d.id = ptr.domain_id
          LEFT JOIN cname_records cname ON d.id = cname.domain_id
          LEFT JOIN ns_records ns ON d.id = ns.domain_id
+         LEFT JOIN soa_records soa ON d.id = soa.domain_id
+         LEFT JOIN srv_records srv ON d.id = srv.domain_id
+         LEFT JOIN caa_records caa ON d.id = caa.domain_id
+         LEFT JOIN dnskey_records dnskey ON d.id = dnskey.domain_id
+         LEFT JOIN ds_records ds ON d.id = ds.domain_id
+         LEFT JOIN rrsig_records rrsig ON d.id = rrsig.domain_id
 WHERE d.tenant_id = $1
+ORDER BY d.name ASC
+LIMIT $2 OFFSET $3
 `
 
+type DomainsGetAllRecordsByTenantIDParams struct {
+	TenantID pgtype.Int4 `json:"tenant_id"`
+	Limit    int32       `json:"limit"`
+	Offset   int32       `json:"offset"`
+}
+
 type DomainsGetAllRecordsByTenantIDRow struct {
-	Name        string      `json:"name"`
-	Ipv4Address pgtype.Text `json:"ipv4_address"`
-	Ipv6Address pgtype.Text `json:"ipv6_address"`
-	MxPref      pgtype.Int4 `json:"mx_pref"`
-	MxTarget    pgtype.Text `json:"mx_target"`
-	TxtRecord   pgtype.Text `json:"txt_record"`
-	PtrTarget   pgtype.Text `json:"ptr_target"`
-	CnameTarget pgtype.Text `json:"cname_target"`
-	Nameserver  pgtype.Text `json:"nameserver"`
+	Name             string      `json:"name"`
+	Ipv4Address      pgtype.Text `json:"ipv4_address"`
+	Ipv6Address      pgtype.Text `json:"ipv6_address"`
+	MxPref           pgtype.Int4 `json:"mx_pref"`
+	MxTarget         pgtype.Text `json:"mx_target"`
+	TxtRecord        pgtype.Text `json:"txt_record"`
+	PtrTarget        pgtype.Text `json:"ptr_target"`
+	CnameTarget      pgtype.Text `json:"cname_target"`
+	Nameserver       pgtype.Text `json:"nameserver"`
+	SoaNameserver    pgtype.Text `json:"soa_nameserver"`
+	SoaEmail         pgtype.Text `json:"soa_email"`
+	SoaSerial        pgtype.Int8 `json:"soa_serial"`
+	SoaRefresh       pgtype.Int4 `json:"soa_refresh"`
+	SoaRetry         pgtype.Int4 `json:"soa_retry"`
+	SoaExpire        pgtype.Int4 `json:"soa_expire"`
+	SoaMinimumTtl    pgtype.Int4 `json:"soa_minimum_ttl"`
+	SrvTarget        pgtype.Text `json:"srv_target"`
+	SrvPort          pgtype.Int4 `json:"srv_port"`
+	SrvWeight        pgtype.Int4 `json:"srv_weight"`
+	SrvPriority      pgtype.Int4 `json:"srv_priority"`
+	CaaFlags         pgtype.Int4 `json:"caa_flags"`
+	CaaTag           pgtype.Text `json:"caa_tag"`
+	CaaValue         pgtype.Text `json:"caa_value"`
+	DnskeyPublicKey  pgtype.Text `json:"dnskey_public_key"`
+	DnskeyFlags      pgtype.Int4 `json:"dnskey_flags"`
+	DnskeyProtocol   pgtype.Int4 `json:"dnskey_protocol"`
+	DnskeyAlgorithm  pgtype.Int4 `json:"dnskey_algorithm"`
+	DsKeytag         pgtype.Int4 `json:"ds_keytag"`
+	DsAlgorithm      pgtype.Int4 `json:"ds_algorithm"`
+	DsDigestType     pgtype.Int4 `json:"ds_digest_type"`
+	DsDigest         pgtype.Text `json:"ds_digest"`
+	RrsigTypeCovered pgtype.Int4 `json:"rrsig_type_covered"`
+	RrsigAlgorithm   pgtype.Int4 `json:"rrsig_algorithm"`
+	RrsigLabels      pgtype.Int4 `json:"rrsig_labels"`
+	RrsigOriginalTtl pgtype.Int4 `json:"rrsig_original_ttl"`
+	RrsigExpiration  pgtype.Int4 `json:"rrsig_expiration"`
+	RrsigInception   pgtype.Int4 `json:"rrsig_inception"`
+	RrsigKeytag      pgtype.Int4 `json:"rrsig_keytag"`
+	RrsigSignerName  pgtype.Text `json:"rrsig_signer_name"`
+	RrsigSignature   pgtype.Text `json:"rrsig_signature"`
 }
 
 // Get domains with all their DNS records
-// todo: add pagination
-func (q *Queries) DomainsGetAllRecordsByTenantID(ctx context.Context, tenantID pgtype.Int4) ([]DomainsGetAllRecordsByTenantIDRow, error) {
-	rows, err := q.db.Query(ctx, domainsGetAllRecordsByTenantID, tenantID)
+// todo: develop only; reconsider need for this
+func (q *Queries) DomainsGetAllRecordsByTenantID(ctx context.Context, arg DomainsGetAllRecordsByTenantIDParams) ([]DomainsGetAllRecordsByTenantIDRow, error) {
+	rows, err := q.db.Query(ctx, domainsGetAllRecordsByTenantID, arg.TenantID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -140,6 +216,37 @@ func (q *Queries) DomainsGetAllRecordsByTenantID(ctx context.Context, tenantID p
 			&i.PtrTarget,
 			&i.CnameTarget,
 			&i.Nameserver,
+			&i.SoaNameserver,
+			&i.SoaEmail,
+			&i.SoaSerial,
+			&i.SoaRefresh,
+			&i.SoaRetry,
+			&i.SoaExpire,
+			&i.SoaMinimumTtl,
+			&i.SrvTarget,
+			&i.SrvPort,
+			&i.SrvWeight,
+			&i.SrvPriority,
+			&i.CaaFlags,
+			&i.CaaTag,
+			&i.CaaValue,
+			&i.DnskeyPublicKey,
+			&i.DnskeyFlags,
+			&i.DnskeyProtocol,
+			&i.DnskeyAlgorithm,
+			&i.DsKeytag,
+			&i.DsAlgorithm,
+			&i.DsDigestType,
+			&i.DsDigest,
+			&i.RrsigTypeCovered,
+			&i.RrsigAlgorithm,
+			&i.RrsigLabels,
+			&i.RrsigOriginalTtl,
+			&i.RrsigExpiration,
+			&i.RrsigInception,
+			&i.RrsigKeytag,
+			&i.RrsigSignerName,
+			&i.RrsigSignature,
 		); err != nil {
 			return nil, err
 		}
@@ -234,7 +341,7 @@ FROM domains
 ORDER BY created_at DESC
 `
 
-// List all domains (no auth, for development/debugging only - avoid in production)
+// fixme: List all domains (no auth, for development/debugging only - avoid in production)
 func (q *Queries) DomainsListAll(ctx context.Context) ([]Domains, error) {
 	rows, err := q.db.Query(ctx, domainsListAll)
 	if err != nil {
@@ -274,7 +381,8 @@ SELECT id,
        source,
        status,
        created_at,
-       updated_at
+       updated_at,
+       count(*) OVER () AS total_count
 FROM domains
 WHERE tenant_id = $1
 ORDER BY created_at DESC
@@ -287,16 +395,29 @@ type DomainsListByTenantIDParams struct {
 	Offset   int32       `json:"offset"`
 }
 
+type DomainsListByTenantIDRow struct {
+	ID         int32              `json:"id"`
+	Uid        string             `json:"uid"`
+	TenantID   pgtype.Int4        `json:"tenant_id"`
+	Name       string             `json:"name"`
+	DomainType DomainType         `json:"domain_type"`
+	Source     DomainSource       `json:"source"`
+	Status     DomainStatus       `json:"status"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+	TotalCount int64              `json:"total_count"`
+}
+
 // List all domains for a tenant with pagination (no auth)
-func (q *Queries) DomainsListByTenantID(ctx context.Context, arg DomainsListByTenantIDParams) ([]Domains, error) {
+func (q *Queries) DomainsListByTenantID(ctx context.Context, arg DomainsListByTenantIDParams) ([]DomainsListByTenantIDRow, error) {
 	rows, err := q.db.Query(ctx, domainsListByTenantID, arg.TenantID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Domains{}
+	items := []DomainsListByTenantIDRow{}
 	for rows.Next() {
-		var i Domains
+		var i DomainsListByTenantIDRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Uid,
@@ -307,6 +428,81 @@ func (q *Queries) DomainsListByTenantID(ctx context.Context, arg DomainsListByTe
 			&i.Status,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const domainsSearchByName = `-- name: DomainsSearchByName :many
+SELECT id,
+       uid,
+       tenant_id,
+       name,
+       domain_type,
+       source,
+       status,
+       created_at,
+       updated_at,
+       count(*) OVER () AS total_count
+FROM domains
+WHERE tenant_id = $1
+  AND name ILIKE $2
+ORDER BY created_at DESC
+LIMIT $3 OFFSET $4
+`
+
+type DomainsSearchByNameParams struct {
+	TenantID pgtype.Int4 `json:"tenant_id"`
+	Name     string      `json:"name"`
+	Limit    int32       `json:"limit"`
+	Offset   int32       `json:"offset"`
+}
+
+type DomainsSearchByNameRow struct {
+	ID         int32              `json:"id"`
+	Uid        string             `json:"uid"`
+	TenantID   pgtype.Int4        `json:"tenant_id"`
+	Name       string             `json:"name"`
+	DomainType DomainType         `json:"domain_type"`
+	Source     DomainSource       `json:"source"`
+	Status     DomainStatus       `json:"status"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+	TotalCount int64              `json:"total_count"`
+}
+
+func (q *Queries) DomainsSearchByName(ctx context.Context, arg DomainsSearchByNameParams) ([]DomainsSearchByNameRow, error) {
+	rows, err := q.db.Query(ctx, domainsSearchByName,
+		arg.TenantID,
+		arg.Name,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DomainsSearchByNameRow{}
+	for rows.Next() {
+		var i DomainsSearchByNameRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.TenantID,
+			&i.Name,
+			&i.DomainType,
+			&i.Source,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.TotalCount,
 		); err != nil {
 			return nil, err
 		}
@@ -320,7 +516,7 @@ func (q *Queries) DomainsListByTenantID(ctx context.Context, arg DomainsListByTe
 
 const domainsUpdateByID = `-- name: DomainsUpdateByID :one
 UPDATE domains
-SET status = $2,
+SET status      = $2,
     domain_type = $3,
     source      = $4
 WHERE uid = $1

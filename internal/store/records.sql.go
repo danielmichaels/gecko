@@ -531,20 +531,40 @@ func (q *Queries) RecordsGetAByDomainID(ctx context.Context, domainID pgtype.Int
 }
 
 const recordsGetAllByDomainID = `-- name: RecordsGetAllByDomainID :many
-SELECT d.name         as domain_name,
+SELECT d.name             AS domain_name,
        a.ipv4_address,
        aaaa.ipv6_address,
-       mx.preference  as mx_pref,
-       mx.target      as mx_target,
-       txt.value      as txt_value,
+       mx.preference      AS mx_pref,
+       mx.target          AS mx_target,
+       txt.value          AS txt_value,
        ns.nameserver,
-       cname.target   as cname_target,
-       ptr.target     as ptr_target,
-       srv.target     as srv_target,
-       srv.port       as srv_port,
-       srv.priority   as srv_priority,
-       soa.nameserver as soa_nameserver,
-       soa.serial     as soa_serial
+       cname.target       AS cname_target,
+       ptr.target         AS ptr_target,
+       srv.target         AS srv_target,
+       srv.port           AS srv_port,
+       srv.priority       AS srv_priority,
+       soa.nameserver     AS soa_nameserver,
+       soa.serial         AS soa_serial,
+       caa.flags          AS caa_flags,
+       caa.tag            AS caa_tag,
+       caa.value          AS caa_value,
+       dnskey.public_key  AS dnskey_public_key,
+       dnskey.flags       AS dnskey_flags,
+       dnskey.protocol    AS dnskey_protocol,
+       dnskey.algorithm   AS dnskey_algorithm,
+       ds.key_tag         AS ds_keytag,
+       ds.algorithm       AS ds_algorithm,
+       ds.digest_type     AS ds_digest_type,
+       ds.digest          AS ds_digest,
+       rrsig.type_covered AS rrsig_type_covered,
+       rrsig.algorithm    AS rrsig_algorithm,
+       rrsig.labels       AS rrsig_labels,
+       rrsig.original_ttl AS rrsig_original_ttl,
+       rrsig.expiration   AS rrsig_expiration,
+       rrsig.inception    AS rrsig_inception,
+       rrsig.key_tag      AS rrsig_keytag,
+       rrsig.signer_name  AS rrsig_signer_name,
+       rrsig.signature    AS rrsig_signature
 FROM domains d
          LEFT JOIN a_records a ON d.id = a.domain_id
          LEFT JOIN aaaa_records aaaa ON d.id = aaaa.domain_id
@@ -555,28 +575,61 @@ FROM domains d
          LEFT JOIN ptr_records ptr ON d.id = ptr.domain_id
          LEFT JOIN srv_records srv ON d.id = srv.domain_id
          LEFT JOIN soa_records soa ON d.id = soa.domain_id
+         LEFT JOIN caa_records caa ON d.id = caa.domain_id
+         LEFT JOIN dnskey_records dnskey ON d.id = dnskey.domain_id
+         LEFT JOIN ds_records ds ON d.id = ds.domain_id
+         LEFT JOIN rrsig_records rrsig ON d.id = rrsig.domain_id
 WHERE d.id = $1
+ORDER BY d.name
+LIMIT $2 OFFSET $3
 `
 
-type RecordsGetAllByDomainIDRow struct {
-	DomainName    string      `json:"domain_name"`
-	Ipv4Address   pgtype.Text `json:"ipv4_address"`
-	Ipv6Address   pgtype.Text `json:"ipv6_address"`
-	MxPref        pgtype.Int4 `json:"mx_pref"`
-	MxTarget      pgtype.Text `json:"mx_target"`
-	TxtValue      pgtype.Text `json:"txt_value"`
-	Nameserver    pgtype.Text `json:"nameserver"`
-	CnameTarget   pgtype.Text `json:"cname_target"`
-	PtrTarget     pgtype.Text `json:"ptr_target"`
-	SrvTarget     pgtype.Text `json:"srv_target"`
-	SrvPort       pgtype.Int4 `json:"srv_port"`
-	SrvPriority   pgtype.Int4 `json:"srv_priority"`
-	SoaNameserver pgtype.Text `json:"soa_nameserver"`
-	SoaSerial     pgtype.Int8 `json:"soa_serial"`
+type RecordsGetAllByDomainIDParams struct {
+	ID     int32 `json:"id"`
+	Limit  int32 `json:"limit"`
+	Offset int32 `json:"offset"`
 }
 
-func (q *Queries) RecordsGetAllByDomainID(ctx context.Context, id int32) ([]RecordsGetAllByDomainIDRow, error) {
-	rows, err := q.db.Query(ctx, recordsGetAllByDomainID, id)
+type RecordsGetAllByDomainIDRow struct {
+	DomainName       string      `json:"domain_name"`
+	Ipv4Address      pgtype.Text `json:"ipv4_address"`
+	Ipv6Address      pgtype.Text `json:"ipv6_address"`
+	MxPref           pgtype.Int4 `json:"mx_pref"`
+	MxTarget         pgtype.Text `json:"mx_target"`
+	TxtValue         pgtype.Text `json:"txt_value"`
+	Nameserver       pgtype.Text `json:"nameserver"`
+	CnameTarget      pgtype.Text `json:"cname_target"`
+	PtrTarget        pgtype.Text `json:"ptr_target"`
+	SrvTarget        pgtype.Text `json:"srv_target"`
+	SrvPort          pgtype.Int4 `json:"srv_port"`
+	SrvPriority      pgtype.Int4 `json:"srv_priority"`
+	SoaNameserver    pgtype.Text `json:"soa_nameserver"`
+	SoaSerial        pgtype.Int8 `json:"soa_serial"`
+	CaaFlags         pgtype.Int4 `json:"caa_flags"`
+	CaaTag           pgtype.Text `json:"caa_tag"`
+	CaaValue         pgtype.Text `json:"caa_value"`
+	DnskeyPublicKey  pgtype.Text `json:"dnskey_public_key"`
+	DnskeyFlags      pgtype.Int4 `json:"dnskey_flags"`
+	DnskeyProtocol   pgtype.Int4 `json:"dnskey_protocol"`
+	DnskeyAlgorithm  pgtype.Int4 `json:"dnskey_algorithm"`
+	DsKeytag         pgtype.Int4 `json:"ds_keytag"`
+	DsAlgorithm      pgtype.Int4 `json:"ds_algorithm"`
+	DsDigestType     pgtype.Int4 `json:"ds_digest_type"`
+	DsDigest         pgtype.Text `json:"ds_digest"`
+	RrsigTypeCovered pgtype.Int4 `json:"rrsig_type_covered"`
+	RrsigAlgorithm   pgtype.Int4 `json:"rrsig_algorithm"`
+	RrsigLabels      pgtype.Int4 `json:"rrsig_labels"`
+	RrsigOriginalTtl pgtype.Int4 `json:"rrsig_original_ttl"`
+	RrsigExpiration  pgtype.Int4 `json:"rrsig_expiration"`
+	RrsigInception   pgtype.Int4 `json:"rrsig_inception"`
+	RrsigKeytag      pgtype.Int4 `json:"rrsig_keytag"`
+	RrsigSignerName  pgtype.Text `json:"rrsig_signer_name"`
+	RrsigSignature   pgtype.Text `json:"rrsig_signature"`
+}
+
+// todo: develop only; reconsider need for this
+func (q *Queries) RecordsGetAllByDomainID(ctx context.Context, arg RecordsGetAllByDomainIDParams) ([]RecordsGetAllByDomainIDRow, error) {
+	rows, err := q.db.Query(ctx, recordsGetAllByDomainID, arg.ID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -599,6 +652,26 @@ func (q *Queries) RecordsGetAllByDomainID(ctx context.Context, id int32) ([]Reco
 			&i.SrvPriority,
 			&i.SoaNameserver,
 			&i.SoaSerial,
+			&i.CaaFlags,
+			&i.CaaTag,
+			&i.CaaValue,
+			&i.DnskeyPublicKey,
+			&i.DnskeyFlags,
+			&i.DnskeyProtocol,
+			&i.DnskeyAlgorithm,
+			&i.DsKeytag,
+			&i.DsAlgorithm,
+			&i.DsDigestType,
+			&i.DsDigest,
+			&i.RrsigTypeCovered,
+			&i.RrsigAlgorithm,
+			&i.RrsigLabels,
+			&i.RrsigOriginalTtl,
+			&i.RrsigExpiration,
+			&i.RrsigInception,
+			&i.RrsigKeytag,
+			&i.RrsigSignerName,
+			&i.RrsigSignature,
 		); err != nil {
 			return nil, err
 		}
@@ -611,7 +684,14 @@ func (q *Queries) RecordsGetAllByDomainID(ctx context.Context, id int32) ([]Reco
 }
 
 const recordsGetCAAByDomainID = `-- name: RecordsGetCAAByDomainID :one
-SELECT id, uid, domain_id, flags, tag, value, created_at, updated_at
+SELECT id,
+       uid,
+       domain_id,
+       flags,
+       tag,
+       value,
+       created_at,
+       updated_at
 FROM caa_records
 WHERE domain_id = $1
 `
