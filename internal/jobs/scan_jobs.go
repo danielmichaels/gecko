@@ -3,9 +3,10 @@ package jobs
 import (
 	"context"
 	"fmt"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"log/slog"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/jackc/pgx/v5"
 
@@ -203,7 +204,12 @@ func (w *ScanNewDomainWorker) Work(ctx context.Context, job *river.Job[ScanNewDo
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func(tx pgx.Tx, ctx context.Context) {
+		err := tx.Rollback(ctx)
+		if err != nil {
+			w.Logger.ErrorContext(ctx, "failed to rollback tx", "err", err)
+		}
+	}(tx, ctx)
 
 	rc := river.ClientFromContext[pgx.Tx](ctx)
 

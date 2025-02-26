@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+
 	"github.com/jackc/pgx/v5"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -21,8 +22,8 @@ type DomainOutput struct {
 }
 type DomainListOutput struct {
 	Body struct {
-		Domains    []dto.Domain        `json:"domains"`
 		Pagination *PaginationMetadata `json:"pagination"`
+		Domains    []dto.Domain        `json:"domains"`
 	}
 }
 type DomainBody struct {
@@ -38,7 +39,8 @@ type DomainBody struct {
 func (app *Server) handleDomainList(ctx context.Context, i *struct {
 	FilterName string `query:"name" example:"example.com" doc:"Filter by domain name. Optional."`
 	PaginationQuery
-}) (*DomainListOutput, error) {
+},
+) (*DomainListOutput, error) {
 	tenantID := pgtype.Int4{Int32: 1, Valid: true} // fixme: Replace with actual tenant ID
 	pageSize, pageNumber, offset := i.PaginationQuery.GetPaginationParams()
 	var result domainsSearchQueryResult
@@ -53,11 +55,16 @@ func (app *Server) handleDomainList(ctx context.Context, i *struct {
 		return nil, err
 	}
 
-	paginationMetadata := NewPaginationMetadata(result.TotalCount, pageSize, pageNumber, int32(len(result.Domains)))
+	paginationMetadata := NewPaginationMetadata(
+		result.TotalCount,
+		pageSize,
+		pageNumber,
+		int32(len(result.Domains)),
+	)
 	resp := &DomainListOutput{
 		Body: struct {
-			Domains    []dto.Domain        `json:"domains"`
 			Pagination *PaginationMetadata `json:"pagination"`
+			Domains    []dto.Domain        `json:"domains"`
 		}{
 			Domains:    dto.DomainsToAPI(result.Domains),
 			Pagination: &paginationMetadata,
@@ -71,7 +78,12 @@ type domainsSearchQueryResult struct {
 	TotalCount int64
 }
 
-func (app *Server) executeSearchQuery(ctx context.Context, tenantID pgtype.Int4, filter string, limit, offset int32) (domainsSearchQueryResult, error) {
+func (app *Server) executeSearchQuery(
+	ctx context.Context,
+	tenantID pgtype.Int4,
+	filter string,
+	limit, offset int32,
+) (domainsSearchQueryResult, error) {
 	rows, err := app.Db.DomainsSearchByName(ctx, store.DomainsSearchByNameParams{
 		TenantID: tenantID,
 		Name:     "%" + filter + "%",
@@ -94,7 +106,11 @@ func (app *Server) executeSearchQuery(ctx context.Context, tenantID pgtype.Int4,
 }
 
 // Helper function for list query
-func (app *Server) executeListQuery(ctx context.Context, tenantID pgtype.Int4, limit, offset int32) (domainsSearchQueryResult, error) {
+func (app *Server) executeListQuery(
+	ctx context.Context,
+	tenantID pgtype.Int4,
+	limit, offset int32,
+) (domainsSearchQueryResult, error) {
 	rows, err := app.Db.DomainsListByTenantID(ctx, store.DomainsListByTenantIDParams{
 		TenantID: tenantID,
 		Limit:    limit,

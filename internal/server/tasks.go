@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielmichaels/gecko/internal/jobs"
 	"github.com/danielmichaels/gecko/internal/store"
@@ -16,6 +17,9 @@ func (app *Server) scheduleDomainJobs(ctx context.Context, domain store.Domains)
 		return nil
 	}
 	tx, err := app.PgxPool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
 	defer func(tx pgx.Tx, ctx context.Context) {
 		_ = tx.Rollback(ctx)
 	}(tx, ctx)
@@ -25,7 +29,17 @@ func (app *Server) scheduleDomainJobs(ctx context.Context, domain store.Domains)
 		Domain: domain.Name,
 	}, nil)
 	if err != nil {
-		app.Log.Error("failed to schedule scan", "error", err, "domain", domain.Name, "domain_id", domain.Uid, "job_kind", jobs.ScanNewDomainArgs{}.Kind())
+		app.Log.Error(
+			"failed to schedule scan",
+			"error",
+			err,
+			"domain",
+			domain.Name,
+			"domain_id",
+			domain.Uid,
+			"job_kind",
+			jobs.ScanNewDomainArgs{}.Kind(),
+		)
 		return huma.Error500InternalServerError("failed to schedule scan", err)
 	}
 
@@ -35,7 +49,17 @@ func (app *Server) scheduleDomainJobs(ctx context.Context, domain store.Domains)
 		Concurrency: app.Conf.AppConf.EnumerationConcurrencyLimit,
 	}, nil)
 	if err != nil {
-		app.Log.Error("failed to schedule scan", "error", err, "domain", domain.Name, "domain_id", domain.Uid, "job_kind", jobs.ScanNewDomainArgs{}.Kind())
+		app.Log.Error(
+			"failed to schedule scan",
+			"error",
+			err,
+			"domain",
+			domain.Name,
+			"domain_id",
+			domain.Uid,
+			"job_kind",
+			jobs.ScanNewDomainArgs{}.Kind(),
+		)
 		return huma.Error500InternalServerError("failed to schedule scan", err)
 	}
 

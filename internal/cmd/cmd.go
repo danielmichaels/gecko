@@ -3,13 +3,14 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"github.com/danielgtaylor/huma/v2"
 	"io"
 	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
+
+	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/alecthomas/kong"
 
@@ -169,7 +170,7 @@ func handleHumaError(apiErr huma.ErrorModel) error {
 				e.Message, e.Location, e.Value)
 		}
 	}
-	return fmt.Errorf(msg)
+	return fmt.Errorf("%v", msg)
 }
 
 // HandleRequestError provides consistent error messages for CLI commands

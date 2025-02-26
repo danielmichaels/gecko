@@ -2,8 +2,9 @@ package jobs
 
 import (
 	"context"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"log/slog"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/danielmichaels/gecko/internal/assessor"
 	"github.com/danielmichaels/gecko/internal/store"

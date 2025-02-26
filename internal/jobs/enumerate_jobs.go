@@ -253,7 +253,15 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 				if err != nil {
 					return err
 				}
-				w.Logger.Debug("found AAAA record", "ipv6", aaaa.Ipv6Address, "uid", aaaa.Uid, "domain", d.Name)
+				w.Logger.Debug(
+					"found AAAA record",
+					"ipv6",
+					aaaa.Ipv6Address,
+					"uid",
+					aaaa.Uid,
+					"domain",
+					d.Name,
+				)
 
 			case "CNAME":
 				cname, err := w.Store.RecordsCreateCNAME(ctx, store.RecordsCreateCNAMEParams{
@@ -263,7 +271,15 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 				if err != nil {
 					return err
 				}
-				w.Logger.Debug("found CNAME record", "target", cname.Target, "uid", cname.Uid, "domain", d.Name)
+				w.Logger.Debug(
+					"found CNAME record",
+					"target",
+					cname.Target,
+					"uid",
+					cname.Uid,
+					"domain",
+					d.Name,
+				)
 
 			case "MX":
 				mv, err := dnsrecords.ParseMX(d.Name, entry)
@@ -288,7 +304,15 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 				if err != nil {
 					return err
 				}
-				w.Logger.Debug("found TXT record", "value", txt.Value, "uid", txt.Uid, "domain", d.Name)
+				w.Logger.Debug(
+					"found TXT record",
+					"value",
+					txt.Value,
+					"uid",
+					txt.Uid,
+					"domain",
+					d.Name,
+				)
 
 			case "NS":
 				ns, err := w.Store.RecordsCreateNS(ctx, store.RecordsCreateNSParams{
@@ -298,7 +322,15 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 				if err != nil {
 					return err
 				}
-				w.Logger.Debug("found NS record", "nameserver", ns.Nameserver, "uid", ns.Uid, "domain", d.Name)
+				w.Logger.Debug(
+					"found NS record",
+					"nameserver",
+					ns.Nameserver,
+					"uid",
+					ns.Uid,
+					"domain",
+					d.Name,
+				)
 
 			case "PTR":
 				ptr, err := w.Store.RecordsCreatePTR(ctx, store.RecordsCreatePTRParams{
@@ -308,7 +340,15 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 				if err != nil {
 					return err
 				}
-				w.Logger.Debug("found PTR record", "target", ptr.Target, "uid", ptr.Uid, "domain", d.Name)
+				w.Logger.Debug(
+					"found PTR record",
+					"target",
+					ptr.Target,
+					"uid",
+					ptr.Uid,
+					"domain",
+					d.Name,
+				)
 
 			case "SRV":
 				sv, err := dnsrecords.ParseSRV(d.Name, entry)
@@ -357,7 +397,15 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 				if err != nil {
 					return err
 				}
-				w.Logger.Debug("found DNSKEY record", "record", dnskey, "uid", dnskey.Uid, "domain", d.Name)
+				w.Logger.Debug(
+					"found DNSKEY record",
+					"record",
+					dnskey,
+					"uid",
+					dnskey.Uid,
+					"domain",
+					d.Name,
+				)
 
 			case "SOA":
 				sv, err := dnsrecords.ParseSOARecord(d.Name, entry)
@@ -417,7 +465,15 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 				if err != nil {
 					return err
 				}
-				w.Logger.Debug("found RRSIG record", "record", rrsig, "uid", rrsig.Uid, "domain", d.Name)
+				w.Logger.Debug(
+					"found RRSIG record",
+					"record",
+					rrsig,
+					"uid",
+					rrsig.Uid,
+					"domain",
+					d.Name,
+				)
 			}
 		}
 	}

@@ -46,7 +46,11 @@ type PaginationMetadata struct {
 	Count      int32 `json:"count"   example:"14" doc:"Item count for the current page."`
 }
 
-func NewPaginationMetadata(totalCount int64, pageSize, pageNumber int32, currentPageCount int32) PaginationMetadata {
+func NewPaginationMetadata(
+	totalCount int64,
+	pageSize, pageNumber int32,
+	currentPageCount int32,
+) PaginationMetadata {
 	totalPages := int32(1)
 	if totalCount > 0 {
 		totalPages = int32((totalCount + int64(pageSize) - 1) / int64(pageSize))

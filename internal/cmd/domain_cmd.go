@@ -3,8 +3,9 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/danielgtaylor/huma/v2"
 	"net/http"
+
+	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/carlmjohnson/requests"
 	"github.com/danielmichaels/gecko/internal/dto"

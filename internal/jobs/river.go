@@ -51,16 +51,37 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 	rw := river.NewWorkers()
 	if cfg.AddWorkers {
 		// special case: scan orchestrator
-		river.AddWorker(rw, &ScanNewDomainWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool})
+		river.AddWorker(
+			rw,
+			&ScanNewDomainWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},
+		)
 		// scan workers
 		river.AddWorker(rw, &EnumerateSubdomainWorker{Logger: *cfg.Logger, PgxPool: cfg.PgxPool})
-		river.AddWorker(rw, &ResolveDomainWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool})
-		river.AddWorker(rw, &ScanCertificateWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool})
-		river.AddWorker(rw, &ScanCNAMEWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool})
-		river.AddWorker(rw, &ScanDNSSECWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool})
-		river.AddWorker(rw, &ScanZoneTransferWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool})
+		river.AddWorker(
+			rw,
+			&ResolveDomainWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},
+		)
+		river.AddWorker(
+			rw,
+			&ScanCertificateWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},
+		)
+		river.AddWorker(
+			rw,
+			&ScanCNAMEWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},
+		)
+		river.AddWorker(
+			rw,
+			&ScanDNSSECWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},
+		)
+		river.AddWorker(
+			rw,
+			&ScanZoneTransferWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},
+		)
 		// assess workers
-		river.AddWorker(rw, &AssessCNAMEDanglingWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool})
+		river.AddWorker(
+			rw,
+			&AssessCNAMEDanglingWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},
+		)
 		riverConfig.Workers = rw
 		riverConfig.MaxAttempts = 5
 		riverConfig.Queues = map[string]river.QueueConfig{

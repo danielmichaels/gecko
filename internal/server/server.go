@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,6 +12,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/danielmichaels/gecko/internal/config"
 	"github.com/danielmichaels/gecko/internal/store"
@@ -31,7 +32,13 @@ type Server struct {
 	RC      *river.Client[pgx.Tx]
 }
 
-func New(c *config.Conf, l *slog.Logger, db *store.Queries, pgxPool *pgxpool.Pool, RC *river.Client[pgx.Tx]) *Server {
+func New(
+	c *config.Conf,
+	l *slog.Logger,
+	db *store.Queries,
+	pgxPool *pgxpool.Pool,
+	RC *river.Client[pgx.Tx],
+) *Server {
 	return &Server{Conf: c, Log: l, Db: db, RC: RC, PgxPool: pgxPool}
 }
 
