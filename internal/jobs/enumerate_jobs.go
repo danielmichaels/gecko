@@ -39,16 +39,18 @@ type EnumerateSubdomainWorker struct {
 func (w *EnumerateSubdomainWorker) Work(
 	ctx context.Context,
 	job *river.Job[EnumerateSubdomainArgs],
-) error {
+) (enumErr error) {
 	dnsClient := dnsclient.NewDNSClient()
 	tx, err := w.PgxPool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
 	defer func(tx pgx.Tx, ctx context.Context) {
-		err := tx.Rollback(ctx)
-		if err != nil {
-			w.Logger.Error("transaction rollback", "error", err)
+		if enumErr != nil {
+			err := tx.Rollback(ctx)
+			if err != nil {
+				w.Logger.Error("transaction rollback", "error", err)
+			}
 		}
 	}(tx, ctx)
 
@@ -59,6 +61,7 @@ func (w *EnumerateSubdomainWorker) Work(
 		job.Args.Domain,
 		job.Args.Concurrency,
 		func(entry *resolve.HostEntry) {
+			w.Logger.Info("enumerate_subdomain", "host", entry.Host)
 			_, err := rc.InsertTx(ctx, tx, ResolveDomainArgs{
 				Domain: entry.Host,
 			}, nil)
@@ -71,7 +74,11 @@ func (w *EnumerateSubdomainWorker) Work(
 		return fmt.Errorf("enumerate subdomains: %w", err)
 	}
 
-	return tx.Commit(ctx)
+	err = tx.Commit(ctx)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 type ResolveDomainArgs struct {
