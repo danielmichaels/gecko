@@ -233,9 +233,9 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 			continue
 		}
 		// exit early on NXDOMAIN
-		if r.Rcode == dns.RcodeNameError {
+		if r.Rcode == dns.RcodeNameError || r.Rcode == dns.RcodeServerFailure {
 			c.logger.Debug(
-				"rcode NXDOMAIN",
+				"rcode acceptable failure",
 				"target", target,
 				"qtype", QTypeToString[qtype],
 				"server", server,
