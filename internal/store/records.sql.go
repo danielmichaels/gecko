@@ -490,44 +490,70 @@ func (q *Queries) RecordsCreateTXT(ctx context.Context, arg RecordsCreateTXTPara
 	return i, err
 }
 
-const recordsGetAAAAByDomainID = `-- name: RecordsGetAAAAByDomainID :one
+const recordsGetAAAAByDomainID = `-- name: RecordsGetAAAAByDomainID :many
 SELECT id, uid, domain_id, ipv6_address, created_at, updated_at
 FROM aaaa_records
 WHERE domain_id = $1
 `
 
-func (q *Queries) RecordsGetAAAAByDomainID(ctx context.Context, domainID pgtype.Int4) (AaaaRecords, error) {
-	row := q.db.QueryRow(ctx, recordsGetAAAAByDomainID, domainID)
-	var i AaaaRecords
-	err := row.Scan(
-		&i.ID,
-		&i.Uid,
-		&i.DomainID,
-		&i.Ipv6Address,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
+func (q *Queries) RecordsGetAAAAByDomainID(ctx context.Context, domainID pgtype.Int4) ([]AaaaRecords, error) {
+	rows, err := q.db.Query(ctx, recordsGetAAAAByDomainID, domainID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AaaaRecords{}
+	for rows.Next() {
+		var i AaaaRecords
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.Ipv6Address,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-const recordsGetAByDomainID = `-- name: RecordsGetAByDomainID :one
+const recordsGetAByDomainID = `-- name: RecordsGetAByDomainID :many
 SELECT id, uid, domain_id, ipv4_address, created_at, updated_at
 FROM a_records
 WHERE domain_id = $1
 `
 
-func (q *Queries) RecordsGetAByDomainID(ctx context.Context, domainID pgtype.Int4) (ARecords, error) {
-	row := q.db.QueryRow(ctx, recordsGetAByDomainID, domainID)
-	var i ARecords
-	err := row.Scan(
-		&i.ID,
-		&i.Uid,
-		&i.DomainID,
-		&i.Ipv4Address,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
+func (q *Queries) RecordsGetAByDomainID(ctx context.Context, domainID pgtype.Int4) ([]ARecords, error) {
+	rows, err := q.db.Query(ctx, recordsGetAByDomainID, domainID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ARecords{}
+	for rows.Next() {
+		var i ARecords
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.Ipv4Address,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const recordsGetAllByDomainID = `-- name: RecordsGetAllByDomainID :many
@@ -683,7 +709,7 @@ func (q *Queries) RecordsGetAllByDomainID(ctx context.Context, arg RecordsGetAll
 	return items, nil
 }
 
-const recordsGetCAAByDomainID = `-- name: RecordsGetCAAByDomainID :one
+const recordsGetCAAByDomainID = `-- name: RecordsGetCAAByDomainID :many
 SELECT id,
        uid,
        domain_id,
@@ -696,43 +722,69 @@ FROM caa_records
 WHERE domain_id = $1
 `
 
-func (q *Queries) RecordsGetCAAByDomainID(ctx context.Context, domainID pgtype.Int4) (CaaRecords, error) {
-	row := q.db.QueryRow(ctx, recordsGetCAAByDomainID, domainID)
-	var i CaaRecords
-	err := row.Scan(
-		&i.ID,
-		&i.Uid,
-		&i.DomainID,
-		&i.Flags,
-		&i.Tag,
-		&i.Value,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
+func (q *Queries) RecordsGetCAAByDomainID(ctx context.Context, domainID pgtype.Int4) ([]CaaRecords, error) {
+	rows, err := q.db.Query(ctx, recordsGetCAAByDomainID, domainID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CaaRecords{}
+	for rows.Next() {
+		var i CaaRecords
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.Flags,
+			&i.Tag,
+			&i.Value,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-const recordsGetCNAMEByDomainID = `-- name: RecordsGetCNAMEByDomainID :one
+const recordsGetCNAMEByDomainID = `-- name: RecordsGetCNAMEByDomainID :many
 SELECT id, uid, domain_id, target, created_at, updated_at
 FROM cname_records
 WHERE domain_id = $1
 `
 
-func (q *Queries) RecordsGetCNAMEByDomainID(ctx context.Context, domainID pgtype.Int4) (CnameRecords, error) {
-	row := q.db.QueryRow(ctx, recordsGetCNAMEByDomainID, domainID)
-	var i CnameRecords
-	err := row.Scan(
-		&i.ID,
-		&i.Uid,
-		&i.DomainID,
-		&i.Target,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
+func (q *Queries) RecordsGetCNAMEByDomainID(ctx context.Context, domainID pgtype.Int4) ([]CnameRecords, error) {
+	rows, err := q.db.Query(ctx, recordsGetCNAMEByDomainID, domainID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CnameRecords{}
+	for rows.Next() {
+		var i CnameRecords
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.Target,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-const recordsGetDNSKEYByDomainID = `-- name: RecordsGetDNSKEYByDomainID :one
+const recordsGetDNSKEYByDomainID = `-- name: RecordsGetDNSKEYByDomainID :many
 SELECT id,
        uid,
        domain_id,
@@ -746,21 +798,34 @@ FROM dnskey_records
 WHERE domain_id = $1
 `
 
-func (q *Queries) RecordsGetDNSKEYByDomainID(ctx context.Context, domainID pgtype.Int4) (DnskeyRecords, error) {
-	row := q.db.QueryRow(ctx, recordsGetDNSKEYByDomainID, domainID)
-	var i DnskeyRecords
-	err := row.Scan(
-		&i.ID,
-		&i.Uid,
-		&i.DomainID,
-		&i.PublicKey,
-		&i.Flags,
-		&i.Protocol,
-		&i.Algorithm,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
+func (q *Queries) RecordsGetDNSKEYByDomainID(ctx context.Context, domainID pgtype.Int4) ([]DnskeyRecords, error) {
+	rows, err := q.db.Query(ctx, recordsGetDNSKEYByDomainID, domainID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DnskeyRecords{}
+	for rows.Next() {
+		var i DnskeyRecords
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.PublicKey,
+			&i.Flags,
+			&i.Protocol,
+			&i.Algorithm,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const recordsGetDNSSECByDomainID = `-- name: RecordsGetDNSSECByDomainID :many
@@ -826,7 +891,7 @@ func (q *Queries) RecordsGetDNSSECByDomainID(ctx context.Context, id int32) ([]R
 	return items, nil
 }
 
-const recordsGetDSByDomainID = `-- name: RecordsGetDSByDomainID :one
+const recordsGetDSByDomainID = `-- name: RecordsGetDSByDomainID :many
 SELECT id,
        uid,
        domain_id,
@@ -840,86 +905,138 @@ FROM ds_records
 WHERE domain_id = $1
 `
 
-func (q *Queries) RecordsGetDSByDomainID(ctx context.Context, domainID pgtype.Int4) (DsRecords, error) {
-	row := q.db.QueryRow(ctx, recordsGetDSByDomainID, domainID)
-	var i DsRecords
-	err := row.Scan(
-		&i.ID,
-		&i.Uid,
-		&i.DomainID,
-		&i.KeyTag,
-		&i.Algorithm,
-		&i.DigestType,
-		&i.Digest,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
+func (q *Queries) RecordsGetDSByDomainID(ctx context.Context, domainID pgtype.Int4) ([]DsRecords, error) {
+	rows, err := q.db.Query(ctx, recordsGetDSByDomainID, domainID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DsRecords{}
+	for rows.Next() {
+		var i DsRecords
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.KeyTag,
+			&i.Algorithm,
+			&i.DigestType,
+			&i.Digest,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-const recordsGetMXByDomainID = `-- name: RecordsGetMXByDomainID :one
+const recordsGetMXByDomainID = `-- name: RecordsGetMXByDomainID :many
 SELECT id, uid, domain_id, preference, target, created_at, updated_at
 FROM mx_records
 WHERE domain_id = $1
 ORDER BY preference
 `
 
-func (q *Queries) RecordsGetMXByDomainID(ctx context.Context, domainID pgtype.Int4) (MxRecords, error) {
-	row := q.db.QueryRow(ctx, recordsGetMXByDomainID, domainID)
-	var i MxRecords
-	err := row.Scan(
-		&i.ID,
-		&i.Uid,
-		&i.DomainID,
-		&i.Preference,
-		&i.Target,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
+func (q *Queries) RecordsGetMXByDomainID(ctx context.Context, domainID pgtype.Int4) ([]MxRecords, error) {
+	rows, err := q.db.Query(ctx, recordsGetMXByDomainID, domainID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MxRecords{}
+	for rows.Next() {
+		var i MxRecords
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.Preference,
+			&i.Target,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-const recordsGetNSByDomainID = `-- name: RecordsGetNSByDomainID :one
+const recordsGetNSByDomainID = `-- name: RecordsGetNSByDomainID :many
 SELECT id, uid, domain_id, nameserver, created_at, updated_at
 FROM ns_records
 WHERE domain_id = $1
 `
 
-func (q *Queries) RecordsGetNSByDomainID(ctx context.Context, domainID pgtype.Int4) (NsRecords, error) {
-	row := q.db.QueryRow(ctx, recordsGetNSByDomainID, domainID)
-	var i NsRecords
-	err := row.Scan(
-		&i.ID,
-		&i.Uid,
-		&i.DomainID,
-		&i.Nameserver,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
+func (q *Queries) RecordsGetNSByDomainID(ctx context.Context, domainID pgtype.Int4) ([]NsRecords, error) {
+	rows, err := q.db.Query(ctx, recordsGetNSByDomainID, domainID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []NsRecords{}
+	for rows.Next() {
+		var i NsRecords
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.Nameserver,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-const recordsGetPTRByDomainID = `-- name: RecordsGetPTRByDomainID :one
+const recordsGetPTRByDomainID = `-- name: RecordsGetPTRByDomainID :many
 SELECT id, uid, domain_id, target, created_at, updated_at
 FROM ptr_records
 WHERE domain_id = $1
 `
 
-func (q *Queries) RecordsGetPTRByDomainID(ctx context.Context, domainID pgtype.Int4) (PtrRecords, error) {
-	row := q.db.QueryRow(ctx, recordsGetPTRByDomainID, domainID)
-	var i PtrRecords
-	err := row.Scan(
-		&i.ID,
-		&i.Uid,
-		&i.DomainID,
-		&i.Target,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
+func (q *Queries) RecordsGetPTRByDomainID(ctx context.Context, domainID pgtype.Int4) ([]PtrRecords, error) {
+	rows, err := q.db.Query(ctx, recordsGetPTRByDomainID, domainID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PtrRecords{}
+	for rows.Next() {
+		var i PtrRecords
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.Target,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-const recordsGetRRSIGByDomainID = `-- name: RecordsGetRRSIGByDomainID :one
+const recordsGetRRSIGByDomainID = `-- name: RecordsGetRRSIGByDomainID :many
 SELECT id,
        uid,
        domain_id,
@@ -938,29 +1055,42 @@ FROM rrsig_records
 WHERE domain_id = $1
 `
 
-func (q *Queries) RecordsGetRRSIGByDomainID(ctx context.Context, domainID pgtype.Int4) (RrsigRecords, error) {
-	row := q.db.QueryRow(ctx, recordsGetRRSIGByDomainID, domainID)
-	var i RrsigRecords
-	err := row.Scan(
-		&i.ID,
-		&i.Uid,
-		&i.DomainID,
-		&i.TypeCovered,
-		&i.Algorithm,
-		&i.Labels,
-		&i.OriginalTtl,
-		&i.Expiration,
-		&i.Inception,
-		&i.KeyTag,
-		&i.SignerName,
-		&i.Signature,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
+func (q *Queries) RecordsGetRRSIGByDomainID(ctx context.Context, domainID pgtype.Int4) ([]RrsigRecords, error) {
+	rows, err := q.db.Query(ctx, recordsGetRRSIGByDomainID, domainID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RrsigRecords{}
+	for rows.Next() {
+		var i RrsigRecords
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.TypeCovered,
+			&i.Algorithm,
+			&i.Labels,
+			&i.OriginalTtl,
+			&i.Expiration,
+			&i.Inception,
+			&i.KeyTag,
+			&i.SignerName,
+			&i.Signature,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-const recordsGetSOAByDomainID = `-- name: RecordsGetSOAByDomainID :one
+const recordsGetSOAByDomainID = `-- name: RecordsGetSOAByDomainID :many
 SELECT id,
        uid,
        domain_id,
@@ -977,27 +1107,40 @@ FROM soa_records
 WHERE domain_id = $1
 `
 
-func (q *Queries) RecordsGetSOAByDomainID(ctx context.Context, domainID pgtype.Int4) (SoaRecords, error) {
-	row := q.db.QueryRow(ctx, recordsGetSOAByDomainID, domainID)
-	var i SoaRecords
-	err := row.Scan(
-		&i.ID,
-		&i.Uid,
-		&i.DomainID,
-		&i.Nameserver,
-		&i.Email,
-		&i.Serial,
-		&i.Refresh,
-		&i.Retry,
-		&i.Expire,
-		&i.MinimumTtl,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
+func (q *Queries) RecordsGetSOAByDomainID(ctx context.Context, domainID pgtype.Int4) ([]SoaRecords, error) {
+	rows, err := q.db.Query(ctx, recordsGetSOAByDomainID, domainID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SoaRecords{}
+	for rows.Next() {
+		var i SoaRecords
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.Nameserver,
+			&i.Email,
+			&i.Serial,
+			&i.Refresh,
+			&i.Retry,
+			&i.Expire,
+			&i.MinimumTtl,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-const recordsGetSRVByDomainID = `-- name: RecordsGetSRVByDomainID :one
+const recordsGetSRVByDomainID = `-- name: RecordsGetSRVByDomainID :many
 SELECT id,
        uid,
        domain_id,
@@ -1012,39 +1155,65 @@ WHERE domain_id = $1
 ORDER BY priority, weight
 `
 
-func (q *Queries) RecordsGetSRVByDomainID(ctx context.Context, domainID pgtype.Int4) (SrvRecords, error) {
-	row := q.db.QueryRow(ctx, recordsGetSRVByDomainID, domainID)
-	var i SrvRecords
-	err := row.Scan(
-		&i.ID,
-		&i.Uid,
-		&i.DomainID,
-		&i.Target,
-		&i.Port,
-		&i.Weight,
-		&i.Priority,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
+func (q *Queries) RecordsGetSRVByDomainID(ctx context.Context, domainID pgtype.Int4) ([]SrvRecords, error) {
+	rows, err := q.db.Query(ctx, recordsGetSRVByDomainID, domainID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SrvRecords{}
+	for rows.Next() {
+		var i SrvRecords
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.Target,
+			&i.Port,
+			&i.Weight,
+			&i.Priority,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-const recordsGetTXTByDomainID = `-- name: RecordsGetTXTByDomainID :one
+const recordsGetTXTByDomainID = `-- name: RecordsGetTXTByDomainID :many
 SELECT id, uid, domain_id, value, created_at, updated_at
 FROM txt_records
 WHERE domain_id = $1
 `
 
-func (q *Queries) RecordsGetTXTByDomainID(ctx context.Context, domainID pgtype.Int4) (TxtRecords, error) {
-	row := q.db.QueryRow(ctx, recordsGetTXTByDomainID, domainID)
-	var i TxtRecords
-	err := row.Scan(
-		&i.ID,
-		&i.Uid,
-		&i.DomainID,
-		&i.Value,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
+func (q *Queries) RecordsGetTXTByDomainID(ctx context.Context, domainID pgtype.Int4) ([]TxtRecords, error) {
+	rows, err := q.db.Query(ctx, recordsGetTXTByDomainID, domainID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TxtRecords{}
+	for rows.Next() {
+		var i TxtRecords
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.Value,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

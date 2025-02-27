@@ -147,4 +147,15 @@ func (app *Server) registerEndpoints(api huma.API) {
 		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
 		Middlewares:   huma.Middlewares{ApiKeyAuth(api)},
 	}, app.handleDomainDelete)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "list_records",
+		Method:        http.MethodGet,
+		Path:          "/api/domains/{id}/records",
+		Summary:       "List a domains DNS records",
+		Tags:          []string{"Records"},
+		DefaultStatus: http.StatusOK,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{ApiKeyAuth(api)},
+	}, app.handleRecordsList)
 }

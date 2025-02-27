@@ -6,7 +6,7 @@ ON CONFLICT (domain_id, ipv4_address)
     DO UPDATE SET updated_at = NOW()
 RETURNING id, uid, domain_id, ipv4_address, created_at, updated_at;
 
--- name: RecordsGetAByDomainID :one
+-- name: RecordsGetAByDomainID :many
 SELECT id, uid, domain_id, ipv4_address, created_at, updated_at
 FROM a_records
 WHERE domain_id = $1;
@@ -19,7 +19,7 @@ ON CONFLICT (domain_id, ipv6_address)
     DO UPDATE SET updated_at = NOW()
 RETURNING id, uid, domain_id, ipv6_address, created_at, updated_at;
 
--- name: RecordsGetAAAAByDomainID :one
+-- name: RecordsGetAAAAByDomainID :many
 SELECT id, uid, domain_id, ipv6_address, created_at, updated_at
 FROM aaaa_records
 WHERE domain_id = $1;
@@ -33,7 +33,7 @@ ON CONFLICT (domain_id, preference, target)
 RETURNING id, uid, domain_id, preference, target, created_at, updated_at;
 
 
--- name: RecordsGetMXByDomainID :one
+-- name: RecordsGetMXByDomainID :many
 SELECT id, uid, domain_id, preference, target, created_at, updated_at
 FROM mx_records
 WHERE domain_id = $1
@@ -47,7 +47,7 @@ ON CONFLICT (domain_id, value)
     DO UPDATE SET updated_at = NOW()
 RETURNING id, uid, domain_id, value, created_at, updated_at;;
 
--- name: RecordsGetTXTByDomainID :one
+-- name: RecordsGetTXTByDomainID :many
 SELECT id, uid, domain_id, value, created_at, updated_at
 FROM txt_records
 WHERE domain_id = $1;
@@ -60,7 +60,7 @@ ON CONFLICT (domain_id, nameserver)
     DO UPDATE SET updated_at = NOW()
 RETURNING id, uid, domain_id, nameserver, created_at, updated_at;
 
--- name: RecordsGetNSByDomainID :one
+-- name: RecordsGetNSByDomainID :many
 SELECT id, uid, domain_id, nameserver, created_at, updated_at
 FROM ns_records
 WHERE domain_id = $1;
@@ -73,7 +73,7 @@ ON CONFLICT (domain_id, target)
     DO UPDATE SET updated_at = NOW()
 RETURNING id, uid, domain_id, target, created_at, updated_at;
 
--- name: RecordsGetCNAMEByDomainID :one
+-- name: RecordsGetCNAMEByDomainID :many
 SELECT id, uid, domain_id, target, created_at, updated_at
 FROM cname_records
 WHERE domain_id = $1;
@@ -86,7 +86,7 @@ ON CONFLICT (domain_id, target)
     DO UPDATE SET updated_at = NOW()
 RETURNING id, uid, domain_id, target, created_at, updated_at;
 
--- name: RecordsGetPTRByDomainID :one
+-- name: RecordsGetPTRByDomainID :many
 SELECT id, uid, domain_id, target, created_at, updated_at
 FROM ptr_records
 WHERE domain_id = $1;
@@ -100,7 +100,7 @@ ON CONFLICT (domain_id, target, port, priority)
 RETURNING id, uid, domain_id, target, port, weight, priority, created_at, updated_at;
 
 
--- name: RecordsGetSRVByDomainID :one
+-- name: RecordsGetSRVByDomainID :many
 SELECT id,
        uid,
        domain_id,
@@ -128,7 +128,7 @@ ON CONFLICT (domain_id)
                   updated_at  = NOW()
 RETURNING id, uid, domain_id, nameserver, email, serial, refresh, retry, expire, minimum_ttl, created_at, updated_at;
 
--- name: RecordsGetSOAByDomainID :one
+-- name: RecordsGetSOAByDomainID :many
 SELECT id,
        uid,
        domain_id,
@@ -154,7 +154,7 @@ ON CONFLICT (domain_id, public_key)
                   updated_at = NOW()
 RETURNING id, uid, domain_id, public_key, flags, protocol, algorithm, created_at, updated_at;
 
--- name: RecordsGetDNSKEYByDomainID :one
+-- name: RecordsGetDNSKEYByDomainID :many
 SELECT id,
        uid,
        domain_id,
@@ -178,7 +178,7 @@ ON CONFLICT (domain_id, digest)
                   updated_at  = NOW()
 RETURNING id, uid, domain_id, key_tag, algorithm, digest_type, digest, created_at, updated_at;
 
--- name: RecordsGetDSByDomainID :one
+-- name: RecordsGetDSByDomainID :many
 SELECT id,
        uid,
        domain_id,
@@ -207,7 +207,7 @@ ON CONFLICT (domain_id, type_covered, signer_name)
                   updated_at   = NOW()
 RETURNING id, uid, domain_id, type_covered, algorithm, labels, original_ttl, expiration, inception, key_tag, signer_name, signature, created_at, updated_at;
 
--- name: RecordsGetRRSIGByDomainID :one
+-- name: RecordsGetRRSIGByDomainID :many
 SELECT id,
        uid,
        domain_id,
@@ -307,7 +307,7 @@ ON CONFLICT (domain_id, tag, value)
                   updated_at = NOW()
 RETURNING id, uid, domain_id, flags, tag, value, created_at, updated_at;
 
--- name: RecordsGetCAAByDomainID :one
+-- name: RecordsGetCAAByDomainID :many
 SELECT id,
        uid,
        domain_id,
