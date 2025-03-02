@@ -3,9 +3,9 @@ package jobs
 import (
 	"context"
 	"fmt"
-	"log/slog"
-
 	"github.com/jackc/pgx/v5/pgtype"
+	"log/slog"
+	"time"
 
 	"github.com/danielmichaels/gecko/internal/dnsclient"
 	"github.com/danielmichaels/gecko/internal/dnsrecords"
@@ -34,6 +34,10 @@ type EnumerateSubdomainWorker struct {
 	river.WorkerDefaults[EnumerateSubdomainArgs]
 	Logger  slog.Logger
 	PgxPool *pgxpool.Pool
+}
+
+func (w *EnumerateSubdomainWorker) Timeout(*river.Job[EnumerateSubdomainArgs]) time.Duration {
+	return 5 * time.Minute
 }
 
 func (w *EnumerateSubdomainWorker) Work(
