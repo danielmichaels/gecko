@@ -3,8 +3,9 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/danielmichaels/gecko/internal/server"
 	"net/http"
+
+	"github.com/danielmichaels/gecko/internal/server"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -15,11 +16,11 @@ import (
 // FIXME: this needs auth with server but for now is unauthenticated
 type DomainCmd struct {
 	Add     AddDomainCmd     `cmd:"" help:"Add a new domain. Duplicate domains are ignored. Use 'domain scan <domainID>' to re-scan a previously added domain"`
-	Get     DomainGetCmd     `cmd:"" help:"Get a domain by ID"`
 	Update  UpdateDomainCmd  `cmd:"" help:"Update a domain by ID"`
+	Records DomainRecordsCmd `cmd:"" help:"List all domain records for a domain"`
+	Get     DomainGetCmd     `cmd:"" help:"Get a domain by ID"`
 	Remove  RemoveDomainCmd  `cmd:"" help:"Remove a domain"`
 	List    ListDomainCmd    `cmd:"" help:"List all domains"`
-	Records DomainRecordsCmd `cmd:"" help:"List all domain records for a domain"`
 	Verbose bool             `help:"Increase verbosity (shows logs)" default:"false"`
 }
 
@@ -179,9 +180,9 @@ func (d *RemoveDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 }
 
 type ListDomainCmd struct {
+	Search   string `help:"Domain search term" example:"tesla.com" default:""`
 	Page     int    `help:"Page number to retrieve" default:"1"`
 	PageSize int    `help:"Number of items per page" default:"20"`
-	Search   string `help:"Domain search term" example:"tesla.com" default:""`
 }
 
 func (d *ListDomainCmd) Run(g *Globals, dc *DomainCmd) error {
@@ -200,7 +201,7 @@ func (d *ListDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 		URL(g.ServerURL+"/api/domains").
 		Param("page", fmt.Sprintf("%d", d.Page)).
 		Param("page_size", fmt.Sprintf("%d", d.PageSize)).
-		Param("name", fmt.Sprintf("%s", d.Search)).
+		Param("name", d.Search).
 		ToJSON(&domains).
 		ErrorJSON(&apiErr).
 		Fetch(ctx); err != nil {
@@ -254,7 +255,7 @@ func (d *DomainRecordsCmd) Run(g *Globals, dc *DomainCmd) error {
 
 	err := requests.
 		URL(g.ServerURL+"/api/domains/"+d.DomainID+"/records").
-		Param("qtype", fmt.Sprintf("%s", d.QType)).
+		Param("qtype", d.QType).
 		ToJSON(&recordsResp).
 		ErrorJSON(&apiErr).
 		Fetch(ctx)

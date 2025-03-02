@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/danielmichaels/gecko/internal/dto"
 	"reflect"
 	"strings"
+
+	"github.com/danielmichaels/gecko/internal/dto"
 
 	"github.com/olekukonko/tablewriter"
 )
@@ -448,7 +449,15 @@ func printRRSIGRecordsTable(records []dto.RRSIGRecord) {
 	}
 
 	fmt.Println("RRSIG Records:")
-	headers := []string{"ID", "Type Covered", "Algorithm", "Labels", "Key Tag", "Signer", "Created At"}
+	headers := []string{
+		"ID",
+		"Type Covered",
+		"Algorithm",
+		"Labels",
+		"Key Tag",
+		"Signer",
+		"Created At",
+	}
 	rows := make([][]string, 0, len(records))
 
 	for _, r := range records {
