@@ -33,9 +33,9 @@ type CLI struct {
 	cmd.Globals
 
 	Version VersionFlag   `       help:"Print version information and quit" short:"v" name:"version"`
-	Domain  cmd.DomainCmd `cmd:"" help:"Run domain operations"`
-	Serve   cmd.ServeCmd  `cmd:"" help:"Run server"`
-	Worker  cmd.WorkerCmd `cmd:"" help:"Run jobs worker"`
+	Domain  cmd.DomainCmd `cmd:"" help:"Domain commands and operations"`
+	Serve   cmd.ServeCmd  `cmd:"" help:"Run a server instance"`
+	Worker  cmd.WorkerCmd `cmd:"" help:"Run a job worker"`
 }
 
 func run() error {
@@ -91,7 +91,6 @@ func initialiseConfigFile(configPath, configFileName string, globals cmd.Globals
 		return err
 	}
 	fd := FileData{globals}
-	// tfile, err := os.ReadFile("./zarf/files/default_config.yaml")
 	tfile, err := assets.EmbeddedAssets.ReadFile("files/default_config.yaml")
 	if err != nil {
 		return err

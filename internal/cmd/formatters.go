@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/danielmichaels/gecko/internal/dto"
 	"reflect"
 	"strings"
 
@@ -100,4 +101,369 @@ var formatters = map[string]Formatter{
 func formatOutput(v any, format string) string {
 	formatter := formatters[format]
 	return formatter.Output(v)
+}
+
+func printARecordsTable(records []dto.ARecord) {
+	if len(records) == 0 {
+		return
+	}
+
+	fmt.Println("A Records:")
+	headers := []string{"ID", "IPv4 Address", "Created At"}
+	rows := make([][]string, 0, len(records))
+
+	for _, r := range records {
+		row := []string{
+			r.DomainID,
+			r.IPv4Address,
+			r.CreatedAt,
+		}
+		rows = append(rows, row)
+	}
+
+	printTable(headers, rows)
+	fmt.Println()
+}
+
+// Helper function to print a table of AAAA records
+func printAAAARecordsTable(records []dto.AAAARecord) {
+	if len(records) == 0 {
+		return
+	}
+
+	fmt.Println("AAAA Records:")
+	headers := []string{"ID", "IPv6 Address", "Created At"}
+	rows := make([][]string, 0, len(records))
+
+	for _, r := range records {
+		row := []string{
+			r.DomainID,
+			r.IPv6Address,
+			r.CreatedAt,
+		}
+		rows = append(rows, row)
+	}
+
+	printTable(headers, rows)
+	fmt.Println()
+}
+
+// Helper function to print a table of MX records
+func printMXRecordsTable(records []dto.MXRecord) {
+	if len(records) == 0 {
+		return
+	}
+
+	fmt.Println("MX Records:")
+	headers := []string{"ID", "Target", "Preference", "Created At"}
+	rows := make([][]string, 0, len(records))
+
+	for _, r := range records {
+		row := []string{
+			r.DomainID,
+			r.Target,
+			fmt.Sprintf("%d", r.Preference),
+			r.CreatedAt,
+		}
+		rows = append(rows, row)
+	}
+
+	printTable(headers, rows)
+	fmt.Println()
+}
+
+// Helper function to print a table of TXT records
+func printTXTRecordsTable(records []dto.TXTRecord) {
+	if len(records) == 0 {
+		return
+	}
+
+	fmt.Println("TXT Records:")
+	headers := []string{"ID", "Value", "Created At"}
+	rows := make([][]string, 0, len(records))
+
+	for _, r := range records {
+		row := []string{
+			r.DomainID,
+			r.Value,
+			r.CreatedAt,
+		}
+		rows = append(rows, row)
+	}
+
+	printTable(headers, rows)
+	fmt.Println()
+}
+
+// Helper function to print a table of NS records
+func printNSRecordsTable(records []dto.NSRecord) {
+	if len(records) == 0 {
+		return
+	}
+
+	fmt.Println("NS Records:")
+	headers := []string{"ID", "Nameserver", "Created At"}
+	rows := make([][]string, 0, len(records))
+
+	for _, r := range records {
+		row := []string{
+			r.DomainID,
+			r.Nameserver,
+			r.CreatedAt,
+		}
+		rows = append(rows, row)
+	}
+
+	printTable(headers, rows)
+	fmt.Println()
+}
+
+// Helper function to print a table of CNAME records
+func printCNAMERecordsTable(records []dto.CNAMERecord) {
+	if len(records) == 0 {
+		return
+	}
+
+	fmt.Println("CNAME Records:")
+	headers := []string{"ID", "Target", "Created At"}
+	rows := make([][]string, 0, len(records))
+
+	for _, r := range records {
+		row := []string{
+			r.DomainID,
+			r.Target,
+			r.CreatedAt,
+		}
+		rows = append(rows, row)
+	}
+
+	printTable(headers, rows)
+	fmt.Println()
+}
+
+// Helper function to print a table of SOA records
+func printSOARecordsTable(records []dto.SOARecord) {
+	if len(records) == 0 {
+		return
+	}
+
+	fmt.Println("SOA Records:")
+	headers := []string{"ID", "Primary NS", "Admin Email", "Serial", "TTL", "Created At"}
+	rows := make([][]string, 0, len(records))
+
+	for _, r := range records {
+		row := []string{
+			r.DomainID,
+			r.Nameserver,
+			r.Email,
+			fmt.Sprintf("%d", r.Serial),
+			fmt.Sprintf("%d", r.MinimumTTL),
+			r.CreatedAt,
+		}
+		rows = append(rows, row)
+	}
+
+	printTable(headers, rows)
+	fmt.Println()
+}
+
+// Additional print functions for other record types...
+// Similar functions for PTR, SRV, CAA, DNSKEY, DS, RRSIG records
+
+// Generic table printing function
+func printTable(headers []string, rows [][]string) {
+	// Calculate column widths
+	widths := make([]int, len(headers))
+	for i, h := range headers {
+		widths[i] = len(h)
+	}
+
+	for _, row := range rows {
+		for i, cell := range row {
+			if i < len(widths) && len(cell) > widths[i] {
+				widths[i] = len(cell)
+			}
+		}
+	}
+
+	// Print header row
+	fmt.Print("| ")
+	for i, h := range headers {
+		fmt.Printf("%-*s | ", widths[i], h)
+	}
+	fmt.Println()
+
+	// Print separator
+	fmt.Print("+-")
+	for i, w := range widths {
+		fmt.Print(strings.Repeat("-", w))
+		if i < len(widths)-1 {
+			fmt.Print("-+-")
+		} else {
+			fmt.Print("-+")
+		}
+	}
+	fmt.Println()
+
+	// Print data rows
+	for _, row := range rows {
+		fmt.Print("| ")
+		for i, cell := range row {
+			if i < len(widths) {
+				fmt.Printf("%-*s | ", widths[i], cell)
+			}
+		}
+		fmt.Println()
+	}
+}
+
+// Helper function to print a table of PTR records
+func printPTRRecordsTable(records []dto.PTRRecord) {
+	if len(records) == 0 {
+		return
+	}
+
+	fmt.Println("PTR Records:")
+	headers := []string{"ID", "Value", "Created At"}
+	rows := make([][]string, 0, len(records))
+
+	for _, r := range records {
+		row := []string{
+			r.DomainID,
+			r.Target,
+			r.CreatedAt,
+		}
+		rows = append(rows, row)
+	}
+
+	printTable(headers, rows)
+	fmt.Println()
+}
+
+// Helper function to print a table of SRV records
+func printSRVRecordsTable(records []dto.SRVRecord) {
+	if len(records) == 0 {
+		return
+	}
+
+	fmt.Println("SRV Records:")
+	headers := []string{"ID", "Target", "Port", "Priority", "Weight", "Created At"}
+	rows := make([][]string, 0, len(records))
+
+	for _, r := range records {
+		row := []string{
+			r.DomainID,
+			r.Target,
+			fmt.Sprintf("%d", r.Port),
+			fmt.Sprintf("%d", r.Priority),
+			fmt.Sprintf("%d", r.Weight),
+			r.CreatedAt,
+		}
+		rows = append(rows, row)
+	}
+
+	printTable(headers, rows)
+	fmt.Println()
+}
+
+// Helper function to print a table of CAA records
+func printCAARecordsTable(records []dto.CAARecord) {
+	if len(records) == 0 {
+		return
+	}
+
+	fmt.Println("CAA Records:")
+	headers := []string{"ID", "Tag", "Value", "Flags", "Created At"}
+	rows := make([][]string, 0, len(records))
+
+	for _, r := range records {
+		row := []string{
+			r.DomainID,
+			r.Tag,
+			r.Value,
+			fmt.Sprintf("%d", r.Flags),
+			r.CreatedAt,
+		}
+		rows = append(rows, row)
+	}
+
+	printTable(headers, rows)
+	fmt.Println()
+}
+
+// Helper function to print a table of DNSKEY records
+func printDNSKEYRecordsTable(records []dto.DNSKEYRecord) {
+	if len(records) == 0 {
+		return
+	}
+
+	fmt.Println("DNSKEY Records:")
+	headers := []string{"ID", "Flags", "Protocol", "Algorithm", "Created At"}
+	rows := make([][]string, 0, len(records))
+
+	for _, r := range records {
+		row := []string{
+			r.DomainID,
+			fmt.Sprintf("%d", r.Flags),
+			fmt.Sprintf("%d", r.Protocol),
+			fmt.Sprintf("%d", r.Algorithm),
+			r.CreatedAt,
+		}
+		rows = append(rows, row)
+	}
+
+	printTable(headers, rows)
+	fmt.Println()
+}
+
+// Helper function to print a table of DS records
+func printDSRecordsTable(records []dto.DSRecord) {
+	if len(records) == 0 {
+		return
+	}
+
+	fmt.Println("DS Records:")
+	headers := []string{"ID", "Key Tag", "Algorithm", "Digest Type", "Created At"}
+	rows := make([][]string, 0, len(records))
+
+	for _, r := range records {
+		row := []string{
+			r.DomainID,
+			fmt.Sprintf("%d", r.KeyTag),
+			fmt.Sprintf("%d", r.Algorithm),
+			fmt.Sprintf("%d", r.DigestType),
+			r.CreatedAt,
+		}
+		rows = append(rows, row)
+	}
+
+	printTable(headers, rows)
+	fmt.Println()
+}
+
+// Helper function to print a table of RRSIG records
+func printRRSIGRecordsTable(records []dto.RRSIGRecord) {
+	if len(records) == 0 {
+		return
+	}
+
+	fmt.Println("RRSIG Records:")
+	headers := []string{"ID", "Type Covered", "Algorithm", "Labels", "Key Tag", "Signer", "Created At"}
+	rows := make([][]string, 0, len(records))
+
+	for _, r := range records {
+		row := []string{
+			r.DomainID,
+			string(r.TypeCovered),
+			fmt.Sprintf("%d", r.Algorithm),
+			fmt.Sprintf("%d", r.Labels),
+			fmt.Sprintf("%d", r.KeyTag),
+			r.SignerName,
+			r.CreatedAt,
+		}
+		rows = append(rows, row)
+	}
+
+	printTable(headers, rows)
+	fmt.Println()
 }

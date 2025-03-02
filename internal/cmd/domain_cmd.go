@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/danielmichaels/gecko/internal/server"
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -13,12 +14,13 @@ import (
 
 // FIXME: this needs auth with server but for now is unauthenticated
 type DomainCmd struct {
-	Add     AddDomainCmd    `cmd:"" help:"Add a new domain. Duplicate domains are ignored. Use 'domain scan <domainID>' to re-scan a previously added domain"`
-	Get     DomainGetCmd    `cmd:"" help:"Get a domain by ID"`
-	Update  UpdateDomainCmd `cmd:"" help:"Update a domain by ID"`
-	Remove  RemoveDomainCmd `cmd:"" help:"Remove a domain"`
-	List    ListDomainCmd   `cmd:"" help:"List all domains"`
-	Verbose bool            `help:"Increase verbosity (shows logs)" default:"false"`
+	Add     AddDomainCmd     `cmd:"" help:"Add a new domain. Duplicate domains are ignored. Use 'domain scan <domainID>' to re-scan a previously added domain"`
+	Get     DomainGetCmd     `cmd:"" help:"Get a domain by ID"`
+	Update  UpdateDomainCmd  `cmd:"" help:"Update a domain by ID"`
+	Remove  RemoveDomainCmd  `cmd:"" help:"Remove a domain"`
+	List    ListDomainCmd    `cmd:"" help:"List all domains"`
+	Records DomainRecordsCmd `cmd:"" help:"List all domain records for a domain"`
+	Verbose bool             `help:"Increase verbosity (shows logs)" default:"false"`
 }
 
 type AddDomainCmd struct {
@@ -176,7 +178,11 @@ func (d *RemoveDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 	return nil
 }
 
-type ListDomainCmd struct{}
+type ListDomainCmd struct {
+	Page     int    `help:"Page number to retrieve" default:"1"`
+	PageSize int    `help:"Number of items per page" default:"20"`
+	Search   string `help:"Domain search term" example:"tesla.com" default:""`
+}
 
 func (d *ListDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 	if err := ValidateStartup(g); err != nil {
@@ -187,10 +193,14 @@ func (d *ListDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 
 	var apiErr huma.ErrorModel
 	var domains struct {
-		Domains []dto.Domain `json:"domains"`
+		Domains    []dto.Domain              `json:"domains"`
+		Pagination server.PaginationMetadata `json:"pagination"`
 	}
 	if err := requests.
-		URL(g.ServerURL + "/api/domains").
+		URL(g.ServerURL+"/api/domains").
+		Param("page", fmt.Sprintf("%d", d.Page)).
+		Param("page_size", fmt.Sprintf("%d", d.PageSize)).
+		Param("name", fmt.Sprintf("%s", d.Search)).
 		ToJSON(&domains).
 		ErrorJSON(&apiErr).
 		Fetch(ctx); err != nil {
@@ -209,6 +219,76 @@ func (d *ListDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 		fmt.Println(formatOutput(domains, g.Format))
 	} else {
 		fmt.Println(formatOutput(domains.Domains, g.Format))
+		fmt.Printf("\n--- Page %d of %d (Total items: %d) ---\n",
+			domains.Pagination.Page,
+			domains.Pagination.Total,
+			domains.Pagination.Total)
+
+		// Show how to get next page
+		if domains.Pagination.Page < int32(domains.Pagination.Total) {
+			fmt.Printf("For next page: gecko domain list --page=%d --page-size=%d\n",
+				d.Page+1, d.PageSize)
+		}
+	}
+
+	return nil
+}
+
+type DomainRecordsCmd struct {
+	DomainID string `arg:"" required:"" help:"Domain ID to fetch records for" example:"domain_00000001"`
+	QType    string `help:"Comma separated list of record types. Defaults to all." default:""`
+}
+
+func (d *DomainRecordsCmd) Run(g *Globals, dc *DomainCmd) error {
+	if err := ValidateStartup(g); err != nil {
+		return err
+	}
+	ctx, cancel := createCancellableContext()
+	defer cancel()
+
+	var apiErr huma.ErrorModel
+	var recordsResp struct {
+		Pagination *server.PaginationMetadata `json:"pagination"`
+		Records    dto.AllRecords             `json:"records"`
+	}
+
+	err := requests.
+		URL(g.ServerURL+"/api/domains/"+d.DomainID+"/records").
+		Param("qtype", fmt.Sprintf("%s", d.QType)).
+		ToJSON(&recordsResp).
+		ErrorJSON(&apiErr).
+		Fetch(ctx)
+	if err != nil {
+		if apiErr.Status != 0 {
+			return handleHumaError(apiErr)
+		}
+		return HandleRequestError(err, g.ServerURL)
+	}
+
+	if g.Format == "json" {
+		fmt.Println(formatOutput(recordsResp, g.Format))
+	} else {
+		// Domain header
+		fmt.Printf("Domain: %s\n\n", recordsResp.Records.DomainName)
+
+		// Print tables for each record type that has records
+		printARecordsTable(recordsResp.Records.A)
+		printAAAARecordsTable(recordsResp.Records.AAAA)
+		printMXRecordsTable(recordsResp.Records.MX)
+		printTXTRecordsTable(recordsResp.Records.TXT)
+		printNSRecordsTable(recordsResp.Records.NS)
+		printCNAMERecordsTable(recordsResp.Records.CNAME)
+		printSOARecordsTable(recordsResp.Records.SOA)
+		printPTRRecordsTable(recordsResp.Records.PTR)
+		printSRVRecordsTable(recordsResp.Records.SRV)
+		printCAARecordsTable(recordsResp.Records.CAA)
+		printDNSKEYRecordsTable(recordsResp.Records.DNSKEY)
+		printDSRecordsTable(recordsResp.Records.DS)
+		printRRSIGRecordsTable(recordsResp.Records.RRSIG)
+
+		// Summary
+		fmt.Println("\n---")
+		fmt.Printf("Total Records: %d\n", recordsResp.Pagination.Total)
 	}
 
 	return nil
