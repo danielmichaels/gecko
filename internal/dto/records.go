@@ -30,8 +30,8 @@ type CNAMERecord struct {
 
 type MXRecord struct {
 	DNSRecord
-	Preference int32  `json:"preference"`
 	Target     string `json:"target"`
+	Preference int32  `json:"preference"`
 }
 
 type TXTRecord struct {
@@ -62,9 +62,9 @@ type SOARecord struct {
 
 type CAARecord struct {
 	DNSRecord
-	Flags int32  `json:"flags"`
 	Tag   string `json:"tag"`
 	Value string `json:"value"`
+	Flags int32  `json:"flags"`
 }
 
 type SRVRecord struct {
@@ -85,14 +85,16 @@ type DNSKEYRecord struct {
 
 type DSRecord struct {
 	DNSRecord
+	Digest     string `json:"digest"`
 	KeyTag     int32  `json:"key_tag"`
 	Algorithm  int32  `json:"algorithm"`
 	DigestType int32  `json:"digest_type"`
-	Digest     string `json:"digest"`
 }
 
 type RRSIGRecord struct {
 	DNSRecord
+	SignerName  string `json:"signer_name"`
+	Signature   string `json:"signature"`
 	TypeCovered int32  `json:"type_covered"`
 	Algorithm   int32  `json:"algorithm"`
 	Labels      int32  `json:"labels"`
@@ -100,8 +102,6 @@ type RRSIGRecord struct {
 	Expiration  int32  `json:"expiration"`
 	Inception   int32  `json:"inception"`
 	KeyTag      int32  `json:"key_tag"`
-	SignerName  string `json:"signer_name"`
-	Signature   string `json:"signature"`
 }
 
 // AllRecords contains all types of DNS records for a domain
@@ -124,11 +124,11 @@ type AllRecords struct {
 
 // RecordHistory represents a generic history entry for any DNS record
 type RecordHistory struct {
+	Changes    any    `json:"changes"` // The specific record type data
 	ID         string `json:"id"`
 	RecordID   string `json:"record_id"`
 	ChangeType string `json:"change_type"` // created, updated, deleted
 	Timestamp  string `json:"timestamp"`
-	Changes    any    `json:"changes"` // The specific record type data
 }
 
 // ARecordToAPI converts store.ARecords to dto.ARecord

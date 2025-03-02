@@ -3,9 +3,10 @@ package jobs
 import (
 	"context"
 	"fmt"
-	"github.com/jackc/pgx/v5/pgtype"
 	"log/slog"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/danielmichaels/gecko/internal/dnsclient"
 	"github.com/danielmichaels/gecko/internal/dnsrecords"

@@ -2,10 +2,11 @@ package server
 
 import (
 	"context"
+	"strings"
+
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielmichaels/gecko/internal/dto"
 	"github.com/jackc/pgx/v5/pgtype"
-	"strings"
 )
 
 // /records?qtype=a,aaaa,cname             // List all records with optional type filtering
@@ -22,7 +23,21 @@ type RecordsListOutput struct {
 
 func parseRecordTypes(queryParam string) []string {
 	if queryParam == "" {
-		return []string{"a", "aaaa", "cname", "mx", "txt", "ns", "soa", "ptr", "srv", "caa", "dnskey", "ds", "rrsig"}
+		return []string{
+			"a",
+			"aaaa",
+			"cname",
+			"mx",
+			"txt",
+			"ns",
+			"soa",
+			"ptr",
+			"srv",
+			"caa",
+			"dnskey",
+			"ds",
+			"rrsig",
+		}
 	}
 	return strings.Split(strings.ToLower(queryParam), ",")
 }
@@ -32,7 +47,8 @@ func (app *Server) handleRecordsList(ctx context.Context, i *struct {
 	DomainID string `path:"id" example:"domain_00000001" doc:"Domain UID"`
 	QType    string `query:"qtype" example:"a,aaaa,cname,mx,txt,ns,doa,ptr,caa,srv,dnskey,ds,rrsig" doc:"Comma-separated list of record types to fetch. Not providing a qtype returns all record types."`
 	PaginationQuery
-}) (*RecordsListOutput, error) {
+},
+) (*RecordsListOutput, error) {
 	domain, err := app.Db.DomainsGetByID(ctx, i.DomainID)
 	if err != nil {
 		return nil, huma.Error404NotFound("domain not found")
@@ -73,7 +89,10 @@ func (app *Server) handleRecordsList(ctx context.Context, i *struct {
 	for _, recordType := range recordTypes {
 		switch recordType {
 		case "a":
-			aRecords, err := app.Db.RecordsGetAByDomainID(ctx, pgtype.Int4{Int32: domain.ID, Valid: true})
+			aRecords, err := app.Db.RecordsGetAByDomainID(
+				ctx,
+				pgtype.Int4{Int32: domain.ID, Valid: true},
+			)
 			if err == nil {
 				for _, aR := range aRecords {
 					resp.Body.Records.A = append(resp.Body.Records.A, dto.ARecordToAPI(aR))
@@ -81,23 +100,38 @@ func (app *Server) handleRecordsList(ctx context.Context, i *struct {
 				}
 			}
 		case "aaaa":
-			aaaaRecords, err := app.Db.RecordsGetAAAAByDomainID(ctx, pgtype.Int4{Int32: domain.ID, Valid: true})
+			aaaaRecords, err := app.Db.RecordsGetAAAAByDomainID(
+				ctx,
+				pgtype.Int4{Int32: domain.ID, Valid: true},
+			)
 			if err == nil {
 				for _, aaaaR := range aaaaRecords {
-					resp.Body.Records.AAAA = append(resp.Body.Records.AAAA, dto.AAAARecordToAPI(aaaaR))
+					resp.Body.Records.AAAA = append(
+						resp.Body.Records.AAAA,
+						dto.AAAARecordToAPI(aaaaR),
+					)
 					totalRecords++
 				}
 			}
 		case "cname":
-			cnameRecords, err := app.Db.RecordsGetCNAMEByDomainID(ctx, pgtype.Int4{Int32: domain.ID, Valid: true})
+			cnameRecords, err := app.Db.RecordsGetCNAMEByDomainID(
+				ctx,
+				pgtype.Int4{Int32: domain.ID, Valid: true},
+			)
 			if err == nil {
 				for _, cR := range cnameRecords {
-					resp.Body.Records.CNAME = append(resp.Body.Records.CNAME, dto.CNAMERecordToAPI(cR))
+					resp.Body.Records.CNAME = append(
+						resp.Body.Records.CNAME,
+						dto.CNAMERecordToAPI(cR),
+					)
 					totalRecords++
 				}
 			}
 		case "mx":
-			mxRecords, err := app.Db.RecordsGetMXByDomainID(ctx, pgtype.Int4{Int32: domain.ID, Valid: true})
+			mxRecords, err := app.Db.RecordsGetMXByDomainID(
+				ctx,
+				pgtype.Int4{Int32: domain.ID, Valid: true},
+			)
 			if err == nil {
 				for _, mxR := range mxRecords {
 					resp.Body.Records.MX = append(resp.Body.Records.MX, dto.MXRecordToAPI(mxR))
@@ -105,7 +139,10 @@ func (app *Server) handleRecordsList(ctx context.Context, i *struct {
 				}
 			}
 		case "txt":
-			txtRecords, err := app.Db.RecordsGetTXTByDomainID(ctx, pgtype.Int4{Int32: domain.ID, Valid: true})
+			txtRecords, err := app.Db.RecordsGetTXTByDomainID(
+				ctx,
+				pgtype.Int4{Int32: domain.ID, Valid: true},
+			)
 			if err == nil {
 				for _, txtR := range txtRecords {
 					resp.Body.Records.TXT = append(resp.Body.Records.TXT, dto.TXTRecordToAPI(txtR))
@@ -113,7 +150,10 @@ func (app *Server) handleRecordsList(ctx context.Context, i *struct {
 				}
 			}
 		case "ns":
-			nsRecords, err := app.Db.RecordsGetNSByDomainID(ctx, pgtype.Int4{Int32: domain.ID, Valid: true})
+			nsRecords, err := app.Db.RecordsGetNSByDomainID(
+				ctx,
+				pgtype.Int4{Int32: domain.ID, Valid: true},
+			)
 			if err == nil {
 				for _, nsR := range nsRecords {
 					resp.Body.Records.NS = append(resp.Body.Records.NS, dto.NSRecordToAPI(nsR))
@@ -121,7 +161,10 @@ func (app *Server) handleRecordsList(ctx context.Context, i *struct {
 				}
 			}
 		case "soa":
-			soaRecords, err := app.Db.RecordsGetSOAByDomainID(ctx, pgtype.Int4{Int32: domain.ID, Valid: true})
+			soaRecords, err := app.Db.RecordsGetSOAByDomainID(
+				ctx,
+				pgtype.Int4{Int32: domain.ID, Valid: true},
+			)
 			if err == nil {
 				for _, soaR := range soaRecords {
 					resp.Body.Records.SOA = append(resp.Body.Records.SOA, dto.SOARecordToAPI(soaR))
@@ -129,7 +172,10 @@ func (app *Server) handleRecordsList(ctx context.Context, i *struct {
 				}
 			}
 		case "ptr":
-			ptrRecords, err := app.Db.RecordsGetPTRByDomainID(ctx, pgtype.Int4{Int32: domain.ID, Valid: true})
+			ptrRecords, err := app.Db.RecordsGetPTRByDomainID(
+				ctx,
+				pgtype.Int4{Int32: domain.ID, Valid: true},
+			)
 			if err == nil {
 				for _, ptrR := range ptrRecords {
 					resp.Body.Records.PTR = append(resp.Body.Records.PTR, dto.PTRRecordToAPI(ptrR))
@@ -137,7 +183,10 @@ func (app *Server) handleRecordsList(ctx context.Context, i *struct {
 				}
 			}
 		case "caa":
-			caaRecords, err := app.Db.RecordsGetCAAByDomainID(ctx, pgtype.Int4{Int32: domain.ID, Valid: true})
+			caaRecords, err := app.Db.RecordsGetCAAByDomainID(
+				ctx,
+				pgtype.Int4{Int32: domain.ID, Valid: true},
+			)
 			if err == nil {
 				for _, caaR := range caaRecords {
 					resp.Body.Records.CAA = append(resp.Body.Records.CAA, dto.CAARecordToAPI(caaR))
@@ -145,7 +194,10 @@ func (app *Server) handleRecordsList(ctx context.Context, i *struct {
 				}
 			}
 		case "srv":
-			srvRecords, err := app.Db.RecordsGetSRVByDomainID(ctx, pgtype.Int4{Int32: domain.ID, Valid: true})
+			srvRecords, err := app.Db.RecordsGetSRVByDomainID(
+				ctx,
+				pgtype.Int4{Int32: domain.ID, Valid: true},
+			)
 			if err == nil {
 				for _, srvR := range srvRecords {
 					resp.Body.Records.SRV = append(resp.Body.Records.SRV, dto.SRVRecordToAPI(srvR))
@@ -153,15 +205,24 @@ func (app *Server) handleRecordsList(ctx context.Context, i *struct {
 				}
 			}
 		case "dnskey":
-			dnskeyRecords, err := app.Db.RecordsGetDNSKEYByDomainID(ctx, pgtype.Int4{Int32: domain.ID, Valid: true})
+			dnskeyRecords, err := app.Db.RecordsGetDNSKEYByDomainID(
+				ctx,
+				pgtype.Int4{Int32: domain.ID, Valid: true},
+			)
 			if err == nil {
 				for _, dnskeyR := range dnskeyRecords {
-					resp.Body.Records.DNSKEY = append(resp.Body.Records.DNSKEY, dto.DNSKEYRecordToAPI(dnskeyR))
+					resp.Body.Records.DNSKEY = append(
+						resp.Body.Records.DNSKEY,
+						dto.DNSKEYRecordToAPI(dnskeyR),
+					)
 					totalRecords++
 				}
 			}
 		case "ds":
-			dsRecords, err := app.Db.RecordsGetDSByDomainID(ctx, pgtype.Int4{Int32: domain.ID, Valid: true})
+			dsRecords, err := app.Db.RecordsGetDSByDomainID(
+				ctx,
+				pgtype.Int4{Int32: domain.ID, Valid: true},
+			)
 			if err == nil {
 				for _, dsR := range dsRecords {
 					resp.Body.Records.DS = append(resp.Body.Records.DS, dto.DSRecordToAPI(dsR))
@@ -169,10 +230,16 @@ func (app *Server) handleRecordsList(ctx context.Context, i *struct {
 				}
 			}
 		case "rrsig":
-			rrsigRecords, err := app.Db.RecordsGetRRSIGByDomainID(ctx, pgtype.Int4{Int32: domain.ID, Valid: true})
+			rrsigRecords, err := app.Db.RecordsGetRRSIGByDomainID(
+				ctx,
+				pgtype.Int4{Int32: domain.ID, Valid: true},
+			)
 			if err == nil {
 				for _, rrsigR := range rrsigRecords {
-					resp.Body.Records.RRSIG = append(resp.Body.Records.RRSIG, dto.RRSIGRecordToAPI(rrsigR))
+					resp.Body.Records.RRSIG = append(
+						resp.Body.Records.RRSIG,
+						dto.RRSIGRecordToAPI(rrsigR),
+					)
 					totalRecords++
 				}
 			}
