@@ -7,6 +7,33 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Domain struct {
+	ID         string `json:"id"`
+	Domain     string `json:"domain"`
+	DomainType string `json:"domain_type"`
+	Source     string `json:"source"`
+	Status     string `json:"status"`
+	CreatedAt  string `json:"created_at"`
+	UpdatedAt  string `json:"updated_at"`
+}
+
+func (d Domain) String() string {
+	return fmt.Sprintf("%-20s %-20s %-10s %-15s %-10s %-25s %-25s",
+		d.ID, d.Domain, d.DomainType, d.Source, d.Status, d.CreatedAt, d.UpdatedAt)
+}
+
+type DomainRecord struct {
+	Name        string `json:"name"`
+	Ipv4Address string `json:"ipv4_address"`
+	Ipv6Address string `json:"ipv6_address"`
+	MxTarget    string `json:"mx_target"`
+	TxtRecord   string `json:"txt_record"`
+	PtrTarget   string `json:"ptr_target"`
+	CnameTarget string `json:"cname_target"`
+	Nameserver  string `json:"nameserver"`
+	MxPref      int32  `json:"mx_pref"`
+}
+
 // DomainToAPI converts a store.Domains model to a Domain API response.
 func DomainToAPI(d store.Domains) Domain {
 	return Domain{
@@ -102,31 +129,4 @@ func DomainsListByTenantIDToDomains(rows []store.DomainsListByTenantIDRow) []sto
 		}
 	}
 	return domains
-}
-
-type Domain struct {
-	ID         string `json:"id"`
-	Domain     string `json:"domain"`
-	DomainType string `json:"domain_type"`
-	Source     string `json:"source"`
-	Status     string `json:"status"`
-	CreatedAt  string `json:"created_at"`
-	UpdatedAt  string `json:"updated_at"`
-}
-
-func (d Domain) String() string {
-	return fmt.Sprintf("%-20s %-20s %-10s %-15s %-10s %-25s %-25s",
-		d.ID, d.Domain, d.DomainType, d.Source, d.Status, d.CreatedAt, d.UpdatedAt)
-}
-
-type DomainRecord struct {
-	Name        string `json:"name"`
-	Ipv4Address string `json:"ipv4_address"`
-	Ipv6Address string `json:"ipv6_address"`
-	MxTarget    string `json:"mx_target"`
-	TxtRecord   string `json:"txt_record"`
-	PtrTarget   string `json:"ptr_target"`
-	CnameTarget string `json:"cname_target"`
-	Nameserver  string `json:"nameserver"`
-	MxPref      int32  `json:"mx_pref"`
 }

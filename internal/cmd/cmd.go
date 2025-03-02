@@ -28,7 +28,7 @@ type Globals struct {
 	Username   string          `help:"Username for authentication"`
 	Password   string          `help:"Password for authentication"`
 	ConfigFile kong.ConfigFlag `short:"c" help:"Location of client config files" type:"yamlfile" default:"${config_path}"`
-	Format     string          `help:"Output format" short:"f" default:"text" enum:"text,json"`
+	Format     string          `short:"f" help:"Output format - use 'json' for parsing output consistently" default:"text" enum:"text,json"`
 }
 
 func ValidateStartup(g *Globals) error {

@@ -48,8 +48,7 @@ type PaginationMetadata struct {
 
 func NewPaginationMetadata(
 	totalCount int64,
-	pageSize, pageNumber int32,
-	currentPageCount int32,
+	pageSize, pageNumber, currentPageCount int32,
 ) PaginationMetadata {
 	totalPages := int32(1)
 	if totalCount > 0 {
