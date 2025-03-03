@@ -724,71 +724,170 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 -- update triggers
-CREATE TRIGGER a_records_history_trigger
-    AFTER INSERT OR UPDATE OR DELETE
+CREATE TRIGGER a_records_history_insert_update_trigger
+    AFTER INSERT OR UPDATE
     ON a_records
     FOR EACH ROW
 EXECUTE FUNCTION record_a_history();
-CREATE TRIGGER aaaa_records_history_trigger
-    AFTER INSERT OR UPDATE OR DELETE
+
+CREATE TRIGGER a_records_history_delete_trigger
+    BEFORE DELETE
+    ON a_records
+    FOR EACH ROW
+EXECUTE FUNCTION record_a_history();
+
+-- AAAA Records
+CREATE TRIGGER aaaa_records_history_insert_update_trigger
+    AFTER INSERT OR UPDATE
     ON aaaa_records
     FOR EACH ROW
 EXECUTE FUNCTION record_aaaa_history();
-CREATE TRIGGER mx_records_history_trigger
-    AFTER INSERT OR UPDATE OR DELETE
+
+CREATE TRIGGER aaaa_records_history_delete_trigger
+    BEFORE DELETE
+    ON aaaa_records
+    FOR EACH ROW
+EXECUTE FUNCTION record_aaaa_history();
+
+-- MX Records
+CREATE TRIGGER mx_records_history_insert_update_trigger
+    AFTER INSERT OR UPDATE
     ON mx_records
     FOR EACH ROW
 EXECUTE FUNCTION record_mx_history();
-CREATE TRIGGER cname_records_history_trigger
-    AFTER INSERT OR UPDATE OR DELETE
+
+CREATE TRIGGER mx_records_history_delete_trigger
+    BEFORE DELETE
+    ON mx_records
+    FOR EACH ROW
+EXECUTE FUNCTION record_mx_history();
+
+-- CNAME Records
+CREATE TRIGGER cname_records_history_insert_update_trigger
+    AFTER INSERT OR UPDATE
     ON cname_records
     FOR EACH ROW
 EXECUTE FUNCTION record_cname_history();
-CREATE TRIGGER txt_records_history_trigger
-    AFTER INSERT OR UPDATE OR DELETE
+
+CREATE TRIGGER cname_records_history_delete_trigger
+    BEFORE DELETE
+    ON cname_records
+    FOR EACH ROW
+EXECUTE FUNCTION record_cname_history();
+
+-- TXT Records
+CREATE TRIGGER txt_records_history_insert_update_trigger
+    AFTER INSERT OR UPDATE
     ON txt_records
     FOR EACH ROW
 EXECUTE FUNCTION record_txt_history();
-CREATE TRIGGER ns_records_history_trigger
-    AFTER INSERT OR UPDATE OR DELETE
+
+CREATE TRIGGER txt_records_history_delete_trigger
+    BEFORE DELETE
+    ON txt_records
+    FOR EACH ROW
+EXECUTE FUNCTION record_txt_history();
+
+-- NS Records
+CREATE TRIGGER ns_records_history_insert_update_trigger
+    AFTER INSERT OR UPDATE
     ON ns_records
     FOR EACH ROW
 EXECUTE FUNCTION record_ns_history();
-CREATE TRIGGER ptr_records_history_trigger
-    AFTER INSERT OR UPDATE OR DELETE
+
+CREATE TRIGGER ns_records_history_delete_trigger
+    BEFORE DELETE
+    ON ns_records
+    FOR EACH ROW
+EXECUTE FUNCTION record_ns_history();
+
+-- PTR Records
+CREATE TRIGGER ptr_records_history_insert_update_trigger
+    AFTER INSERT OR UPDATE
     ON ptr_records
     FOR EACH ROW
 EXECUTE FUNCTION record_ptr_history();
-CREATE TRIGGER srv_records_history_trigger
-    AFTER INSERT OR UPDATE OR DELETE
+
+CREATE TRIGGER ptr_records_history_delete_trigger
+    BEFORE DELETE
+    ON ptr_records
+    FOR EACH ROW
+EXECUTE FUNCTION record_ptr_history();
+
+-- SRV Records
+CREATE TRIGGER srv_records_history_insert_update_trigger
+    AFTER INSERT OR UPDATE
     ON srv_records
     FOR EACH ROW
 EXECUTE FUNCTION record_srv_history();
-CREATE TRIGGER soa_records_history_trigger
-    AFTER INSERT OR UPDATE OR DELETE
+
+CREATE TRIGGER srv_records_history_delete_trigger
+    BEFORE DELETE
+    ON srv_records
+    FOR EACH ROW
+EXECUTE FUNCTION record_srv_history();
+
+-- SOA Records
+CREATE TRIGGER soa_records_history_insert_update_trigger
+    AFTER INSERT OR UPDATE
     ON soa_records
     FOR EACH ROW
 EXECUTE FUNCTION record_soa_history();
-CREATE TRIGGER dnskey_records_history_trigger
-    AFTER INSERT OR UPDATE OR DELETE
+
+CREATE TRIGGER soa_records_history_delete_trigger
+    BEFORE DELETE
+    ON soa_records
+    FOR EACH ROW
+EXECUTE FUNCTION record_soa_history();
+
+-- DNSKEY Records
+CREATE TRIGGER dnskey_records_history_insert_update_trigger
+    AFTER INSERT OR UPDATE
     ON dnskey_records
     FOR EACH ROW
 EXECUTE FUNCTION record_dnskey_history();
 
-CREATE TRIGGER ds_records_history_trigger
-    AFTER INSERT OR UPDATE OR DELETE
+CREATE TRIGGER dnskey_records_history_delete_trigger
+    BEFORE DELETE
+    ON dnskey_records
+    FOR EACH ROW
+EXECUTE FUNCTION record_dnskey_history();
+
+-- DS Records
+CREATE TRIGGER ds_records_history_insert_update_trigger
+    AFTER INSERT OR UPDATE
     ON ds_records
     FOR EACH ROW
 EXECUTE FUNCTION record_ds_history();
 
-CREATE TRIGGER rrsig_records_history_trigger
-    AFTER INSERT OR UPDATE OR DELETE
+CREATE TRIGGER ds_records_history_delete_trigger
+    BEFORE DELETE
+    ON ds_records
+    FOR EACH ROW
+EXECUTE FUNCTION record_ds_history();
+
+-- RRSIG Records
+CREATE TRIGGER rrsig_records_history_insert_update_trigger
+    AFTER INSERT OR UPDATE
     ON rrsig_records
     FOR EACH ROW
 EXECUTE FUNCTION record_rrsig_history();
 
-CREATE TRIGGER caa_records_history_trigger
-    AFTER INSERT OR UPDATE OR DELETE
+CREATE TRIGGER rrsig_records_history_delete_trigger
+    BEFORE DELETE
+    ON rrsig_records
+    FOR EACH ROW
+EXECUTE FUNCTION record_rrsig_history();
+
+-- CAA Records
+CREATE TRIGGER caa_records_history_insert_update_trigger
+    AFTER INSERT OR UPDATE
+    ON caa_records
+    FOR EACH ROW
+EXECUTE FUNCTION record_caa_history();
+
+CREATE TRIGGER caa_records_history_delete_trigger
+    BEFORE DELETE
     ON caa_records
     FOR EACH ROW
 EXECUTE FUNCTION record_caa_history();
@@ -831,19 +930,32 @@ CREATE INDEX idx_mx_preference_target ON mx_records (preference, target);
 
 -- +goose Down
 -- +goose StatementBegin
-DROP TRIGGER IF EXISTS rrsig_records_history_trigger ON rrsig_records;
-DROP TRIGGER IF EXISTS ds_records_history_trigger ON ds_records;
-DROP TRIGGER IF EXISTS dnskey_records_history_trigger ON dnskey_records;
-DROP TRIGGER IF EXISTS soa_records_history_trigger ON soa_records;
-DROP TRIGGER IF EXISTS srv_records_history_trigger ON srv_records;
-DROP TRIGGER IF EXISTS ptr_records_history_trigger ON ptr_records;
-DROP TRIGGER IF EXISTS ns_records_history_trigger ON ns_records;
-DROP TRIGGER IF EXISTS txt_records_history_trigger ON txt_records;
-DROP TRIGGER IF EXISTS mx_records_history_trigger ON mx_records;
-DROP TRIGGER IF EXISTS cname_records_history_trigger ON cname_records;
-DROP TRIGGER IF EXISTS aaaa_records_history_trigger ON aaaa_records;
-DROP TRIGGER IF EXISTS a_records_history_trigger ON a_records;
-DROP TRIGGER IF EXISTS caa_records_history_trigger ON caa_records;
+DROP TRIGGER IF EXISTS a_records_history_insert_update_trigger ON a_records;
+DROP TRIGGER IF EXISTS a_records_history_delete_trigger ON a_records;
+DROP TRIGGER IF EXISTS aaaa_records_history_insert_update_trigger ON aaaa_records;
+DROP TRIGGER IF EXISTS aaaa_records_history_delete_trigger ON aaaa_records;
+DROP TRIGGER IF EXISTS mx_records_history_insert_update_trigger ON mx_records;
+DROP TRIGGER IF EXISTS mx_records_history_delete_trigger ON mx_records;
+DROP TRIGGER IF EXISTS cname_records_history_insert_update_trigger ON cname_records;
+DROP TRIGGER IF EXISTS cname_records_history_delete_trigger ON cname_records;
+DROP TRIGGER IF EXISTS txt_records_history_insert_update_trigger ON txt_records;
+DROP TRIGGER IF EXISTS txt_records_history_delete_trigger ON txt_records;
+DROP TRIGGER IF EXISTS ns_records_history_insert_update_trigger ON ns_records;
+DROP TRIGGER IF EXISTS ns_records_history_delete_trigger ON ns_records;
+DROP TRIGGER IF EXISTS ptr_records_history_insert_update_trigger ON ptr_records;
+DROP TRIGGER IF EXISTS ptr_records_history_delete_trigger ON ptr_records;
+DROP TRIGGER IF EXISTS srv_records_history_insert_update_trigger ON srv_records;
+DROP TRIGGER IF EXISTS srv_records_history_delete_trigger ON srv_records;
+DROP TRIGGER IF EXISTS soa_records_history_insert_update_trigger ON soa_records;
+DROP TRIGGER IF EXISTS soa_records_history_delete_trigger ON soa_records;
+DROP TRIGGER IF EXISTS dnskey_records_history_insert_update_trigger ON dnskey_records;
+DROP TRIGGER IF EXISTS dnskey_records_history_delete_trigger ON dnskey_records;
+DROP TRIGGER IF EXISTS ds_records_history_insert_update_trigger ON ds_records;
+DROP TRIGGER IF EXISTS ds_records_history_delete_trigger ON ds_records;
+DROP TRIGGER IF EXISTS rrsig_records_history_insert_update_trigger ON rrsig_records;
+DROP TRIGGER IF EXISTS rrsig_records_history_delete_trigger ON rrsig_records;
+DROP TRIGGER IF EXISTS caa_records_history_insert_update_trigger ON caa_records;
+DROP TRIGGER IF EXISTS caa_records_history_delete_trigger ON caa_records;
 
 DROP TRIGGER IF EXISTS trigger_updated_at_rrsig ON rrsig_records;
 DROP TRIGGER IF EXISTS trigger_updated_at_ds ON ds_records;
