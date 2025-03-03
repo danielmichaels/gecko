@@ -303,7 +303,7 @@ func (d *DomainRecordsCmd) Run(g *Globals, dc *DomainCmd) error {
 
 	err := requestWithSpinner(
 		ctx,
-		"Calculating number of associated domains...",
+		"Fetching domain records...",
 		func() *requests.Builder {
 			return requests.
 				URL(g.ServerURL+"/api/domains/"+d.DomainID+"/records").
