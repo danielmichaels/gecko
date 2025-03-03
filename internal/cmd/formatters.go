@@ -2,10 +2,17 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
+	"time"
+
+	"github.com/briandowns/spinner"
+	"github.com/carlmjohnson/requests"
+	"golang.org/x/term"
 
 	"github.com/danielmichaels/gecko/internal/dto"
 
@@ -475,4 +482,25 @@ func printRRSIGRecordsTable(records []dto.RRSIGRecord) {
 
 	printTable(headers, rows)
 	fmt.Println()
+}
+
+// requestWithSpinner executes the provided requestFn and displays a spinner
+// while the request is in progress. The spinner is only displayed if the
+// standard input is connected to a terminal (TTY).
+func requestWithSpinner(
+	ctx context.Context,
+	message string,
+	requestFn func() *requests.Builder,
+) error {
+	builder := requestFn()
+	isTTY := term.IsTerminal(int(os.Stdin.Fd()))
+	if isTTY {
+		s := spinner.New(spinner.CharSets[11], 100*time.Millisecond)
+		s.Suffix = " " + message
+		_ = s.Color("cyan")
+		s.Start()
+		defer s.Stop()
+	}
+	err := builder.Fetch(ctx)
+	return err
 }
