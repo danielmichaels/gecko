@@ -367,15 +367,16 @@ type DnskeyRecordsHistory struct {
 }
 
 type Domains struct {
-	ID         int32              `json:"id"`
-	Uid        string             `json:"uid"`
-	TenantID   pgtype.Int4        `json:"tenant_id"`
-	Name       string             `json:"name"`
-	DomainType DomainType         `json:"domain_type"`
-	Source     DomainSource       `json:"source"`
-	Status     DomainStatus       `json:"status"`
-	CreatedAt  pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+	ID             int32              `json:"id"`
+	Uid            string             `json:"uid"`
+	TenantID       pgtype.Int4        `json:"tenant_id"`
+	Name           string             `json:"name"`
+	DomainType     DomainType         `json:"domain_type"`
+	Source         DomainSource       `json:"source"`
+	Status         DomainStatus       `json:"status"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	ParentDomainID pgtype.Int4        `json:"parent_domain_id"`
 }
 
 type DsRecords struct {

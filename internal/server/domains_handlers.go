@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/danielmichaels/gecko/internal/dnsrecords"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -140,8 +141,18 @@ func (app *Server) handleDomainGet(ctx context.Context, i *DomainGetInput) (*Dom
 	if err != nil {
 		return nil, huma.Error404NotFound("domain not found")
 	}
-
-	resp := &DomainOutput{Body: dto.DomainToAPI(domain)}
+	domainObj := store.Domains{
+		ID:         domain.ID,
+		Uid:        domain.Uid,
+		TenantID:   domain.TenantID,
+		Name:       domain.Name,
+		DomainType: domain.DomainType,
+		Source:     domain.Source,
+		Status:     domain.Status,
+		CreatedAt:  domain.CreatedAt,
+		UpdatedAt:  domain.UpdatedAt,
+	}
+	resp := &DomainOutput{Body: dto.DomainToAPI(domainObj)}
 	return resp, nil
 }
 
@@ -203,6 +214,35 @@ func (app *Server) handleDomainUpdate(
 	return &DomainOutput{Body: dto.DomainToAPI(domainObj)}, nil
 }
 
+// DomainDeletionImpactInput defines the input for the domain deletion impact endpoint
+type DomainDeletionImpactInput struct {
+	ID string `json:"id" path:"id" example:"domain_00000001"`
+}
+
+// DomainDeletionImpactOutput defines the output structure for domain deletion impact
+type DomainDeletionImpactOutput struct {
+	Body struct {
+		Count int64 `json:"count" example:"42" doc:"Number of domains that would be deleted"`
+	}
+}
+
+// handleDomainDeletionImpact returns an estimate of how many domains would be deleted
+func (app *Server) handleDomainDeletionImpact(
+	ctx context.Context,
+	i *DomainDeletionImpactInput,
+) (*DomainDeletionImpactOutput, error) {
+	count, err := app.Db.DomainsDeleteCount(ctx, i.ID)
+	if err != nil {
+		app.Log.Error("failed to count domains for deletion", "error", err, "id", i.ID)
+		return nil, huma.Error500InternalServerError("failed to count domains for deletion")
+	}
+
+	resp := &DomainDeletionImpactOutput{}
+	resp.Body.Count = count
+
+	return resp, nil
+}
+
 type DomainDeleteInput struct {
 	ID string `json:"id" path:"id" example:"domain_00000001"`
 }
@@ -252,7 +292,8 @@ func (app *Server) handleDomainCreate(
 	}
 	domainType := store.DomainTypeSubdomain
 	if i.Body.DomainType != "" {
-		domainType = store.DomainType(i.Body.DomainType)
+		dt, _ := dnsrecords.GetDomainType(i.Body.Domain)
+		domainType = store.DomainType(dt)
 	}
 	domain, err := app.Db.DomainsCreate(ctx, store.DomainsCreateParams{
 		Name:       i.Body.Domain,

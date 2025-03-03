@@ -147,6 +147,16 @@ func (app *Server) registerEndpoints(api huma.API) {
 		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
 		Middlewares:   huma.Middlewares{ApiKeyAuth(api)},
 	}, app.handleDomainDelete)
+	huma.Register(api, huma.Operation{
+		OperationID:   "delete_domain_impact",
+		Method:        http.MethodGet,
+		Path:          "/api/domains/{id}/impact",
+		Summary:       "Delete domain impact. How many domains will be affected by deleting this domain",
+		Tags:          []string{"Domains"},
+		DefaultStatus: http.StatusOK,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{ApiKeyAuth(api)},
+	}, app.handleDomainDeletionImpact)
 
 	huma.Register(api, huma.Operation{
 		OperationID:   "list_records",

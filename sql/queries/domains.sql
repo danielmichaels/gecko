@@ -167,3 +167,19 @@ SELECT id,
        updated_at
 FROM domains
 ORDER BY created_at DESC;
+
+-- name: DomainsDeleteCount :one
+WITH RECURSIVE domain_tree AS (
+    -- Base case: the domain we're deleting
+    SELECT d.id, d.uid, d.name
+    FROM domains d
+    WHERE d.uid = $1
+
+    UNION ALL
+
+    -- Recursive case: all child domains
+    SELECT d.id, d.uid, d.name
+    FROM domains d
+             JOIN domain_tree dt ON d.parent_domain_id = dt.id)
+SELECT COUNT(*)
+FROM domain_tree;

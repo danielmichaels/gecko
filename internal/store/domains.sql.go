@@ -68,10 +68,22 @@ WHERE uid = $1
 RETURNING id, uid, tenant_id, name, domain_type, source, status, created_at, updated_at
 `
 
+type DomainsDeleteByIDRow struct {
+	ID         int32              `json:"id"`
+	Uid        string             `json:"uid"`
+	TenantID   pgtype.Int4        `json:"tenant_id"`
+	Name       string             `json:"name"`
+	DomainType DomainType         `json:"domain_type"`
+	Source     DomainSource       `json:"source"`
+	Status     DomainStatus       `json:"status"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+}
+
 // Delete a domain (no auth)
-func (q *Queries) DomainsDeleteByID(ctx context.Context, uid string) (Domains, error) {
+func (q *Queries) DomainsDeleteByID(ctx context.Context, uid string) (DomainsDeleteByIDRow, error) {
 	row := q.db.QueryRow(ctx, domainsDeleteByID, uid)
-	var i Domains
+	var i DomainsDeleteByIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.Uid,
@@ -84,6 +96,30 @@ func (q *Queries) DomainsDeleteByID(ctx context.Context, uid string) (Domains, e
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const domainsDeleteCount = `-- name: DomainsDeleteCount :one
+WITH RECURSIVE domain_tree AS (
+    -- Base case: the domain we're deleting
+    SELECT d.id, d.uid, d.name
+    FROM domains d
+    WHERE d.uid = $1
+
+    UNION ALL
+
+    -- Recursive case: all child domains
+    SELECT d.id, d.uid, d.name
+    FROM domains d
+             JOIN domain_tree dt ON d.parent_domain_id = dt.id)
+SELECT COUNT(*)
+FROM domain_tree
+`
+
+func (q *Queries) DomainsDeleteCount(ctx context.Context, uid string) (int64, error) {
+	row := q.db.QueryRow(ctx, domainsDeleteCount, uid)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const domainsGetAllRecordsByTenantID = `-- name: DomainsGetAllRecordsByTenantID :many
@@ -272,9 +308,21 @@ FROM domains
 WHERE uid = $1
 `
 
-func (q *Queries) DomainsGetByID(ctx context.Context, uid string) (Domains, error) {
+type DomainsGetByIDRow struct {
+	ID         int32              `json:"id"`
+	Uid        string             `json:"uid"`
+	TenantID   pgtype.Int4        `json:"tenant_id"`
+	Name       string             `json:"name"`
+	DomainType DomainType         `json:"domain_type"`
+	Source     DomainSource       `json:"source"`
+	Status     DomainStatus       `json:"status"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) DomainsGetByID(ctx context.Context, uid string) (DomainsGetByIDRow, error) {
 	row := q.db.QueryRow(ctx, domainsGetByID, uid)
-	var i Domains
+	var i DomainsGetByIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.Uid,
@@ -309,10 +357,22 @@ type DomainsGetByNameParams struct {
 	Name     string      `json:"name"`
 }
 
+type DomainsGetByNameRow struct {
+	ID         int32              `json:"id"`
+	Uid        string             `json:"uid"`
+	TenantID   pgtype.Int4        `json:"tenant_id"`
+	Name       string             `json:"name"`
+	DomainType DomainType         `json:"domain_type"`
+	Source     DomainSource       `json:"source"`
+	Status     DomainStatus       `json:"status"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+}
+
 // Read a domain by name and tenant ID (no auth)
-func (q *Queries) DomainsGetByName(ctx context.Context, arg DomainsGetByNameParams) (Domains, error) {
+func (q *Queries) DomainsGetByName(ctx context.Context, arg DomainsGetByNameParams) (DomainsGetByNameRow, error) {
 	row := q.db.QueryRow(ctx, domainsGetByName, arg.TenantID, arg.Name)
-	var i Domains
+	var i DomainsGetByNameRow
 	err := row.Scan(
 		&i.ID,
 		&i.Uid,
@@ -341,16 +401,28 @@ FROM domains
 ORDER BY created_at DESC
 `
 
+type DomainsListAllRow struct {
+	ID         int32              `json:"id"`
+	Uid        string             `json:"uid"`
+	TenantID   pgtype.Int4        `json:"tenant_id"`
+	Name       string             `json:"name"`
+	DomainType DomainType         `json:"domain_type"`
+	Source     DomainSource       `json:"source"`
+	Status     DomainStatus       `json:"status"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+}
+
 // fixme: List all domains (no auth, for development/debugging only - avoid in production)
-func (q *Queries) DomainsListAll(ctx context.Context) ([]Domains, error) {
+func (q *Queries) DomainsListAll(ctx context.Context) ([]DomainsListAllRow, error) {
 	rows, err := q.db.Query(ctx, domainsListAll)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Domains{}
+	items := []DomainsListAllRow{}
 	for rows.Next() {
-		var i Domains
+		var i DomainsListAllRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Uid,
@@ -530,15 +602,27 @@ type DomainsUpdateByIDParams struct {
 	Source     DomainSource `json:"source"`
 }
 
+type DomainsUpdateByIDRow struct {
+	ID         int32              `json:"id"`
+	Uid        string             `json:"uid"`
+	TenantID   pgtype.Int4        `json:"tenant_id"`
+	Name       string             `json:"name"`
+	DomainType DomainType         `json:"domain_type"`
+	Source     DomainSource       `json:"source"`
+	Status     DomainStatus       `json:"status"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+}
+
 // Update a domain's status (no auth)
-func (q *Queries) DomainsUpdateByID(ctx context.Context, arg DomainsUpdateByIDParams) (Domains, error) {
+func (q *Queries) DomainsUpdateByID(ctx context.Context, arg DomainsUpdateByIDParams) (DomainsUpdateByIDRow, error) {
 	row := q.db.QueryRow(ctx, domainsUpdateByID,
 		arg.Uid,
 		arg.Status,
 		arg.DomainType,
 		arg.Source,
 	)
-	var i Domains
+	var i DomainsUpdateByIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.Uid,
@@ -567,10 +651,22 @@ type DomainsUpdateByIDTypeSourceParams struct {
 	Source     DomainSource `json:"source"`
 }
 
+type DomainsUpdateByIDTypeSourceRow struct {
+	ID         int32              `json:"id"`
+	Uid        string             `json:"uid"`
+	TenantID   pgtype.Int4        `json:"tenant_id"`
+	Name       string             `json:"name"`
+	DomainType DomainType         `json:"domain_type"`
+	Source     DomainSource       `json:"source"`
+	Status     DomainStatus       `json:"status"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+}
+
 // Update a domain's type and source (no auth)
-func (q *Queries) DomainsUpdateByIDTypeSource(ctx context.Context, arg DomainsUpdateByIDTypeSourceParams) (Domains, error) {
+func (q *Queries) DomainsUpdateByIDTypeSource(ctx context.Context, arg DomainsUpdateByIDTypeSourceParams) (DomainsUpdateByIDTypeSourceRow, error) {
 	row := q.db.QueryRow(ctx, domainsUpdateByIDTypeSource, arg.Uid, arg.DomainType, arg.Source)
-	var i Domains
+	var i DomainsUpdateByIDTypeSourceRow
 	err := row.Scan(
 		&i.ID,
 		&i.Uid,

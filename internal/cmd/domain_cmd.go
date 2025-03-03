@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/danielmichaels/gecko/internal/server"
 
@@ -135,28 +136,57 @@ func (d *UpdateDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 type RemoveDomainCmd struct {
 	DomainID string `arg:"" required:"" help:"Domain ID to remove" placeholder:"domain_00000001"`
 	Force    bool   `help:"Force remove domain"`
+	DryRun   bool   `help:"Dry run, do not remove domain"`
+}
+type CountResponse struct {
+	Count int `json:"count"`
 }
 
 func (d *RemoveDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 	if err := ValidateStartup(g); err != nil {
 		return err
 	}
+	if d.Force && d.DryRun {
+		return fmt.Errorf("--force and --dry-run flags cannot be used together")
+	}
 	ctx, cancel := createCancellableContext()
 	defer cancel()
+	var countResponse CountResponse
+	var apiErr huma.ErrorModel
+
+	if err := requests.
+		URL(g.ServerURL + "/api/domains/" + d.DomainID + "/impact").
+		Method(http.MethodGet).
+		ToJSON(&countResponse).
+		ErrorJSON(&apiErr).
+		Fetch(ctx); err != nil {
+		if apiErr.Status != 0 {
+			return handleHumaError(apiErr)
+		}
+		return HandleRequestError(err, g.ServerURL)
+	}
+
 	if !d.Force {
-		fmt.Println("Are you sure? [y/N]")
+		_, _ = fmt.Fprintf(
+			os.Stderr,
+			"This operation will delete %d domain(s) and all associated records.\n",
+			countResponse.Count,
+		)
+		if d.DryRun {
+			return nil
+		}
+		_, _ = fmt.Fprint(os.Stderr, "Are you sure? [y/N]")
 		var answer string
 		_, _ = fmt.Scanln(&answer)
 		if answer != "y" && answer != "Y" {
-			fmt.Println("Delete cancelled.")
+			_, _ = fmt.Fprint(os.Stderr, "Delete cancelled.")
 			return nil
 		}
 	}
 
-	var apiErr huma.ErrorModel
 	if err := requests.
 		URL(g.ServerURL + "/api/domains/" + d.DomainID).
-		Method("DELETE").
+		Method(http.MethodDelete).
 		ErrorJSON(&apiErr).
 		Fetch(ctx); err != nil {
 		if apiErr.Status != 0 {
@@ -166,10 +196,11 @@ func (d *RemoveDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 	}
 
 	if g.Format == "json" {
-		result := map[string]string{
+		result := map[string]any{
 			"status":    "success",
 			"message":   "Domain deleted successfully",
 			"domain_id": d.DomainID,
+			"deleted":   countResponse.Count,
 		}
 		jsonOutput, _ := json.MarshalIndent(result, "", "  ")
 		fmt.Println(string(jsonOutput))
