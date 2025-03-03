@@ -47,12 +47,14 @@ func (d *AddDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 	}
 	var apiErr huma.ErrorModel
 	var domain dto.Domain
-	err := requests.
-		URL(g.ServerURL + "/api/domains").
-		BodyJSON(body).
-		ToJSON(&domain).
-		ErrorJSON(&apiErr).
-		Fetch(ctx)
+
+	err := requestWithSpinner(ctx, "Adding domain...", func() *requests.Builder {
+		return requests.
+			URL(g.ServerURL + "/api/domains").
+			BodyJSON(body).
+			ToJSON(&domain).
+			ErrorJSON(&apiErr)
+	})
 	if err != nil {
 		if apiErr.Status != 0 {
 			return handleHumaError(apiErr)
@@ -76,11 +78,13 @@ func (d *DomainGetCmd) Run(g *Globals, dc *DomainCmd) error {
 
 	var apiErr huma.ErrorModel
 	var domain dto.Domain
-	err := requests.
-		URL(g.ServerURL + "/api/domains/" + d.ID).
-		ToJSON(&domain).
-		ErrorJSON(&apiErr).
-		Fetch(ctx)
+
+	err := requestWithSpinner(ctx, "Fetching domain...", func() *requests.Builder {
+		return requests.
+			URL(g.ServerURL + "/api/domains/" + d.ID).
+			ToJSON(&domain).
+			ErrorJSON(&apiErr)
+	})
 	if err != nil {
 		if apiErr.Status != 0 {
 			return handleHumaError(apiErr)
@@ -116,13 +120,15 @@ func (d *UpdateDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 	}
 	var apiErr huma.ErrorModel
 	var domain dto.Domain
-	if err := requests.
-		URL(g.ServerURL + "/api/domains/" + d.ID).
-		Method(http.MethodPut).
-		BodyJSON(body).
-		ToJSON(&domain).
-		ErrorJSON(&apiErr).
-		Fetch(ctx); err != nil {
+	err := requestWithSpinner(ctx, "Updating domain...", func() *requests.Builder {
+		return requests.
+			URL(g.ServerURL + "/api/domains/" + d.ID).
+			Method(http.MethodPut).
+			BodyJSON(body).
+			ToJSON(&domain).
+			ErrorJSON(&apiErr)
+	})
+	if err != nil {
 		if apiErr.Status != 0 {
 			return handleHumaError(apiErr)
 		}
@@ -154,12 +160,18 @@ func (d *RemoveDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 	var countResponse CountResponse
 	var apiErr huma.ErrorModel
 
-	if err := requests.
-		URL(g.ServerURL + "/api/domains/" + d.DomainID + "/impact").
-		Method(http.MethodGet).
-		ToJSON(&countResponse).
-		ErrorJSON(&apiErr).
-		Fetch(ctx); err != nil {
+	err := requestWithSpinner(
+		ctx,
+		"Calculating number of associated domains...",
+		func() *requests.Builder {
+			return requests.
+				URL(g.ServerURL + "/api/domains/" + d.DomainID + "/impact").
+				Method(http.MethodGet).
+				ToJSON(&countResponse).
+				ErrorJSON(&apiErr)
+		},
+	)
+	if err != nil {
 		if apiErr.Status != 0 {
 			return handleHumaError(apiErr)
 		}
@@ -184,11 +196,13 @@ func (d *RemoveDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 		}
 	}
 
-	if err := requests.
-		URL(g.ServerURL + "/api/domains/" + d.DomainID).
-		Method(http.MethodDelete).
-		ErrorJSON(&apiErr).
-		Fetch(ctx); err != nil {
+	err = requestWithSpinner(ctx, "Removing domains...", func() *requests.Builder {
+		return requests.
+			URL(g.ServerURL + "/api/domains/" + d.DomainID).
+			Method(http.MethodDelete).
+			ErrorJSON(&apiErr)
+	})
+	if err != nil {
 		if apiErr.Status != 0 {
 			return handleHumaError(apiErr)
 		}
@@ -228,14 +242,16 @@ func (d *ListDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 		Domains    []dto.Domain              `json:"domains"`
 		Pagination server.PaginationMetadata `json:"pagination"`
 	}
-	if err := requests.
-		URL(g.ServerURL+"/api/domains").
-		Param("page", fmt.Sprintf("%d", d.Page)).
-		Param("page_size", fmt.Sprintf("%d", d.PageSize)).
-		Param("name", d.Search).
-		ToJSON(&domains).
-		ErrorJSON(&apiErr).
-		Fetch(ctx); err != nil {
+	err := requestWithSpinner(ctx, "Listing domains...", func() *requests.Builder {
+		return requests.
+			URL(g.ServerURL+"/api/domains").
+			Param("page", fmt.Sprintf("%d", d.Page)).
+			Param("page_size", fmt.Sprintf("%d", d.PageSize)).
+			Param("name", d.Search).
+			ToJSON(&domains).
+			ErrorJSON(&apiErr)
+	})
+	if err != nil {
 		if apiErr.Status != 0 {
 			return handleHumaError(apiErr)
 		}
@@ -251,13 +267,14 @@ func (d *ListDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 		fmt.Println(formatOutput(domains, g.Format))
 	} else {
 		fmt.Println(formatOutput(domains.Domains, g.Format))
+		totalPages := (int32(domains.Pagination.Total) + int32(d.PageSize) - 1) / int32(d.PageSize)
 		fmt.Printf("\n--- Page %d of %d (Total items: %d) ---\n",
 			domains.Pagination.Page,
-			domains.Pagination.Total,
+			totalPages,
 			domains.Pagination.Total)
 
 		// Show how to get next page
-		if domains.Pagination.Page < int32(domains.Pagination.Total) {
+		if domains.Pagination.Page < totalPages {
 			fmt.Printf("For next page: gecko domain list --page=%d --page-size=%d\n",
 				d.Page+1, d.PageSize)
 		}
@@ -284,12 +301,17 @@ func (d *DomainRecordsCmd) Run(g *Globals, dc *DomainCmd) error {
 		Records    dto.AllRecords             `json:"records"`
 	}
 
-	err := requests.
-		URL(g.ServerURL+"/api/domains/"+d.DomainID+"/records").
-		Param("qtype", d.QType).
-		ToJSON(&recordsResp).
-		ErrorJSON(&apiErr).
-		Fetch(ctx)
+	err := requestWithSpinner(
+		ctx,
+		"Calculating number of associated domains...",
+		func() *requests.Builder {
+			return requests.
+				URL(g.ServerURL+"/api/domains/"+d.DomainID+"/records").
+				Param("qtype", d.QType).
+				ToJSON(&recordsResp).
+				ErrorJSON(&apiErr)
+		},
+	)
 	if err != nil {
 		if apiErr.Status != 0 {
 			return handleHumaError(apiErr)
