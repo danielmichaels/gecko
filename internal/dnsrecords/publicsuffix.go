@@ -29,6 +29,8 @@ func IsSecondLevelDomain(domain string) (bool, error) {
 // IsSubdomain checks if the given domain is a subdomain (has more levels than
 // the second-level domain, like sub.example.com)
 func IsSubdomain(domain string) (bool, error) {
+	domain = strings.TrimSuffix(domain, ".")
+
 	// Get the effective registered domain (like example.com)
 	effectiveDomain, err := publicsuffix.EffectiveTLDPlusOne(domain)
 	if err != nil {
