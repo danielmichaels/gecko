@@ -129,6 +129,7 @@ func TestIsSecondLevelDomain(t *testing.T) {
 		})
 	}
 }
+
 func TestIsSubdomain(t *testing.T) {
 	tests := []struct {
 		name    string
