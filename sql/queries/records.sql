@@ -318,3 +318,14 @@ SELECT id,
        updated_at
 FROM caa_records
 WHERE domain_id = $1;
+-- name: GetNameserversForDomain :many
+SELECT
+    id,
+    uid,
+    domain_id,
+--     name,
+--     ip_address,
+    created_at,
+    updated_at
+FROM ns_records
+WHERE domain_id = $1;
