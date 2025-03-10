@@ -1,9 +1,11 @@
 package dnsrecords
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/miekg/dns"
 )
@@ -336,4 +338,53 @@ func ParseSOARecord(domain, record string) (*SOAResult, error) {
 		MinimumTTL: uint32(minTTL),
 		IsValid:    true,
 	}, nil
+}
+
+// ZoneTransferData represents the comprehensive data collected during a DNS zone transfer operation,
+// including the nameserver details, timestamp, record counts, and the actual DNS records transferred.
+type ZoneTransferData struct {
+	Nameserver   string           `json:"nameserver"`
+	Timestamp    string           `json:"timestamp"`
+	RecordCounts RecordCount      `json:"record_counts"`
+	Records      RecordCollection `json:"records"`
+}
+
+// RecordCount represents the count of different types of DNS records in a zone transfer.
+// It tracks the number of AXFR (Authoritative Transfer), IXFR (Incremental Transfer),
+// and total records retrieved during the transfer.
+type RecordCount struct {
+	AXFR  int `json:"axfr"`
+	IXFR  int `json:"ixfr"`
+	Total int `json:"total"`
+}
+
+// RecordCollection represents a collection of DNS records categorized by transfer type (AXFR and IXFR).
+// It contains slices of DNS resource records for both full zone transfer (AXFR) and incremental zone transfer (IXFR).
+type RecordCollection struct {
+	AXFR []dns.RR `json:"axfr"`
+	IXFR []dns.RR `json:"ixfr"`
+}
+
+// FormatResult returns a JSON-formatted representation of zone transfer results for a nameserver
+func (z *ZoneTransferResult) FormatResult(nameserver string) (string, error) {
+	data := ZoneTransferData{
+		Nameserver: nameserver,
+		Timestamp:  time.Now().UTC().Format(time.RFC3339),
+		RecordCounts: RecordCount{
+			AXFR:  len(z.AXFR[nameserver]),
+			IXFR:  len(z.IXFR[nameserver]),
+			Total: len(z.AXFR[nameserver]) + len(z.IXFR[nameserver]),
+		},
+		Records: RecordCollection{
+			AXFR: z.AXFR[nameserver],
+			IXFR: z.IXFR[nameserver],
+		},
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonData), nil
 }

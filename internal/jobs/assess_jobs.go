@@ -45,3 +45,40 @@ func (w *AssessCNAMEDanglingWorker) Work(
 	*/
 	return nil
 }
+
+type AssessZoneTransferArgs struct {
+	DomainUID string `json:"domain_uid"`
+}
+
+func (AssessZoneTransferArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		Queue: queueAssessor,
+	}
+}
+func (AssessZoneTransferArgs) Kind() string { return "assess_zone_transfer" }
+
+type AssessZoneTransferWorker struct {
+	river.WorkerDefaults[AssessZoneTransferArgs]
+	Logger  slog.Logger
+	Store   *store.Queries
+	PgxPool *pgxpool.Pool
+}
+
+func (w *AssessZoneTransferWorker) Work(
+	ctx context.Context,
+	job *river.Job[AssessZoneTransferArgs],
+) error {
+	start := time.Now()
+	w.Logger.Info("assess zone transfer started", "domain", job.Args.DomainUID)
+	a := assessor.NewAssessor(assessor.Config{
+		Logger: &w.Logger,
+		Store:  w.Store,
+	})
+	err := a.AssessZoneTransfer(ctx, job.Args.DomainUID)
+	if err != nil {
+		return err
+	}
+
+	w.Logger.Info("assess zone transfer complete", "domain", job.Args.DomainUID, "duration", time.Since(start))
+	return nil
+}

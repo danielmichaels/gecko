@@ -67,6 +67,8 @@ func (w *EnumerateSubdomainWorker) Work(
 		job.Args.Concurrency,
 		func(entry *resolve.HostEntry) {
 			w.Logger.Info("enumerate_subdomain", "host", entry.Host)
+			// future: do we recursively enumerate subdomains?
+			// future: remove subfinder with gecko implementation
 			_, err := rc.InsertTx(ctx, tx, ResolveDomainArgs{
 				Domain: entry.Host,
 			}, nil)
