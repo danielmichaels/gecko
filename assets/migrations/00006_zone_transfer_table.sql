@@ -8,8 +8,8 @@ CREATE TABLE zone_transfer_attempts
     nameserver     TEXT                        NOT NULL,
     transfer_type  transfer_type               NOT NULL,
     was_successful BOOLEAN                     NOT NULL DEFAULT FALSE,
-    response_data  TEXT, -- stores successful transfer data or null if failed
-    error_message  TEXT, -- stores error message if failed
+    response_data  JSONB, -- stores response data if successful
+    error_message  TEXT,  -- stores error message if failed
     created_at     TIMESTAMP(0) WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at     TIMESTAMP(0) WITH TIME ZONE NOT NULL DEFAULT NOW(),
     UNIQUE (domain_id, nameserver)
@@ -22,7 +22,7 @@ CREATE TABLE zone_transfer_attempts_history
     nameserver     TEXT    NOT NULL,
     transfer_type  TEXT    NOT NULL,
     was_successful BOOLEAN NOT NULL,
-    response_data  TEXT,
+    response_data  JSONB,
     error_message  TEXT,
     change_type    TEXT    NOT NULL, -- 'created', 'updated', 'deleted'
     changed_at     TIMESTAMP(0) WITH TIME ZONE DEFAULT NOW()
