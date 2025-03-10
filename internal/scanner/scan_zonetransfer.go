@@ -3,13 +3,12 @@ package scanner
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/danielmichaels/gecko/internal/dnsclient"
-	"github.com/danielmichaels/gecko/internal/dnsrecords"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5/pgtype"
-	"strconv"
 )
 
 // ScanZoneTransfer attempts to perform a DNS zone transfer for a given domain name.
@@ -26,25 +25,37 @@ func (s *Scan) ScanZoneTransfer(ctx context.Context, domainName string) (string,
 			s.logger.Warn("Domain not found in database, cannot scan zone transfer", "domain", domain)
 			return "", fmt.Errorf("domain %s not found in database", domain.Uid)
 		}
-		s.logger.Error("Error looking up domain", "domain", domain, "error", err)
+		s.logger.Error("Error looking up domain", "domain", domain.Uid, "error", err)
 		return "", err
 	}
 
 	client := dnsclient.NewDNSClient()
 	result := client.AttemptZoneTransfer(domainName)
 	for nameserver, transferType := range result.SuccessfulTransfers {
-		err := s.store.ScannersStoreZoneTransferAttempt(ctx, store.ScannersStoreZoneTransferAttemptParams{
+		// Convert to assessment-friendly format
+		data := result.ToAssessmentData()
+		data.Nameserver = nameserver
+		data.TransferType = transferType
+
+		js, err := json.Marshal(data)
+		if err != nil {
+			s.logger.Error("Failed to marshal zone transfer data to JSON", "error", err)
+			continue
+		}
+
+		err = s.store.ScannersStoreZoneTransferAttempt(ctx, store.ScannersStoreZoneTransferAttemptParams{
 			DomainID:      pgtype.Int4{Int32: domain.ID, Valid: true},
 			Nameserver:    nameserver,
 			TransferType:  store.TransferType(transferType),
 			WasSuccessful: true,
-			ResponseData:  pgtype.Text{String: formatTransferData(result, nameserver), Valid: true},
+			ResponseData:  js,
 		})
 		if err != nil {
 			s.logger.Error("Failed to store successful zone transfer attempt", "error", err)
 		}
 	}
 
+	// Store failed zone transfer attempts
 	for _, ns := range result.NS {
 		nsAddr := ns + ":53"
 		if _, found := result.SuccessfulTransfers[nsAddr]; !found {
@@ -56,23 +67,10 @@ func (s *Scan) ScanZoneTransfer(ctx context.Context, domainName string) (string,
 				ErrorMessage:  pgtype.Text{String: "Transfer refused or failed", Valid: true},
 			})
 			if err != nil {
-				s.logger.Error("Failed to store failed zone transfer attempt", "error", err)
+				s.logger.Error("Failed to store failed zone transfer attempt", "error", err, "domain", domain.Uid)
 			}
 		}
 	}
 
 	return domain.Uid, nil
-}
-
-// formatTransferData converts a zone transfer result into a formatted string representation.
-// It attempts to format the result using the FormatResult method, falling back to a simple
-// record count if JSON encoding fails.
-func formatTransferData(result *dnsrecords.ZoneTransferResult, nameserver string) string {
-	formatted, err := result.FormatResult(nameserver)
-	if err != nil {
-		// If formatting fails, fallback to a simple record count
-		return "Records received: " + strconv.Itoa(len(result.AXFR[nameserver])+len(result.IXFR[nameserver]))
-	}
-
-	return formatted
 }

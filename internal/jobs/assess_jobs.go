@@ -2,11 +2,12 @@ package jobs
 
 import (
 	"context"
+	"github.com/danielmichaels/gecko/internal/assessor"
 	"log/slog"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/danielmichaels/gecko/internal/assessor"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/riverqueue/river"
 )
@@ -34,8 +35,10 @@ func (w *AssessCNAMEDanglingWorker) Work(
 	job *river.Job[AssessCNAMEDanglingArgs],
 ) error {
 	w.Logger.Info("assess CNAME started", "domain", job.Args.Domain)
-	a := assessor.NewAssessor(assessor.Config{Logger: &w.Logger, Store: w.Store})
-	a.AssessCNAMEDangling(job.Args.Domain)
+	_ = assessor.NewAssessor(assessor.Config{
+		Logger: &w.Logger,
+		Store:  w.Store,
+	})
 	/* todo:
 	- cloud provider checks
 	- http/https checks
