@@ -33,6 +33,7 @@ CREATE TABLE zone_transfer_findings
     zone_transfer_possible BOOLEAN                     NOT NULL DEFAULT FALSE,
     transfer_type          transfer_type               NOT NULL,
     details                TEXT,
+    transfer_details       JSONB,
     created_at             TIMESTAMP(0) WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at             TIMESTAMP(0) WITH TIME ZONE NOT NULL DEFAULT NOW(),
     UNIQUE (domain_id, nameserver)
@@ -314,6 +315,7 @@ CREATE TABLE zone_transfer_findings_history
     zone_transfer_possible BOOLEAN          NOT NULL,
     transfer_type          transfer_type    NOT NULL,
     details                TEXT,
+    transfer_details       JSONB,
     change_type            TEXT             NOT NULL,
     changed_at             TIMESTAMP(0) WITH TIME ZONE DEFAULT NOW()
 );

@@ -1172,7 +1172,7 @@ type ZoneTransferAttempts struct {
 	Nameserver    string             `json:"nameserver"`
 	TransferType  TransferType       `json:"transfer_type"`
 	WasSuccessful bool               `json:"was_successful"`
-	ResponseData  pgtype.Text        `json:"response_data"`
+	ResponseData  []byte             `json:"response_data"`
 	ErrorMessage  pgtype.Text        `json:"error_message"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
@@ -1184,7 +1184,7 @@ type ZoneTransferAttemptsHistory struct {
 	Nameserver    string             `json:"nameserver"`
 	TransferType  string             `json:"transfer_type"`
 	WasSuccessful bool               `json:"was_successful"`
-	ResponseData  pgtype.Text        `json:"response_data"`
+	ResponseData  []byte             `json:"response_data"`
 	ErrorMessage  pgtype.Text        `json:"error_message"`
 	ChangeType    string             `json:"change_type"`
 	ChangedAt     pgtype.Timestamptz `json:"changed_at"`
@@ -1201,6 +1201,7 @@ type ZoneTransferFindings struct {
 	ZoneTransferPossible bool               `json:"zone_transfer_possible"`
 	TransferType         TransferType       `json:"transfer_type"`
 	Details              pgtype.Text        `json:"details"`
+	TransferDetails      []byte             `json:"transfer_details"`
 	CreatedAt            pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
 }
@@ -1214,6 +1215,7 @@ type ZoneTransferFindingsHistory struct {
 	ZoneTransferPossible bool               `json:"zone_transfer_possible"`
 	TransferType         TransferType       `json:"transfer_type"`
 	Details              pgtype.Text        `json:"details"`
+	TransferDetails      []byte             `json:"transfer_details"`
 	ChangeType           string             `json:"change_type"`
 	ChangedAt            pgtype.Timestamptz `json:"changed_at"`
 }

@@ -12,26 +12,24 @@ import (
 )
 
 const storeZoneTransferFinding = `-- name: StoreZoneTransferFinding :exec
-INSERT INTO zone_transfer_findings (
-    domain_id,
-    ns_record_id,
-    severity,
-    status,
-    nameserver,
-    zone_transfer_possible,
-    transfer_type,
-    details
-) VALUES (
-             $1, $2, $3, $4, $5, $6, $7, $8
-         )
+INSERT INTO zone_transfer_findings (domain_id,
+                                    ns_record_id,
+                                    severity,
+                                    status,
+                                    nameserver,
+                                    zone_transfer_possible,
+                                    transfer_type,
+                                    details,
+                                    transfer_details)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ON CONFLICT (domain_id, nameserver)
-    DO UPDATE SET
-                  ns_record_id = $2,
-                  severity = $3,
-                  status = $4,
+    DO UPDATE SET ns_record_id           = $2,
+                  severity               = $3,
+                  status                 = $4,
                   zone_transfer_possible = $6,
-                  transfer_type = $7,
-                  details = $8
+                  transfer_type          = $7,
+                  details                = $8,
+                  transfer_details        = $9
 `
 
 type StoreZoneTransferFindingParams struct {
@@ -43,6 +41,7 @@ type StoreZoneTransferFindingParams struct {
 	ZoneTransferPossible bool            `json:"zone_transfer_possible"`
 	TransferType         TransferType    `json:"transfer_type"`
 	Details              pgtype.Text     `json:"details"`
+	TransferDetails      []byte          `json:"transfer_details"`
 }
 
 func (q *Queries) StoreZoneTransferFinding(ctx context.Context, arg StoreZoneTransferFindingParams) error {
@@ -55,6 +54,7 @@ func (q *Queries) StoreZoneTransferFinding(ctx context.Context, arg StoreZoneTra
 		arg.ZoneTransferPossible,
 		arg.TransferType,
 		arg.Details,
+		arg.TransferDetails,
 	)
 	return err
 }

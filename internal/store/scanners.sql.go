@@ -79,7 +79,7 @@ type ScannersStoreZoneTransferAttemptParams struct {
 	Nameserver    string       `json:"nameserver"`
 	TransferType  TransferType `json:"transfer_type"`
 	WasSuccessful bool         `json:"was_successful"`
-	ResponseData  pgtype.Text  `json:"response_data"`
+	ResponseData  []byte       `json:"response_data"`
 	ErrorMessage  pgtype.Text  `json:"error_message"`
 }
 
