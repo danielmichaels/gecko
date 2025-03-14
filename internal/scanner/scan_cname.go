@@ -20,7 +20,7 @@ func (s *Scan) ScanCNAME(domain string) *CNAMEScanResult {
 	res := CNAMEScanResult{
 		Domain: domain,
 	}
-	dc := dnsclient.NewDNSClient()
+	dc := dnsclient.New()
 	cname, ok := dc.LookupCNAME(res.Domain)
 	if !ok {
 		return &res

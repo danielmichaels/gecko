@@ -72,9 +72,9 @@ type DNSClient struct {
 	currentServerIdx int
 }
 
-// NewDNSClient creates a new DNSClient instance with the configured DNS servers and a logger.
+// New creates a new DNSClient instance with the configured DNS servers and a logger.
 // It initializes the DNS client and sets the current server index to 0.
-func NewDNSClient() *DNSClient {
+func New() *DNSClient {
 	cfg := config.AppConfig()
 	logger, _ := logging.SetupLogger("dns-client", cfg)
 	return &DNSClient{
@@ -386,7 +386,7 @@ func (c *DNSClient) IsZoneApex(domain string) bool {
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(domain), dns.TypeSOA)
 
-	client := NewDNSClient()
+	client := New()
 	response, ok := client.sendDNSSECQuery(m)
 
 	return ok && len(response.Answer) > 0

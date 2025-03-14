@@ -6,12 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/danielmichaels/gecko/internal/dnsrecords"
-	"github.com/danielmichaels/gecko/internal/store"
-	"github.com/jackc/pgx/v5/pgtype"
 	"net"
 	"regexp"
 	"strings"
+
+	"github.com/danielmichaels/gecko/internal/dnsrecords"
+	"github.com/danielmichaels/gecko/internal/store"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // FindingsContainer aggregates and organizes security findings from a zone transfer analysis
@@ -78,15 +79,23 @@ func (a *Assessor) AssessZoneTransfer(ctx context.Context, domainUID string) err
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			a.logger.Warn("Domain not found in database, cannot scan zone transfer", "domain", domain.Uid)
+			a.logger.WarnContext(
+				ctx,
+				"Domain not found in database, cannot scan zone transfer",
+				"domain",
+				domain.Uid,
+			)
 			return fmt.Errorf("domain %s not found in database", domain.Uid)
 		}
-		a.logger.Error("Error looking up domain", "domain", domain.Uid, "error", err)
+		a.logger.ErrorContext(ctx, "Error looking up domain", "domain", domain.Uid, "error", err)
 		return err
 	}
-	attempts, err := a.store.ScannersGetZoneTransferAttempts(ctx, pgtype.Int4{Int32: domain.ID, Valid: true})
+	attempts, err := a.store.ScannersGetZoneTransferAttempts(
+		ctx,
+		pgtype.Int4{Int32: domain.ID, Valid: true},
+	)
 	if err != nil {
-		a.logger.Error("Failed to retrieve zone transfer attempts", "error", err)
+		a.logger.ErrorContext(ctx, "Failed to retrieve zone transfer attempts", "error", err)
 		return err
 	}
 	successfulAssessments := 0
@@ -94,7 +103,14 @@ func (a *Assessor) AssessZoneTransfer(ctx context.Context, domainUID string) err
 		if attempt.WasSuccessful {
 			var transferData dnsrecords.ZoneTransferData
 			if err := json.Unmarshal(attempt.ResponseData, &transferData); err != nil {
-				a.logger.Error("Failed to unmarshal zone transfer data", "error", err, "nameserver", attempt.Nameserver)
+				a.logger.ErrorContext(
+					ctx,
+					"Failed to unmarshal zone transfer data",
+					"error",
+					err,
+					"nameserver",
+					attempt.Nameserver,
+				)
 				continue
 			}
 			assessment := ExtractZoneTransferAssessment(&transferData)
@@ -102,9 +118,17 @@ func (a *Assessor) AssessZoneTransfer(ctx context.Context, domainUID string) err
 			recordData := extractRecordDataByType(&transferData)
 			findings := FindingsContainer{
 				PrimaryFinding: Finding{
-					Title:    fmt.Sprintf("Zone transfer (%s) allowed from nameserver %s", attempt.TransferType, attempt.Nameserver),
+					Title: fmt.Sprintf(
+						"Zone transfer (%s) allowed from nameserver %s",
+						attempt.TransferType,
+						attempt.Nameserver,
+					),
 					Severity: string(store.FindingSeverityCritical),
-					Details:  fmt.Sprintf("Zone transfer (%s) allowed from nameserver %s. This can leak internal DNS information to attackers.", attempt.TransferType, attempt.Nameserver),
+					Details: fmt.Sprintf(
+						"Zone transfer (%s) allowed from nameserver %s. This can leak internal DNS information to attackers.",
+						attempt.TransferType,
+						attempt.Nameserver,
+					),
 				},
 				Assessment: assessment,
 				RecordData: recordData,
@@ -115,7 +139,7 @@ func (a *Assessor) AssessZoneTransfer(ctx context.Context, domainUID string) err
 			findings.SecurityIssues = collectSecurityFlagFindings(assessment)
 			findingsJSON, err := json.Marshal(findings)
 			if err != nil {
-				a.logger.Error("Failed to marshal findings data", "error", err)
+				a.logger.ErrorContext(ctx, "Failed to marshal findings data", "error", err)
 				continue
 			}
 
@@ -129,7 +153,7 @@ func (a *Assessor) AssessZoneTransfer(ctx context.Context, domainUID string) err
 				TransferDetails:      findingsJSON,
 			})
 			if err != nil {
-				a.logger.Error("Failed to store zone transfer finding", "error", err)
+				a.logger.ErrorContext(ctx, "Failed to store zone transfer finding", "error", err)
 				continue
 			}
 			successfulAssessments++
@@ -137,10 +161,17 @@ func (a *Assessor) AssessZoneTransfer(ctx context.Context, domainUID string) err
 	}
 
 	if successfulAssessments > 0 {
-		a.logger.Info("Successfully assessed zone transfers", "domain", domain.Uid, "count", successfulAssessments)
+		a.logger.InfoContext(
+			ctx,
+			"Successfully assessed zone transfers",
+			"domain",
+			domain.Uid,
+			"count",
+			successfulAssessments,
+		)
 		return nil
 	}
-	a.logger.Info("No zone transfer attempts found to assess", "domain", domain.Uid)
+	a.logger.InfoContext(ctx, "No zone transfer attempts found to assess", "domain", domain.Uid)
 
 	return nil
 }
@@ -242,9 +273,11 @@ func collectInternalExposureFindings(assessment ZoneTransferAssessment) []Findin
 	}
 
 	if len(assessment.InternalExposure.DevelopmentEnv) > 0 {
-		details := fmt.Sprintf("Zone transfer exposed %d development/test environment hostnames including: %s",
+		details := fmt.Sprintf(
+			"Zone transfer exposed %d development/test environment hostnames including: %s",
 			len(assessment.InternalExposure.DevelopmentEnv),
-			joinWithLimit(assessment.InternalExposure.DevelopmentEnv, 5))
+			joinWithLimit(assessment.InternalExposure.DevelopmentEnv, 5),
+		)
 
 		findings = append(findings, Finding{
 			Title:    "Development environments exposed in zone transfer",
@@ -285,8 +318,10 @@ func collectSecurityFlagFindings(assessment ZoneTransferAssessment) []Finding {
 	}
 
 	if len(assessment.SecurityFlags.SuspiciousText) > 0 {
-		details := fmt.Sprintf("Zone transfer revealed %d suspicious text patterns in DNS records that may indicate security issues",
-			len(assessment.SecurityFlags.SuspiciousText))
+		details := fmt.Sprintf(
+			"Zone transfer revealed %d suspicious text patterns in DNS records that may indicate security issues",
+			len(assessment.SecurityFlags.SuspiciousText),
+		)
 
 		findings = append(findings, Finding{
 			Title:    "Suspicious text patterns in DNS records",
@@ -307,7 +342,9 @@ func joinWithLimit(items []string, maxItems int) string {
 }
 
 // ExtractZoneTransferAssessment extracts assessment data from zone transfer results
-func ExtractZoneTransferAssessment(transferData *dnsrecords.ZoneTransferData) ZoneTransferAssessment {
+func ExtractZoneTransferAssessment(
+	transferData *dnsrecords.ZoneTransferData,
+) ZoneTransferAssessment {
 	assessment := ZoneTransferAssessment{
 		RecordCounts: RecordCountMetrics{
 			Total:  transferData.RecordCounts.Total,
@@ -342,8 +379,12 @@ func extractSensitiveInfo(data *dnsrecords.ZoneTransferData) SensitiveInformatio
 	var info SensitiveInformation
 
 	emailRegex := regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`)
-	apiKeyRegex := regexp.MustCompile(`(?i)(api_?key|access_?key|secret|token)[=:]\s*['"]?([a-zA-Z0-9]{16,})['"]?`)
-	credRegex := regexp.MustCompile(`(?i)(password|passwd|pwd|user|username)[=:]\s*['"]?([^'"]{3,})['"]?`)
+	apiKeyRegex := regexp.MustCompile(
+		`(?i)(api_?key|access_?key|secret|token)[=:]\s*['"]?([a-zA-Z0-9]{16,})['"]?`,
+	)
+	credRegex := regexp.MustCompile(
+		`(?i)(password|passwd|pwd|user|username)[=:]\s*['"]?([^'"]{3,})['"]?`,
+	)
 
 	// check all TXT records for sensitive data
 	allRecords := append(data.Records.AXFR, data.Records.IXFR...)
@@ -469,7 +510,8 @@ func identifySecurityFlags(data *dnsrecords.ZoneTransferData) SecurityWarnings {
 				lowerContent := strings.ToLower(content)
 
 				if strings.HasPrefix(lowerContent, "v=spf1") {
-					if strings.Contains(lowerContent, "all") && !strings.Contains(lowerContent, "-all") {
+					if strings.Contains(lowerContent, "all") &&
+						!strings.Contains(lowerContent, "-all") {
 						warnings.SpfIssues = append(warnings.SpfIssues,
 							"SPF record uses potentially unsafe qualifier: "+content)
 					}

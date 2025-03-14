@@ -2,9 +2,11 @@ package jobs
 
 import (
 	"context"
-	"github.com/danielmichaels/gecko/internal/assessor"
 	"log/slog"
 	"time"
+
+	"github.com/danielmichaels/gecko/internal/assessor"
+	"github.com/danielmichaels/gecko/internal/tracing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -34,7 +36,8 @@ func (w *AssessCNAMEDanglingWorker) Work(
 	ctx context.Context,
 	job *river.Job[AssessCNAMEDanglingArgs],
 ) error {
-	w.Logger.Info("assess CNAME started", "domain", job.Args.Domain)
+	ctx = tracing.WithNewTraceID(ctx, true)
+	w.Logger.InfoContext(ctx, "assess CNAME started", "domain", job.Args.Domain)
 	_ = assessor.NewAssessor(assessor.Config{
 		Logger: &w.Logger,
 		Store:  w.Store,
@@ -71,8 +74,9 @@ func (w *AssessZoneTransferWorker) Work(
 	ctx context.Context,
 	job *river.Job[AssessZoneTransferArgs],
 ) error {
+	ctx = tracing.WithNewTraceID(ctx, true)
 	start := time.Now()
-	w.Logger.Info("assess zone transfer started", "domain", job.Args.DomainUID)
+	w.Logger.InfoContext(ctx, "assess zone transfer started", "domain", job.Args.DomainUID)
 	a := assessor.NewAssessor(assessor.Config{
 		Logger: &w.Logger,
 		Store:  w.Store,
@@ -83,5 +87,15 @@ func (w *AssessZoneTransferWorker) Work(
 	}
 
 	w.Logger.Info("assess zone transfer complete", "domain", job.Args.DomainUID, "duration", time.Since(start))
+	w.Logger.InfoContext(
+		ctx,
+		"assess zone transfer complete",
+		"domain",
+		job.Args.DomainUID,
+		"duration",
+		time.Since(start),
+	)
+	return nil
+}
 	return nil
 }

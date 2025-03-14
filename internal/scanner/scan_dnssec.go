@@ -32,7 +32,7 @@ func NewDNSSECScanner(domain string) *DNSSECScanner {
 	result := &dnsrecords.DNSSECResult{
 		Domain: domain,
 	}
-	client := dnsclient.NewDNSClient()
+	client := dnsclient.New()
 	return &DNSSECScanner{Domain: domain, Client: client, Result: result, logger: logger}
 }
 

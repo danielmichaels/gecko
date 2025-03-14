@@ -11,7 +11,7 @@ import (
 )
 
 func ExampleDNSClient_GetParentZone() {
-	client := NewDNSClient()
+	client := New()
 	parent, _ := client.GetParentZone("example.com")
 	fmt.Println(parent)
 	// Output: com.
