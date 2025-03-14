@@ -149,6 +149,7 @@ const (
 	FindingSeverityMedium   FindingSeverity = "medium"
 	FindingSeverityLow      FindingSeverity = "low"
 	FindingSeverityInfo     FindingSeverity = "info"
+	FindingSeverityIgnore   FindingSeverity = "ignore"
 )
 
 func (e *FindingSeverity) Scan(src interface{}) error {
@@ -190,9 +191,11 @@ type FindingStatus string
 
 const (
 	FindingStatusOpen          FindingStatus = "open"
+	FindingStatusClosed        FindingStatus = "closed"
+	FindingStatusCompliant     FindingStatus = "compliant"
 	FindingStatusResolved      FindingStatus = "resolved"
-	FindingStatusFalsePositive FindingStatus = "false_positive"
-	FindingStatusAcceptedRisk  FindingStatus = "accepted_risk"
+	FindingStatusIgnore        FindingStatus = "ignore"
+	FindingStatusNotApplicable FindingStatus = "not_applicable"
 )
 
 func (e *FindingStatus) Scan(src interface{}) error {
@@ -588,6 +591,7 @@ type DkimFindings struct {
 	Selector    pgtype.Text        `json:"selector"`
 	IssueType   string             `json:"issue_type"`
 	Details     pgtype.Text        `json:"details"`
+	DkimValue   pgtype.Text        `json:"dkim_value"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
@@ -614,6 +618,7 @@ type DmarcFindings struct {
 	Policy      pgtype.Text        `json:"policy"`
 	IssueType   string             `json:"issue_type"`
 	Details     pgtype.Text        `json:"details"`
+	DmarcValue  pgtype.Text        `json:"dmarc_value"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }

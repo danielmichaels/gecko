@@ -11,6 +11,417 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const assessCreateDKIMFinding = `-- name: AssessCreateDKIMFinding :exec
+INSERT INTO dkim_findings (domain_id,
+                           txt_record_id,
+                           severity,
+                           status,
+                           selector,
+                           issue_type,
+                           dkim_value,
+                           details)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (domain_id, issue_type, selector)
+WHERE selector IS NOT NULL
+    DO UPDATE SET txt_record_id = $2,
+                  severity      = $3,
+                  status        = $4,
+                  dkim_value    = $7,
+                  details       = $8
+`
+
+type AssessCreateDKIMFindingParams struct {
+	DomainID    pgtype.Int4     `json:"domain_id"`
+	TxtRecordID pgtype.Int4     `json:"txt_record_id"`
+	Severity    FindingSeverity `json:"severity"`
+	Status      FindingStatus   `json:"status"`
+	Selector    pgtype.Text     `json:"selector"`
+	IssueType   string          `json:"issue_type"`
+	DkimValue   pgtype.Text     `json:"dkim_value"`
+	Details     pgtype.Text     `json:"details"`
+}
+
+func (q *Queries) AssessCreateDKIMFinding(ctx context.Context, arg AssessCreateDKIMFindingParams) error {
+	_, err := q.db.Exec(ctx, assessCreateDKIMFinding,
+		arg.DomainID,
+		arg.TxtRecordID,
+		arg.Severity,
+		arg.Status,
+		arg.Selector,
+		arg.IssueType,
+		arg.DkimValue,
+		arg.Details,
+	)
+	return err
+}
+
+const assessCreateDKIMFindingNoSelector = `-- name: AssessCreateDKIMFindingNoSelector :exec
+INSERT INTO dkim_findings (domain_id,
+                           txt_record_id,
+                           severity,
+                           status,
+                           selector,
+                           issue_type,
+                           dkim_value,
+                           details)
+VALUES ($1, $2, $3, $4, NULL, $5, $6, $7)
+ON CONFLICT (domain_id, issue_type)
+    WHERE (selector IS NULL)
+    DO UPDATE SET txt_record_id = $2,
+                  severity      = $3,
+                  status        = $4,
+                  dkim_value    = $6,
+                  details       = $7
+`
+
+type AssessCreateDKIMFindingNoSelectorParams struct {
+	DomainID    pgtype.Int4     `json:"domain_id"`
+	TxtRecordID pgtype.Int4     `json:"txt_record_id"`
+	Severity    FindingSeverity `json:"severity"`
+	Status      FindingStatus   `json:"status"`
+	IssueType   string          `json:"issue_type"`
+	DkimValue   pgtype.Text     `json:"dkim_value"`
+	Details     pgtype.Text     `json:"details"`
+}
+
+func (q *Queries) AssessCreateDKIMFindingNoSelector(ctx context.Context, arg AssessCreateDKIMFindingNoSelectorParams) error {
+	_, err := q.db.Exec(ctx, assessCreateDKIMFindingNoSelector,
+		arg.DomainID,
+		arg.TxtRecordID,
+		arg.Severity,
+		arg.Status,
+		arg.IssueType,
+		arg.DkimValue,
+		arg.Details,
+	)
+	return err
+}
+
+const assessCreateDMARCFinding = `-- name: AssessCreateDMARCFinding :exec
+INSERT INTO dmarc_findings (domain_id,
+                            txt_record_id,
+                            severity,
+                            status,
+                            policy,
+                            issue_type,
+                            dmarc_value,
+                            details)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (domain_id, issue_type)
+    DO UPDATE SET txt_record_id = $2,
+                  severity      = $3,
+                  status        = $4,
+                  policy        = $5,
+                  dmarc_value  = $7,
+                  details       = $8
+`
+
+type AssessCreateDMARCFindingParams struct {
+	DomainID    pgtype.Int4     `json:"domain_id"`
+	TxtRecordID pgtype.Int4     `json:"txt_record_id"`
+	Severity    FindingSeverity `json:"severity"`
+	Status      FindingStatus   `json:"status"`
+	Policy      pgtype.Text     `json:"policy"`
+	IssueType   string          `json:"issue_type"`
+	DmarcValue  pgtype.Text     `json:"dmarc_value"`
+	Details     pgtype.Text     `json:"details"`
+}
+
+func (q *Queries) AssessCreateDMARCFinding(ctx context.Context, arg AssessCreateDMARCFindingParams) error {
+	_, err := q.db.Exec(ctx, assessCreateDMARCFinding,
+		arg.DomainID,
+		arg.TxtRecordID,
+		arg.Severity,
+		arg.Status,
+		arg.Policy,
+		arg.IssueType,
+		arg.DmarcValue,
+		arg.Details,
+	)
+	return err
+}
+
+const assessCreateSPFFinding = `-- name: AssessCreateSPFFinding :exec
+INSERT INTO spf_findings (domain_id,
+                          txt_record_id,
+                          severity,
+                          status,
+                          issue_type,
+                          spf_value,
+                          details)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (domain_id, issue_type)
+    DO UPDATE SET txt_record_id = $2,
+                  severity      = $3,
+                  status        = $4,
+                  spf_value     = $6,
+                  details       = $7
+`
+
+type AssessCreateSPFFindingParams struct {
+	DomainID    pgtype.Int4     `json:"domain_id"`
+	TxtRecordID pgtype.Int4     `json:"txt_record_id"`
+	Severity    FindingSeverity `json:"severity"`
+	Status      FindingStatus   `json:"status"`
+	IssueType   string          `json:"issue_type"`
+	SpfValue    pgtype.Text     `json:"spf_value"`
+	Details     pgtype.Text     `json:"details"`
+}
+
+func (q *Queries) AssessCreateSPFFinding(ctx context.Context, arg AssessCreateSPFFindingParams) error {
+	_, err := q.db.Exec(ctx, assessCreateSPFFinding,
+		arg.DomainID,
+		arg.TxtRecordID,
+		arg.Severity,
+		arg.Status,
+		arg.IssueType,
+		arg.SpfValue,
+		arg.Details,
+	)
+	return err
+}
+
+const assessDKIMFindingsByDomainID = `-- name: AssessDKIMFindingsByDomainID :many
+SELECT df.id, df.uid, df.domain_id, df.txt_record_id, df.severity, df.status, df.selector, df.issue_type, df.details, df.dkim_value, df.created_at, df.updated_at
+FROM dkim_findings df
+         JOIN domains d ON df.domain_id = d.id
+WHERE d.uid = $1
+ORDER BY df.severity ASC, df.created_at DESC
+`
+
+func (q *Queries) AssessDKIMFindingsByDomainID(ctx context.Context, uid string) ([]DkimFindings, error) {
+	rows, err := q.db.Query(ctx, assessDKIMFindingsByDomainID, uid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DkimFindings{}
+	for rows.Next() {
+		var i DkimFindings
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.TxtRecordID,
+			&i.Severity,
+			&i.Status,
+			&i.Selector,
+			&i.IssueType,
+			&i.Details,
+			&i.DkimValue,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const assessGetDKIMFindings = `-- name: AssessGetDKIMFindings :many
+SELECT id, uid, domain_id, txt_record_id, severity, status, selector, issue_type, details, dkim_value, created_at, updated_at
+FROM dkim_findings
+WHERE domain_id = $1
+ORDER BY severity ASC, created_at DESC
+`
+
+func (q *Queries) AssessGetDKIMFindings(ctx context.Context, domainID pgtype.Int4) ([]DkimFindings, error) {
+	rows, err := q.db.Query(ctx, assessGetDKIMFindings, domainID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DkimFindings{}
+	for rows.Next() {
+		var i DkimFindings
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.TxtRecordID,
+			&i.Severity,
+			&i.Status,
+			&i.Selector,
+			&i.IssueType,
+			&i.Details,
+			&i.DkimValue,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const assessGetDMARCFindings = `-- name: AssessGetDMARCFindings :many
+SELECT id, uid, domain_id, txt_record_id, severity, status, policy, issue_type, details, dmarc_value, created_at, updated_at
+FROM dmarc_findings
+WHERE domain_id = $1
+ORDER BY severity ASC, created_at DESC
+`
+
+func (q *Queries) AssessGetDMARCFindings(ctx context.Context, domainID pgtype.Int4) ([]DmarcFindings, error) {
+	rows, err := q.db.Query(ctx, assessGetDMARCFindings, domainID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DmarcFindings{}
+	for rows.Next() {
+		var i DmarcFindings
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.TxtRecordID,
+			&i.Severity,
+			&i.Status,
+			&i.Policy,
+			&i.IssueType,
+			&i.Details,
+			&i.DmarcValue,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const assessGetDMARCFindingsByDomainID = `-- name: AssessGetDMARCFindingsByDomainID :many
+SELECT df.id, df.uid, df.domain_id, df.txt_record_id, df.severity, df.status, df.policy, df.issue_type, df.details, df.dmarc_value, df.created_at, df.updated_at
+FROM dmarc_findings df
+         JOIN domains d ON df.domain_id = d.id
+WHERE d.uid = $1
+ORDER BY df.severity ASC, df.created_at DESC
+`
+
+func (q *Queries) AssessGetDMARCFindingsByDomainID(ctx context.Context, uid string) ([]DmarcFindings, error) {
+	rows, err := q.db.Query(ctx, assessGetDMARCFindingsByDomainID, uid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DmarcFindings{}
+	for rows.Next() {
+		var i DmarcFindings
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.TxtRecordID,
+			&i.Severity,
+			&i.Status,
+			&i.Policy,
+			&i.IssueType,
+			&i.Details,
+			&i.DmarcValue,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const assessGetSPFFindingByDomainID = `-- name: AssessGetSPFFindingByDomainID :many
+SELECT sf.id, sf.uid, sf.domain_id, sf.txt_record_id, sf.severity, sf.status, sf.issue_type, sf.spf_value, sf.details, sf.created_at, sf.updated_at
+FROM spf_findings sf
+         JOIN domains d ON sf.domain_id = d.id
+WHERE d.uid = $1
+ORDER BY sf.severity ASC, sf.created_at DESC
+`
+
+func (q *Queries) AssessGetSPFFindingByDomainID(ctx context.Context, uid string) ([]SpfFindings, error) {
+	rows, err := q.db.Query(ctx, assessGetSPFFindingByDomainID, uid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SpfFindings{}
+	for rows.Next() {
+		var i SpfFindings
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.TxtRecordID,
+			&i.Severity,
+			&i.Status,
+			&i.IssueType,
+			&i.SpfValue,
+			&i.Details,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const assessGetSPFFindings = `-- name: AssessGetSPFFindings :many
+SELECT id, uid, domain_id, txt_record_id, severity, status, issue_type, spf_value, details, created_at, updated_at
+FROM spf_findings
+WHERE domain_id = $1
+ORDER BY severity ASC, created_at DESC
+`
+
+func (q *Queries) AssessGetSPFFindings(ctx context.Context, domainID pgtype.Int4) ([]SpfFindings, error) {
+	rows, err := q.db.Query(ctx, assessGetSPFFindings, domainID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SpfFindings{}
+	for rows.Next() {
+		var i SpfFindings
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.TxtRecordID,
+			&i.Severity,
+			&i.Status,
+			&i.IssueType,
+			&i.SpfValue,
+			&i.Details,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const storeZoneTransferFinding = `-- name: StoreZoneTransferFinding :exec
 INSERT INTO zone_transfer_findings (domain_id,
                                     ns_record_id,
@@ -29,7 +440,7 @@ ON CONFLICT (domain_id, nameserver)
                   zone_transfer_possible = $6,
                   transfer_type          = $7,
                   details                = $8,
-                  transfer_details        = $9
+                  transfer_details       = $9
 `
 
 type StoreZoneTransferFindingParams struct {

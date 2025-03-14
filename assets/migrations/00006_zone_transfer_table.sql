@@ -8,8 +8,8 @@ CREATE TABLE zone_transfer_attempts
     nameserver     TEXT                        NOT NULL,
     transfer_type  transfer_type               NOT NULL,
     was_successful BOOLEAN                     NOT NULL DEFAULT FALSE,
-    response_data  JSONB, -- stores response data if successful
-    error_message  TEXT,  -- stores error message if failed
+    response_data  JSONB,
+    error_message  TEXT,
     created_at     TIMESTAMP(0) WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at     TIMESTAMP(0) WITH TIME ZONE NOT NULL DEFAULT NOW(),
     UNIQUE (domain_id, nameserver)
@@ -18,13 +18,13 @@ CREATE TABLE zone_transfer_attempts
 CREATE TABLE zone_transfer_attempts_history
 (
     id             SERIAL PRIMARY KEY,
-    record_id      INT REFERENCES zone_transfer_attempts (id) ON DELETE CASCADE,
+    record_id      INT REFERENCES zone_transfer_attempts (id),
     nameserver     TEXT    NOT NULL,
     transfer_type  TEXT    NOT NULL,
     was_successful BOOLEAN NOT NULL,
     response_data  JSONB,
     error_message  TEXT,
-    change_type    TEXT    NOT NULL, -- 'created', 'updated', 'deleted'
+    change_type    TEXT    NOT NULL,
     changed_at     TIMESTAMP(0) WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -56,12 +56,6 @@ BEGIN
                     NEW.response_data, NEW.error_message, 'updated');
         END IF;
         RETURN NEW;
-    ELSIF (TG_OP = 'DELETE') THEN
-        INSERT INTO zone_transfer_attempts_history (record_id, nameserver, transfer_type, was_successful,
-                                                    response_data, error_message, change_type)
-        VALUES (OLD.id, OLD.nameserver, OLD.transfer_type, OLD.was_successful,
-                OLD.response_data, OLD.error_message, 'deleted');
-        RETURN OLD;
     END IF;
     RETURN NULL;
 END;
@@ -69,11 +63,26 @@ $$ LANGUAGE plpgsql;
 
 -- History trigger
 CREATE TRIGGER zone_transfer_attempts_history_trigger
-    AFTER INSERT OR UPDATE OR DELETE
+    AFTER INSERT OR UPDATE
     ON zone_transfer_attempts
     FOR EACH ROW
 EXECUTE FUNCTION record_zone_transfer_attempts_history();
 
+CREATE OR REPLACE FUNCTION delete_zone_transfer_history() RETURNS TRIGGER AS
+$$
+BEGIN
+    DELETE
+    FROM zone_transfer_attempts_history
+    WHERE record_id IN (SELECT id FROM zone_transfer_attempts WHERE domain_id = OLD.id);
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER domains_delete_trigger
+    BEFORE DELETE
+    ON domains
+    FOR EACH ROW
+EXECUTE FUNCTION delete_zone_transfer_history();
 -- Indexes
 CREATE INDEX idx_zone_transfer_success ON zone_transfer_attempts (was_successful);
 CREATE INDEX idx_zone_transfer_updated_at ON zone_transfer_attempts (updated_at);
@@ -81,6 +90,9 @@ CREATE INDEX idx_zone_transfer_updated_at ON zone_transfer_attempts (updated_at)
 
 -- +goose Down
 -- +goose StatementBegin
+DROP TRIGGER IF EXISTS domains_delete_trigger ON domains;
+DROP FUNCTION IF EXISTS delete_zone_transfer_history();
+DROP TRIGGER IF EXISTS trigger_updated_at_zone_transfer_attempts ON zone_transfer_attempts;
 DROP TRIGGER IF EXISTS zone_transfer_attempts_history_trigger ON zone_transfer_attempts;
 DROP TRIGGER IF EXISTS trigger_updated_at_zone_transfer_attempts ON zone_transfer_attempts;
 DROP FUNCTION IF EXISTS record_zone_transfer_attempts_history();

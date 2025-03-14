@@ -1,7 +1,7 @@
 -- +goose Up
 -- +goose StatementBegin
-CREATE TYPE finding_severity AS ENUM ('critical', 'high', 'medium', 'low', 'info');
-CREATE TYPE finding_status AS ENUM ('open', 'resolved', 'false_positive', 'accepted_risk');
+CREATE TYPE finding_severity AS ENUM ('critical', 'high', 'medium', 'low', 'info', 'ignore');
+CREATE TYPE finding_status AS ENUM ('open','closed','compliant', 'resolved', 'ignore', 'not_applicable');
 CREATE TYPE transfer_type AS ENUM ('AXFR', 'IXFR', 'AXFR+IXFR' );
 
 -- I. Security Assessors Tables
@@ -66,7 +66,8 @@ CREATE TABLE spf_findings
     spf_value     TEXT,
     details       TEXT,
     created_at    TIMESTAMP(0) WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_at    TIMESTAMP(0) WITH TIME ZONE NOT NULL DEFAULT NOW()
+    updated_at    TIMESTAMP(0) WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    UNIQUE (domain_id, issue_type)
 );
 -- 5. DKIM Record Assessor
 CREATE TABLE dkim_findings
@@ -80,6 +81,7 @@ CREATE TABLE dkim_findings
     selector      TEXT,
     issue_type    TEXT                        NOT NULL, -- e.g., "missing_dkim", "weak_key", "expired_key"
     details       TEXT,
+    dkim_value    TEXT,
     created_at    TIMESTAMP(0) WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMP(0) WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
@@ -95,8 +97,10 @@ CREATE TABLE dmarc_findings
     policy        TEXT,                                 -- p=none, p=quarantine, p=reject
     issue_type    TEXT                        NOT NULL, -- e.g., "missing_dmarc", "weak_policy", "missing_reporting"
     details       TEXT,
+    dmarc_value TEXT,
     created_at    TIMESTAMP(0) WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_at    TIMESTAMP(0) WITH TIME ZONE NOT NULL DEFAULT NOW()
+    updated_at    TIMESTAMP(0) WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    UNIQUE (domain_id, issue_type)
 );
 -- 7. Open Port Assessor
 CREATE TABLE open_port_findings
@@ -1467,6 +1471,14 @@ CREATE INDEX idx_dmarc_severity ON dmarc_findings (severity);
 CREATE INDEX idx_dmarc_status ON dmarc_findings (status);
 CREATE INDEX idx_dmarc_policy ON dmarc_findings (policy);
 CREATE INDEX idx_dmarc_issue_type ON dmarc_findings (issue_type);
+-- For records where selector IS NULL
+CREATE UNIQUE INDEX idx_dkim_findings_null_selector
+    ON dkim_findings (domain_id, issue_type)
+    WHERE selector IS NULL;
+-- For records where selector IS NOT NULL
+CREATE UNIQUE INDEX idx_dkim_findings_with_selector
+    ON dkim_findings (domain_id, issue_type, selector)
+    WHERE selector IS NOT NULL;
 
 CREATE INDEX idx_open_port_domain_id ON open_port_findings (domain_id);
 CREATE INDEX idx_open_port_severity ON open_port_findings (severity);
@@ -1699,6 +1711,8 @@ DROP INDEX IF EXISTS idx_dkim_selector;
 DROP INDEX IF EXISTS idx_dkim_status;
 DROP INDEX IF EXISTS idx_dkim_severity;
 DROP INDEX IF EXISTS idx_dkim_domain_id;
+DROP INDEX IF EXISTS idx_dkim_findings_null_selector;
+DROP INDEX IF EXISTS idx_dkim_findings_with_selector;
 
 DROP INDEX IF EXISTS idx_spf_status;
 DROP INDEX IF EXISTS idx_spf_severity;
