@@ -86,7 +86,6 @@ func (w *AssessZoneTransferWorker) Work(
 		return err
 	}
 
-	w.Logger.Info("assess zone transfer complete", "domain", job.Args.DomainUID, "duration", time.Since(start))
 	w.Logger.InfoContext(
 		ctx,
 		"assess zone transfer complete",
@@ -97,5 +96,49 @@ func (w *AssessZoneTransferWorker) Work(
 	)
 	return nil
 }
+
+type AssessEmailSecurityArgs struct {
+	DomainUID string `json:"domain_uid"`
+	DomainID  int    `json:"domain_id"`
+}
+
+func (AssessEmailSecurityArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		Queue: queueAssessor,
+	}
+}
+func (AssessEmailSecurityArgs) Kind() string { return "assess_email_security" }
+
+type AssessEmailSecurityWorker struct {
+	river.WorkerDefaults[AssessEmailSecurityArgs]
+	Logger  slog.Logger
+	Store   *store.Queries
+	PgxPool *pgxpool.Pool
+}
+
+func (w *AssessEmailSecurityWorker) Work(
+	ctx context.Context,
+	job *river.Job[AssessEmailSecurityArgs],
+) error {
+	ctx = tracing.WithNewTraceID(ctx, true)
+	start := time.Now()
+	w.Logger.InfoContext(ctx, "assess email security started", "domain", job.Args.DomainUID)
+	a := assessor.NewAssessor(assessor.Config{
+		Logger: &w.Logger,
+		Store:  w.Store,
+	})
+	err := a.AssessEmailSecurity(ctx, job.Args.DomainID)
+	if err != nil {
+		return err
+	}
+
+	w.Logger.InfoContext(
+		ctx,
+		"assess email security complete",
+		"domain",
+		job.Args.DomainUID,
+		"duration",
+		time.Since(start),
+	)
 	return nil
 }
