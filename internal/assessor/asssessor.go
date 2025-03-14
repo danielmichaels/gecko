@@ -1,8 +1,11 @@
 package assessor
 
 import (
-	"github.com/danielmichaels/gecko/internal/store"
+	"context"
+	"fmt"
 	"log/slog"
+
+	"github.com/danielmichaels/gecko/internal/store"
 )
 
 type Config struct {
@@ -20,4 +23,30 @@ func NewAssessor(cfg Config) *Assessor {
 		logger: cfg.Logger,
 		store:  cfg.Store,
 	}
+}
+
+func (a *Assessor) createFinding(
+	ctx context.Context,
+	params interface{},
+	logMessage string,
+	issueType string,
+) error {
+	var err error
+	switch p := params.(type) {
+	case store.AssessCreateSPFFindingParams:
+		err = a.store.AssessCreateSPFFinding(ctx, p)
+	case store.AssessCreateDKIMFindingParams:
+		err = a.store.AssessCreateDKIMFinding(ctx, p)
+	case store.AssessCreateDKIMFindingNoSelectorParams:
+		err = a.store.AssessCreateDKIMFindingNoSelector(ctx, p)
+	case store.AssessCreateDMARCFindingParams:
+		err = a.store.AssessCreateDMARCFinding(ctx, p)
+	default:
+		return fmt.Errorf("unsupported finding type")
+	}
+	if err != nil {
+		a.logger.WarnContext(ctx, logMessage, "error", err)
+		return fmt.Errorf("create finding: %s %w", issueType, err)
+	}
+	return nil
 }

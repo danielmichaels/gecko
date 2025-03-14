@@ -548,5 +548,38 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 		}
 	}
 
+	if len(result.TXT) > 0 {
+		// todo: make configurable
+		domain, err := w.Store.DomainsGetByName(ctx, store.DomainsGetByNameParams{
+			Name:     job.Args.Domain,
+			TenantID: pgtype.Int4{Int32: 1, Valid: true}, // todo: get tenant id from job args
+		})
+		if err != nil {
+			w.Logger.ErrorContext(ctx, "failed to get domain for email security assessment",
+				"domain", job.Args.Domain, "error", err)
+			return err
+		}
+		tx, err := w.PgxPool.BeginTx(ctx, pgx.TxOptions{})
+		if err != nil {
+			return err
+		}
+		defer func(tx pgx.Tx, ctx context.Context) {
+			err := tx.Rollback(ctx)
+			if err != nil {
+				w.Logger.ErrorContext(ctx, "failed to rollback tx", "err", err)
+			}
+		}(tx, ctx)
+		rc := river.ClientFromContext[pgx.Tx](ctx)
+		_, err = rc.InsertTx(ctx, tx, AssessEmailSecurityArgs{
+			DomainUID: domain.Uid,
+			DomainID:  int(domain.ID),
+		}, nil)
+		if err != nil {
+			w.Logger.WarnContext(ctx, "failed to queue email security assessment",
+				"domain", domain.Uid, "error", err)
+		}
+		return tx.Commit(ctx)
+	}
+
 	return nil
 }
