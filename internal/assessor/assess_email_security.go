@@ -438,6 +438,8 @@ func WithPolicy(policy string) EmailFindingOption {
 	}
 }
 
+// createEmailFinding creates a finding for an email security issue based on the provided parameters.
+// It supports creating findings for different email security record types like SPF, DKIM, and DMARC.
 func (a *Assessor) createEmailFinding(
 	ctx context.Context,
 	findingType string,
@@ -450,7 +452,6 @@ func (a *Assessor) createEmailFinding(
 	details string,
 	opts ...EmailFindingOption,
 ) error {
-	// Initialize with required parameters
 	params := &emailFindingParams{
 		ctx:         ctx,
 		findingType: findingType,
@@ -463,7 +464,6 @@ func (a *Assessor) createEmailFinding(
 		details:     details,
 	}
 
-	// Apply all optional parameters
 	for _, opt := range opts {
 		opt(params)
 	}
@@ -518,9 +518,6 @@ func (a *Assessor) createEmailFinding(
 			Details:     pgtype.Text{String: params.details, Valid: true},
 			Policy:      pgtype.Text{String: params.policy, Valid: params.policy != ""},
 		}
-		//if params.policy != "" {
-		//	dmarcParams.Policy = pgtype.Text{String: params.policy, Valid: params.policy != ""}
-		//}
 		return a.createFinding(ctx, dmarcParams, "create DMARC finding", params.issueType)
 
 	default:
