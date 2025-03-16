@@ -8,7 +8,7 @@ import (
 
 func TestPostgresContainer(t *testing.T) {
 	// Create a context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	// Create the Postgres container

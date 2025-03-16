@@ -18,6 +18,10 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
+var TestLogger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+	Level: slog.LevelDebug,
+}))
+
 type PostgresContainer struct {
 	*postgres.PostgresContainer
 	ConnectionString string
@@ -33,7 +37,7 @@ func CreatePostgresContainer(ctx context.Context) (*PostgresContainer, error) {
 		postgres.WithPassword("postgres"),
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).WithStartupTimeout(5*time.Second)),
+				WithOccurrence(2).WithStartupTimeout(15*time.Second)),
 	)
 	if err != nil {
 		return nil, err

@@ -72,18 +72,58 @@ type DNSClient struct {
 	currentServerIdx int
 }
 
+// DNSClientOption is a function that modifies a DNSClient
+type DNSClientOption func(*DNSClient)
+
+// WithServers sets custom DNS servers for the client
+func WithServers(servers []string) DNSClientOption {
+	return func(c *DNSClient) {
+		if len(servers) > 0 {
+			c.servers = servers
+			c.currentServerIdx = 0
+		}
+	}
+}
+
+// WithLogger sets a custom logger for the client
+func WithLogger(logger *slog.Logger) DNSClientOption {
+	return func(c *DNSClient) {
+		if logger != nil {
+			c.logger = logger
+		}
+	}
+}
+
+// WithClient sets a custom DNS client
+func WithClient(client *dns.Client) DNSClientOption {
+	return func(c *DNSClient) {
+		if client != nil {
+			c.client = client
+		}
+	}
+}
+
 // New creates a new DNSClient instance with the configured DNS servers and a logger.
 // It initializes the DNS client and sets the current server index to 0.
-func New() *DNSClient {
+// Optional functional options can be provided to customize the client.
+func New(opts ...DNSClientOption) *DNSClient {
 	cfg := config.AppConfig()
 	logger, _ := logging.SetupLogger("dns-client", cfg)
-	return &DNSClient{
+
+	client := &DNSClient{
 		servers:          getDNSServers(),
 		client:           new(dns.Client),
 		currentServerIdx: 0,
 		logger:           logger,
 		conf:             cfg,
 	}
+
+	// Apply any provided options
+	for _, opt := range opts {
+		opt(client)
+	}
+
+	return client
 }
 
 // getDNSServers returns the slice of DNS servers to be used for DNS lookups.
@@ -97,6 +137,31 @@ func getDNSServers() []string {
 		servers = append(servers, "8.8.8.8:53")
 	}
 	return servers
+}
+
+// Clone creates a copy of the DNSClient with the same configuration
+func (c *DNSClient) Clone() *DNSClient {
+	return &DNSClient{
+		client:           c.client,
+		logger:           c.logger,
+		conf:             c.conf,
+		servers:          append([]string{}, c.servers...),
+		currentServerIdx: c.currentServerIdx,
+	}
+}
+
+// SetServers updates the DNS servers used by this client
+// This is particularly useful for testing
+func (c *DNSClient) SetServers(servers []string) {
+	if len(servers) > 0 {
+		c.servers = servers
+		c.currentServerIdx = 0
+	}
+}
+
+// GetServers returns the current list of DNS servers
+func (c *DNSClient) GetServers() []string {
+	return append([]string{}, c.servers...)
 }
 
 // numRetries returns the number of retries to use for DNS lookups. If the configured
