@@ -2,15 +2,15 @@ package assessor
 
 import (
 	"context"
+	"github.com/danielmichaels/gecko/internal/dnsclient"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/danielmichaels/gecko/internal/testhelpers"
 	"github.com/jackc/pgx/v5/pgtype"
-	"log/slog"
-	"os"
+	"github.com/miekg/dns"
 	"testing"
 )
 
-func TestAssessZoneTransfer_SPFIssues(t *testing.T) {
+func TestAssessEmailSecurity_SPFIssues(t *testing.T) {
 	ctx := context.Background()
 	pgContainer, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -18,7 +18,6 @@ func TestAssessZoneTransfer_SPFIssues(t *testing.T) {
 	}
 	defer pgContainer.Close(ctx)
 
-	// Get a domain from the test data
 	domain, err := pgContainer.Queries.DomainsGetByID(ctx, "domain_00000001")
 	if err != nil {
 		t.Fatalf("Failed to get domains: %v", err)
@@ -122,11 +121,8 @@ func TestAssessZoneTransfer_SPFIssues(t *testing.T) {
 			wantIssueType: NotApplicable,
 		},
 	}
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-	}))
 	// Create assessor with the logger
-	assessor := NewAssessor(Config{Store: pgContainer.Queries, Logger: logger})
+	assessor := NewAssessor(Config{Store: pgContainer.Queries, Logger: testhelpers.TestLogger})
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -186,6 +182,206 @@ func TestAssessZoneTransfer_SPFIssues(t *testing.T) {
 
 				if got, want := foundStatus, tt.wantStatus; got != want {
 					t.Errorf("Status: got=%s, want=%s", got, want)
+				}
+			}
+		})
+	}
+}
+
+func TestAssessEmailSecurity_DKIM(t *testing.T) {
+	ctx := context.Background()
+	pgContainer, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("Failed to create postgres container: %v", err)
+	}
+	defer pgContainer.Close(ctx)
+
+	// Create a mock DNS server
+	mockServer, err := testhelpers.NewMockDNSServer()
+	if err != nil {
+		t.Fatalf("Failed to create mock DNS server: %v", err)
+	}
+	if err := mockServer.Start(); err != nil {
+		t.Fatalf("Failed to start mock DNS server: %v", err)
+	}
+	defer mockServer.Stop()
+
+	domain, err := pgContainer.Queries.DomainsGetByID(ctx, "domain_00000001")
+	if err != nil {
+		t.Fatalf("Failed to get domains: %v", err)
+	}
+	// Create a DNS client that uses our mock server
+	dnsClient := dnsclient.New(
+		dnsclient.WithServers([]string{mockServer.ListenAddr}),
+		dnsclient.WithLogger(testhelpers.TestLogger),
+	)
+
+	assessor := NewAssessor(Config{
+		Store:     pgContainer.Queries,
+		Logger:    testhelpers.TestLogger,
+		DNSClient: dnsClient,
+	})
+
+	tests := []struct {
+		name          string
+		handlesEmail  bool
+		dkimRecords   map[string][]string // Map of selector to DKIM records
+		selectors     []string
+		wantSeverity  store.FindingSeverity
+		wantStatus    store.FindingStatus
+		wantIssueType string
+		wantSelector  string
+	}{
+		{
+			name:         "valid DKIM record",
+			handlesEmail: true,
+			dkimRecords: map[string][]string{
+				"selector1": {
+					"v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu5oIUrFDn1OuSWCmZ8Ac8IgLaoFR64YP+zRERlH7XiANVAJQGgwIexnbZ1xNDt+1DgXWfSALZnTcXLwX7tJP8wZBzpwrKXJjxPMXIAXCNXNzo/fe8CnWKjnPSxUVLW/QYa4AlNzL/DS8QEJKfqSxZTN5kT7VWvuXsj+8wPnGdFKrwOxkgDqzFASIyjON3JOCWPfhEYzGdnQl3z0Njx7cVpzQzSaQkySVBJZUkGYbpT0UQbPQni7TFbtsWNgZ9nA2ZUJe0D/xhAsepHhRi6KCaNFmh/FgA0jV/xuxsBY/RQUbrHUfV/nDr8aLI+Sh2IaXaIh+FFAPGY6TJJbRkwIDAQAB",
+				},
+			},
+			selectors:     []string{"selector1"},
+			wantSeverity:  store.FindingSeverityInfo,
+			wantStatus:    store.FindingStatusClosed,
+			wantIssueType: DKIMCompliant,
+			wantSelector:  "selector1",
+		},
+		{
+			name:         "weak key length",
+			handlesEmail: true,
+			dkimRecords: map[string][]string{
+				"selector1": {
+					"v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC5wi9P", // Short key
+				},
+			},
+			selectors:     []string{"selector1"},
+			wantSeverity:  store.FindingSeverityHigh,
+			wantStatus:    store.FindingStatusOpen,
+			wantIssueType: DKIMWeakKeyLength,
+			wantSelector:  "selector1",
+		},
+		{
+			name:         "test mode enabled",
+			handlesEmail: true,
+			dkimRecords: map[string][]string{
+				"selector1": {
+					"v=DKIM1; k=rsa; t=y; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu5oIUrFDn1OuSWCmZ8Ac8IgLaoFR64YP+zRERlH7XiANVAJQGgwIexnbZ1xNDt+1DgXWfSALZnTcXLwX7tJP8wZBzpwrKXJjxPMXIAXCNXNzo/fe8CnWKjnPSxUVLW/QYa4AlNzL/DS8QEJKfqSxZTN5kT7VWvuXsj+8wPnGdFKrwOxkgDqzFASIyjON3JOCWPfhEYzGdnQl3z0Njx7cVpzQzSaQkySVBJZUkGYbpT0UQbPQni7TFbtsWNgZ9nA2ZUJe0D/xhAsepHhRi6KCaNFmh/FgA0jV/xuxsBY/RQUbrHUfV/nDr8aLI+Sh2IaXaIh+FFAPGY6TJJbRkwIDAQAB",
+				},
+			},
+			selectors:     []string{"selector1"},
+			wantSeverity:  store.FindingSeverityMedium,
+			wantStatus:    store.FindingStatusOpen,
+			wantIssueType: DKIMTestModeEnabled,
+			wantSelector:  "selector1",
+		},
+		{
+			name:          "missing DKIM record",
+			handlesEmail:  true,
+			dkimRecords:   map[string][]string{}, // No DKIM records
+			selectors:     []string{"selector1"},
+			wantSeverity:  store.FindingSeverityHigh,
+			wantStatus:    store.FindingStatusOpen,
+			wantIssueType: DKIMMissing,
+			wantSelector:  "",
+		},
+		{
+			name:          "domain doesn't handle email",
+			handlesEmail:  false,
+			dkimRecords:   map[string][]string{}, // No DKIM records
+			selectors:     []string{"selector1"},
+			wantSeverity:  store.FindingSeverityInfo,
+			wantStatus:    store.FindingStatusNotApplicable,
+			wantIssueType: NotApplicable,
+			wantSelector:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := pgContainer.Pool.Exec(ctx, "DELETE FROM dkim_findings WHERE domain_id = $1", domain.ID)
+			if err != nil {
+				t.Fatalf("Failed to clear previous findings: %v", err)
+			}
+			// Reset the mock server for this test
+			mockServer.Records = make(map[string]map[uint16][]dns.RR)
+
+			// Add SPF record to indicate the domain handles email
+			if tt.handlesEmail {
+				err = mockServer.AddRecord(domain.Name, dns.TypeTXT, 3600, "v=spf1 include:_spf.google.com -all")
+				if err != nil {
+					t.Fatalf("Failed to add SPF record: %v", err)
+				}
+			}
+
+			// Add DKIM records to the mock server
+			for selector, records := range tt.dkimRecords {
+				dkimDomain := selector + "._domainkey." + domain.Name
+				// Ensure we add all records provided for a selector (though usually it's one)
+				for _, record := range records {
+					err = mockServer.AddRecord(dkimDomain, dns.TypeTXT, 3600, record)
+					if err != nil {
+						t.Fatalf("Failed to add DKIM record for %s: %v", dkimDomain, err)
+					}
+				}
+			}
+
+			// Create assessData with the test data
+			data := assessData{
+				handlesEmail: tt.handlesEmail,
+				domainID:     int(domain.ID),
+				txtRecords:   []store.TxtRecords{}, // Not used by assessDKIM
+			}
+
+			err = assessor.assessDKIM(ctx, data, tt.selectors)
+			if err != nil {
+				t.Fatalf("assessDKIM failed: %v", err)
+			}
+
+			// Get the findings from the database
+			findings, err := pgContainer.Queries.AssessGetDKIMFindings(ctx, pgtype.Int4{Int32: domain.ID, Valid: true})
+			if err != nil {
+				t.Fatalf("Failed to get DKIM findings: %v", err)
+			}
+
+			// Print all findings for debugging
+			t.Logf("Found %d findings for test %s:", len(findings), tt.name)
+			for i, f := range findings {
+				t.Logf("  Finding %d: IssueType=%s, Severity=%s, Status=%s, Selector=%s",
+					i+1, f.IssueType, f.Severity, f.Status, f.Selector.String)
+			}
+
+			// Find the specific finding we're looking for
+			var foundIssueType string
+			var foundSeverity store.FindingSeverity
+			var foundStatus store.FindingStatus
+			var foundSelector string
+
+			for _, finding := range findings {
+				if finding.IssueType == tt.wantIssueType {
+					foundIssueType = finding.IssueType
+					foundSeverity = finding.Severity
+					foundStatus = finding.Status
+					foundSelector = finding.Selector.String
+					break
+				}
+			}
+
+			// Use want/got approach for clearer error messages
+			if got, want := foundIssueType, tt.wantIssueType; got != want {
+				t.Errorf("IssueType: got=%s, want=%s", got, want)
+			}
+
+			if foundIssueType != "" {
+				if got, want := foundSeverity, tt.wantSeverity; got != want {
+					t.Errorf("Severity: got=%s, want=%s", got, want)
+				}
+
+				if got, want := foundStatus, tt.wantStatus; got != want {
+					t.Errorf("Status: got=%s, want=%s", got, want)
+				}
+
+				if got, want := foundSelector, tt.wantSelector; got != want && tt.wantSelector != "" {
+					t.Errorf("Selector: got=%s, want=%s", got, want)
 				}
 			}
 		})

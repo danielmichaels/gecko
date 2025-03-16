@@ -3,25 +3,40 @@ package assessor
 import (
 	"context"
 	"fmt"
+	"github.com/danielmichaels/gecko/internal/dnsclient"
 	"log/slog"
+	"os"
 
 	"github.com/danielmichaels/gecko/internal/store"
 )
 
 type Config struct {
-	Logger *slog.Logger
-	Store  *store.Queries
+	Logger    *slog.Logger
+	Store     *store.Queries
+	DNSClient *dnsclient.DNSClient
 }
 
 type Assessor struct {
-	logger *slog.Logger
-	store  *store.Queries
+	logger    *slog.Logger
+	store     *store.Queries
+	dnsClient *dnsclient.DNSClient
 }
 
 func NewAssessor(cfg Config) *Assessor {
+	logger := cfg.Logger
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
+	}
+
+	dnsClient := cfg.DNSClient
+	if dnsClient == nil {
+		dnsClient = dnsclient.New()
+	}
+
 	return &Assessor{
-		logger: cfg.Logger,
-		store:  cfg.Store,
+		store:     cfg.Store,
+		logger:    logger,
+		dnsClient: dnsClient,
 	}
 }
 

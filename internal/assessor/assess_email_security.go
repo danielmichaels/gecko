@@ -157,7 +157,7 @@ func (a *Assessor) assessSPF(ctx context.Context, d assessData) error {
 	return nil
 }
 
-func (a *Assessor) assessDKIM(ctx context.Context, d assessData) error {
+func (a *Assessor) assessDKIM(ctx context.Context, d assessData, selectors []string) error {
 	defer func() { a.logger.DebugContext(ctx, "assess DKIM complete", "domain_id", d.domainID) }()
 
 	domain, err := a.store.DomainsGetByIdentifier(ctx, store.DomainsGetByIdentifierParams{
@@ -169,20 +169,28 @@ func (a *Assessor) assessDKIM(ctx context.Context, d assessData) error {
 	}
 
 	domainName := domain.Name
-	var dkimFound bool
 	var checkedSelectors []string
-	dnsClient := dnsclient.New()
+	var foundValidDKIM bool
+	var validSelectors []string
 
-	for _, selector := range knownDkimSelectors {
+	if len(selectors) == 0 {
+		selectors = knownDkimSelectors
+	}
+
+	// First pass: find any valid DKIM records
+	for _, selector := range selectors {
 		selectorDomain := fmt.Sprintf("%s._domainkey.%s", selector, domainName)
 		checkedSelectors = append(checkedSelectors, selectorDomain)
 
-		dkimRecords, selectorFound := dnsClient.LookupTXT(selectorDomain)
+		dkimRecords, selectorFound := a.dnsClient.LookupTXT(selectorDomain)
 
 		if selectorFound && len(dkimRecords) > 0 {
 			for _, recordValue := range dkimRecords {
 				if strings.Contains(recordValue, "v=DKIM") {
-					dkimFound = true
+					foundValidDKIM = true
+					validSelectors = append(validSelectors, selector)
+
+					// Process the valid DKIM record
 					hasIssues := false
 
 					if strings.Contains(recordValue, "k=rsa") && strings.Contains(recordValue, "p=") {
@@ -196,18 +204,6 @@ func (a *Assessor) assessDKIM(ctx context.Context, d assessData) error {
 								WithSelector(selector)); err != nil {
 								return err
 							}
-						}
-					}
-
-					// check missing tags
-					if !strings.Contains(recordValue, "t=") {
-						hasIssues = true
-						if err := a.createEmailFinding(ctx, FindingDKIM, d.domainID, pgtype.Int4{},
-							store.FindingSeverityMedium, store.FindingStatusOpen,
-							DKIMMissingTags, recordValue,
-							"DKIM record is missing the 't=' flag",
-							WithSelector(selector)); err != nil {
-							return err
 						}
 					}
 
@@ -238,20 +234,26 @@ func (a *Assessor) assessDKIM(ctx context.Context, d assessData) error {
 		}
 	}
 
-	if !dkimFound && d.handlesEmail {
-		details := fmt.Sprintf("No DKIM records found for email handling domain. Checked selectors: %s", strings.Join(checkedSelectors, ", "))
+	// Only create a single "missing DKIM" finding if no valid DKIM records were found
+	if !foundValidDKIM && d.handlesEmail {
+		details := fmt.Sprintf("No DKIM records found for any common selectors and domain has MX records. Checked: %s", strings.Join(selectors, ", "))
 		if err := a.createEmailFinding(ctx, FindingDKIM, d.domainID, pgtype.Int4{},
 			store.FindingSeverityHigh, store.FindingStatusOpen,
 			DKIMMissing, "", details); err != nil {
 			return err
 		}
-	} else if !dkimFound && !d.handlesEmail {
-		details := fmt.Sprintf("DKIM record not applicable, domain doesn't handle email. Checked selectors: %s", strings.Join(checkedSelectors, ", "))
+	} else if !d.handlesEmail {
+		details := fmt.Sprintf("DKIM not applicable for domain that doesn't handle email. Checked selectors: %s", strings.Join(selectors, ", "))
 		if err := a.createEmailFinding(ctx, FindingDKIM, d.domainID, pgtype.Int4{},
 			store.FindingSeverityInfo, store.FindingStatusNotApplicable,
 			NotApplicable, "", details); err != nil {
 			return err
 		}
+	} else {
+		// If we found valid DKIM records, log which selectors were valid
+		a.logger.DebugContext(ctx, "found valid DKIM records",
+			"domain_id", d.domainID,
+			"valid_selectors", strings.Join(validSelectors, ", "))
 	}
 
 	return nil
@@ -395,7 +397,7 @@ func (a *Assessor) AssessEmailSecurity(ctx context.Context, domainID int) error 
 		return a.assessSPF(ctx, as)
 	})
 	g.Go(func() error {
-		return a.assessDKIM(ctx, as)
+		return a.assessDKIM(ctx, as, knownDkimSelectors)
 	})
 	g.Go(func() error {
 		return a.assessDMARC(ctx, as)
