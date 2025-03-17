@@ -126,6 +126,11 @@ func New(opts ...DNSClientOption) *DNSClient {
 	return client
 }
 
+// GetServers returns the current list of DNS servers
+func (c *DNSClient) GetServers() []string {
+	return append([]string{}, c.servers...)
+}
+
 // getDNSServers returns the slice of DNS servers to be used for DNS lookups.
 // If no slice is set, it defaults to a single entry, "8.8.8.8:53" (Google's public DNS server).
 func getDNSServers() []string {

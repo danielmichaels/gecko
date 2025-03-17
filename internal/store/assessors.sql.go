@@ -422,6 +422,90 @@ func (q *Queries) AssessGetSPFFindings(ctx context.Context, domainID pgtype.Int4
 	return items, nil
 }
 
+const assessGetZoneTransferFindings = `-- name: AssessGetZoneTransferFindings :many
+SELECT id, uid, domain_id, ns_record_id, severity, status, nameserver, zone_transfer_possible,
+       transfer_type, details, transfer_details, created_at, updated_at
+FROM zone_transfer_findings
+WHERE domain_id = $1
+ORDER BY severity ASC, created_at DESC
+`
+
+func (q *Queries) AssessGetZoneTransferFindings(ctx context.Context, domainID pgtype.Int4) ([]ZoneTransferFindings, error) {
+	rows, err := q.db.Query(ctx, assessGetZoneTransferFindings, domainID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ZoneTransferFindings{}
+	for rows.Next() {
+		var i ZoneTransferFindings
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.NsRecordID,
+			&i.Severity,
+			&i.Status,
+			&i.Nameserver,
+			&i.ZoneTransferPossible,
+			&i.TransferType,
+			&i.Details,
+			&i.TransferDetails,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const assessGetZoneTransferFindingsByDomainUID = `-- name: AssessGetZoneTransferFindingsByDomainUID :many
+SELECT ztf.id, ztf.uid, ztf.domain_id, ztf.ns_record_id, ztf.severity, ztf.status, ztf.nameserver, ztf.zone_transfer_possible, ztf.transfer_type, ztf.details, ztf.transfer_details, ztf.created_at, ztf.updated_at
+FROM zone_transfer_findings ztf
+         JOIN domains d ON ztf.domain_id = d.id
+WHERE d.uid = $1
+ORDER BY ztf.severity ASC, ztf.created_at DESC
+`
+
+func (q *Queries) AssessGetZoneTransferFindingsByDomainUID(ctx context.Context, uid string) ([]ZoneTransferFindings, error) {
+	rows, err := q.db.Query(ctx, assessGetZoneTransferFindingsByDomainUID, uid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ZoneTransferFindings{}
+	for rows.Next() {
+		var i ZoneTransferFindings
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.NsRecordID,
+			&i.Severity,
+			&i.Status,
+			&i.Nameserver,
+			&i.ZoneTransferPossible,
+			&i.TransferType,
+			&i.Details,
+			&i.TransferDetails,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const storeZoneTransferFinding = `-- name: StoreZoneTransferFinding :exec
 INSERT INTO zone_transfer_findings (domain_id,
                                     ns_record_id,

@@ -125,3 +125,17 @@ FROM dmarc_findings df
          JOIN domains d ON df.domain_id = d.id
 WHERE d.uid = $1
 ORDER BY df.severity ASC, df.created_at DESC;
+
+-- name: AssessGetZoneTransferFindings :many
+SELECT id, uid, domain_id, ns_record_id, severity, status, nameserver, zone_transfer_possible,
+       transfer_type, details, transfer_details, created_at, updated_at
+FROM zone_transfer_findings
+WHERE domain_id = $1
+ORDER BY severity ASC, created_at DESC;
+
+-- name: AssessGetZoneTransferFindingsByDomainUID :many
+SELECT ztf.*
+FROM zone_transfer_findings ztf
+         JOIN domains d ON ztf.domain_id = d.id
+WHERE d.uid = $1
+ORDER BY ztf.severity ASC, ztf.created_at DESC;

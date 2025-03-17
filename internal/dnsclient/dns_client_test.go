@@ -2,8 +2,11 @@ package dnsclient
 
 import (
 	"fmt"
+	"github.com/danielmichaels/gecko/internal/testhelpers"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/danielmichaels/gecko/internal/dnsrecords"
 
@@ -579,4 +582,214 @@ func TestParseRRSIG(t *testing.T) {
 			}
 		})
 	}
+}
+func TestDNSClient_LookupRecord(t *testing.T) {
+	// Create a mock DNS server
+	mockServer, err := testhelpers.NewMockDNSServer()
+	if err != nil {
+		t.Fatalf("Failed to create mock DNS server: %v", err)
+	}
+	if err := mockServer.Start(); err != nil {
+		t.Fatalf("Failed to start mock DNS server: %v", err)
+	}
+	defer mockServer.Stop()
+
+	// Create a DNS client that uses our mock server
+	client := New(
+		WithServers([]string{mockServer.ListenAddr}),
+		WithLogger(testhelpers.TestLogger),
+	)
+
+	// Test cases for different record types
+	testCases := []struct {
+		name       string
+		recordType uint16
+		domain     string
+		recordData string
+		lookupFunc func(string) ([]string, bool)
+	}{
+		{
+			name:       "A record lookup",
+			recordType: dns.TypeA,
+			domain:     "example.com",
+			recordData: "192.0.2.1",
+			lookupFunc: client.LookupA,
+		},
+		{
+			name:       "AAAA record lookup",
+			recordType: dns.TypeAAAA,
+			domain:     "example.com",
+			recordData: "2001:db8::1",
+			lookupFunc: client.LookupAAAA,
+		},
+		{
+			name:       "CNAME record lookup",
+			recordType: dns.TypeCNAME,
+			domain:     "www.example.com",
+			recordData: "example.com",
+			lookupFunc: client.LookupCNAME,
+		},
+		{
+			name:       "MX record lookup",
+			recordType: dns.TypeMX,
+			domain:     "example.com",
+			recordData: "10 mail.example.com",
+			lookupFunc: client.LookupMX,
+		},
+		{
+			name:       "TXT record lookup",
+			recordType: dns.TypeTXT,
+			domain:     "example.com",
+			recordData: "v=spf1 include:_spf.google.com -all",
+			lookupFunc: client.LookupTXT,
+		},
+		{
+			name:       "NS record lookup",
+			recordType: dns.TypeNS,
+			domain:     "example.com",
+			recordData: "ns1.example.com",
+			lookupFunc: client.LookupNS,
+		},
+		{
+			name:       "SOA record lookup",
+			recordType: dns.TypeSOA,
+			domain:     "example.com",
+			recordData: "ns1.example.com hostmaster.example.com 1 7200 3600 1209600 3600",
+			lookupFunc: client.LookupSOA,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Clear previous records
+			mockServer.ClearRecords()
+
+			// Add the test record
+			err := mockServer.AddRecord(tc.domain, tc.recordType, 3600, tc.recordData)
+			if err != nil {
+				t.Fatalf("Failed to add record: %v", err)
+			}
+
+			// Perform the lookup
+			results, ok := tc.lookupFunc(tc.domain)
+
+			// Verify the results
+			if !ok {
+				t.Errorf("Expected lookup to succeed, but it failed")
+			}
+
+			if len(results) == 0 {
+				t.Errorf("Expected at least one result, got none")
+			} else {
+				// For most record types, we can do a simple string comparison
+				// For some types like SOA, we might need more complex validation
+				found := false
+				for _, result := range results {
+					// Use contains instead of exact match because formatting might differ
+					if strings.Contains(result, strings.Split(tc.recordData, " ")[0]) {
+						found = true
+						break
+					}
+				}
+
+				if !found {
+					t.Errorf("Expected result containing %q, got %v", tc.recordData, results)
+				}
+			}
+		})
+	}
+}
+
+func TestDNSClient_LookupNonExistentRecord(t *testing.T) {
+	// Create a mock DNS server
+	mockServer, err := testhelpers.NewMockDNSServer()
+	if err != nil {
+		t.Fatalf("Failed to create mock DNS server: %v", err)
+	}
+	if err := mockServer.Start(); err != nil {
+		t.Fatalf("Failed to start mock DNS server: %v", err)
+	}
+	defer mockServer.Stop()
+
+	// Create a DNS client that uses our mock server
+	client := New(
+		WithServers([]string{mockServer.ListenAddr}),
+		WithLogger(testhelpers.TestLogger),
+	)
+
+	// Perform lookup for a domain that doesn't exist
+	results, ok := client.LookupA("nonexistent.example.com")
+
+	// Verify the results
+	if ok {
+		t.Errorf("Expected lookup to fail for non-existent domain, but it succeeded with results: %v", results)
+	}
+
+	if len(results) != 0 {
+		t.Errorf("Expected empty results for non-existent domain, got: %v", results)
+	}
+}
+func TestDNSClient_GetParentZone(t *testing.T) {
+	client := New()
+
+	testCases := []struct {
+		domain       string
+		expectedZone string
+		expectError  bool
+	}{
+		{"example.com", "com.", false},
+		{"sub.example.com", "example.com.", false},
+		{"deep.sub.example.com", "sub.example.com.", false},
+		{"com", ".", false},
+		{".", "", false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.domain, func(t *testing.T) {
+			zone, err := client.GetParentZone(tc.domain)
+
+			if tc.expectError && err == nil {
+				t.Errorf("Expected error for domain %q, but got none", tc.domain)
+			}
+
+			if !tc.expectError && err != nil {
+				t.Errorf("Unexpected error for domain %q: %v", tc.domain, err)
+			}
+
+			if zone != tc.expectedZone {
+				t.Errorf("For domain %q, expected parent zone %q, got %q", tc.domain, tc.expectedZone, zone)
+			}
+		})
+	}
+}
+
+func TestDNSClient_WithOptions(t *testing.T) {
+	// Test WithServers option
+	customServers := []string{"8.8.8.8:53", "1.1.1.1:53"}
+	client := New(WithServers(customServers))
+
+	servers := client.GetServers()
+	if len(servers) != len(customServers) {
+		t.Errorf("Expected %d servers, got %d", len(customServers), len(servers))
+	}
+
+	for i, server := range customServers {
+		if i < len(servers) && servers[i] != server {
+			t.Errorf("Expected server %d to be %q, got %q", i, server, servers[i])
+		}
+	}
+
+	// Test WithLogger option (can only verify it doesn't crash)
+	customLogger := testhelpers.TestLogger
+	clientWithLogger := New(WithLogger(customLogger))
+
+	// Just make a simple call to ensure it doesn't crash
+	_, _ = clientWithLogger.LookupA("example.com")
+
+	// Test WithClient option
+	customDNSClient := &dns.Client{Timeout: 5 * time.Second}
+	clientWithCustomDNS := New(WithClient(customDNSClient))
+
+	// Just make a simple call to ensure it doesn't crash
+	_, _ = clientWithCustomDNS.LookupA("example.com")
 }
