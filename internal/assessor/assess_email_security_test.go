@@ -303,7 +303,7 @@ func TestAssessEmailSecurity_DKIM(t *testing.T) {
 				t.Fatalf("Failed to clear previous findings: %v", err)
 			}
 			// Reset the mock server for this test
-			mockServer.Records = make(map[string]map[uint16][]dns.RR)
+			mockServer.ClearRecords()
 
 			// Add SPF record to indicate the domain handles email
 			if tt.handlesEmail {
@@ -382,6 +382,196 @@ func TestAssessEmailSecurity_DKIM(t *testing.T) {
 
 				if got, want := foundSelector, tt.wantSelector; got != want && tt.wantSelector != "" {
 					t.Errorf("Selector: got=%s, want=%s", got, want)
+				}
+			}
+		})
+	}
+}
+
+func TestAssessEmailSecurity_DMARC(t *testing.T) {
+	ctx := context.Background()
+	pgContainer, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("Failed to create postgres container: %v", err)
+	}
+	defer pgContainer.Close(ctx)
+
+	// Create a mock DNS server
+	mockServer, err := testhelpers.NewMockDNSServer()
+	if err != nil {
+		t.Fatalf("Failed to create mock DNS server: %v", err)
+	}
+	if err := mockServer.Start(); err != nil {
+		t.Fatalf("Failed to start mock DNS server: %v", err)
+	}
+	defer mockServer.Stop()
+
+	domain, err := pgContainer.Queries.DomainsGetByID(ctx, "domain_00000001")
+	if err != nil {
+		t.Fatalf("Failed to get domains: %v", err)
+	}
+
+	// Create a DNS client that uses our mock server
+	dnsClient := dnsclient.New(
+		dnsclient.WithServers([]string{mockServer.ListenAddr}),
+		dnsclient.WithLogger(testhelpers.TestLogger),
+	)
+
+	assessor := NewAssessor(Config{
+		Store:     pgContainer.Queries,
+		Logger:    testhelpers.TestLogger,
+		DNSClient: dnsClient,
+	})
+
+	tests := []struct {
+		name          string
+		handlesEmail  bool
+		dmarcRecords  []string
+		wantSeverity  store.FindingSeverity
+		wantStatus    store.FindingStatus
+		wantIssueType string
+		wantPolicy    string
+	}{
+		{
+			name:          "valid DMARC record",
+			handlesEmail:  true,
+			dmarcRecords:  []string{"v=DMARC1; p=reject; rua=mailto:reports@example.com; ruf=mailto:forensic@example.com"},
+			wantSeverity:  store.FindingSeverityInfo,
+			wantStatus:    store.FindingStatusClosed,
+			wantIssueType: DMARCCompliant,
+			wantPolicy:    "v=DMARC1; p=reject; rua=mailto:reports@example.com; ruf=mailto:forensic@example.com",
+		},
+		{
+			name:          "weak policy",
+			handlesEmail:  true,
+			dmarcRecords:  []string{"v=DMARC1; p=none; rua=mailto:reports@example.com; ruf=mailto:forensic@example.com"},
+			wantSeverity:  store.FindingSeverityHigh,
+			wantStatus:    store.FindingStatusOpen,
+			wantIssueType: DMARCWeakPolicy,
+			wantPolicy:    "v=DMARC1; p=none; rua=mailto:reports@example.com; ruf=mailto:forensic@example.com",
+		},
+		{
+			name:          "missing tags",
+			handlesEmail:  true,
+			dmarcRecords:  []string{"v=DMARC1; p=reject"},
+			wantSeverity:  store.FindingSeverityInfo,
+			wantStatus:    store.FindingStatusOpen,
+			wantIssueType: DMARCMissingTags,
+			wantPolicy:    "v=DMARC1; p=reject",
+		},
+		{
+			name:          "weak policy and missing tags",
+			handlesEmail:  true,
+			dmarcRecords:  []string{"v=DMARC1; p=none"},
+			wantSeverity:  store.FindingSeverityHigh,
+			wantStatus:    store.FindingStatusOpen,
+			wantIssueType: DMARCWeakPolicy,
+			wantPolicy:    "v=DMARC1; p=none",
+		},
+		{
+			name:          "missing DMARC record",
+			handlesEmail:  true,
+			dmarcRecords:  []string{},
+			wantSeverity:  store.FindingSeverityCritical,
+			wantStatus:    store.FindingStatusOpen,
+			wantIssueType: DMARCMissing,
+			wantPolicy:    "",
+		},
+		{
+			name:          "domain doesn't handle email",
+			handlesEmail:  false,
+			dmarcRecords:  []string{},
+			wantSeverity:  store.FindingSeverityInfo,
+			wantStatus:    store.FindingStatusNotApplicable,
+			wantIssueType: NotApplicable,
+			wantPolicy:    "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := pgContainer.Pool.Exec(ctx, "DELETE FROM dmarc_findings WHERE domain_id = $1", domain.ID)
+			if err != nil {
+				t.Fatalf("Failed to clear previous findings: %v", err)
+			}
+
+			// Reset the mock server for this test
+			mockServer.ClearRecords()
+
+			// Add SPF record to indicate the domain handles email
+			if tt.handlesEmail {
+				err = mockServer.AddRecord(domain.Name, dns.TypeMX, 3600, "10 mail.example.com.")
+				if err != nil {
+					t.Fatalf("Failed to add MX record: %v", err)
+				}
+			}
+
+			// Add DMARC records to the mock server
+			dmarcDomain := "_dmarc." + domain.Name
+			for _, record := range tt.dmarcRecords {
+				err = mockServer.AddRecord(dmarcDomain, dns.TypeTXT, 3600, record)
+				if err != nil {
+					t.Fatalf("Failed to add DMARC record: %v", err)
+				}
+			}
+
+			// Create assessData with the test data
+			data := assessData{
+				handlesEmail: tt.handlesEmail,
+				domainID:     int(domain.ID),
+				txtRecords:   []store.TxtRecords{}, // Not used by assessDMARC
+			}
+
+			err = assessor.assessDMARC(ctx, data)
+			if err != nil {
+				t.Fatalf("assessDMARC failed: %v", err)
+			}
+
+			// Get the findings from the database
+			findings, err := pgContainer.Queries.AssessGetDMARCFindingsByDomainID(ctx, domain.Uid)
+			if err != nil {
+				t.Fatalf("Failed to get DMARC findings: %v", err)
+			}
+
+			// Print all findings for debugging
+			t.Logf("Found %d findings for test %s:", len(findings), tt.name)
+			for i, f := range findings {
+				t.Logf("  Finding %d: IssueType=%s, Severity=%s, Status=%s, Policy=%s",
+					i+1, f.IssueType, f.Severity, f.Status, f.Policy.String)
+			}
+
+			// Find the specific finding we're looking for
+			var foundIssueType string
+			var foundSeverity store.FindingSeverity
+			var foundStatus store.FindingStatus
+			var foundPolicy string
+
+			for _, finding := range findings {
+				if finding.IssueType == tt.wantIssueType {
+					foundIssueType = finding.IssueType
+					foundSeverity = finding.Severity
+					foundStatus = finding.Status
+					foundPolicy = finding.Policy.String
+					break
+				}
+			}
+
+			// Use want/got approach for clearer error messages
+			if got, want := foundIssueType, tt.wantIssueType; got != want {
+				t.Errorf("IssueType: got=%s, want=%s", got, want)
+			}
+
+			if foundIssueType != "" {
+				if got, want := foundSeverity, tt.wantSeverity; got != want {
+					t.Errorf("Severity: got=%s, want=%s", got, want)
+				}
+
+				if got, want := foundStatus, tt.wantStatus; got != want {
+					t.Errorf("Status: got=%s, want=%s", got, want)
+				}
+
+				if got, want := foundPolicy, tt.wantPolicy; got != want && tt.wantPolicy != "" {
+					t.Errorf("Policy: got=%s, want=%s", got, want)
 				}
 			}
 		})

@@ -237,3 +237,10 @@ func (s *MockDNSServer) handleRequest(w dns.ResponseWriter, r *dns.Msg) {
 		s.Logger.Error("Failed to write DNS response", "error", err)
 	}
 }
+
+// ClearRecords removes all DNS records from the mock server in a thread-safe way
+func (s *MockDNSServer) ClearRecords() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Records = make(map[string]map[uint16][]dns.RR)
+}

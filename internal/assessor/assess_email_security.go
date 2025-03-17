@@ -6,7 +6,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/danielmichaels/gecko/internal/dnsclient"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5/pgtype"
 	"golang.org/x/sync/errgroup"
@@ -292,8 +291,7 @@ func (a *Assessor) assessDMARC(ctx context.Context, d assessData) error {
 	}
 	domainName := domain.Name
 	dmarcDomain := fmt.Sprintf("_dmarc.%s", domainName)
-	dnsClient := dnsclient.New()
-	dmarcRecords, dmarcFound := dnsClient.LookupTXT(dmarcDomain)
+	dmarcRecords, dmarcFound := a.dnsClient.LookupTXT(dmarcDomain)
 
 	if dmarcFound && len(dmarcRecords) > 0 {
 		for _, recordValue := range dmarcRecords {

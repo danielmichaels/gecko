@@ -139,31 +139,6 @@ func getDNSServers() []string {
 	return servers
 }
 
-// Clone creates a copy of the DNSClient with the same configuration
-func (c *DNSClient) Clone() *DNSClient {
-	return &DNSClient{
-		client:           c.client,
-		logger:           c.logger,
-		conf:             c.conf,
-		servers:          append([]string{}, c.servers...),
-		currentServerIdx: c.currentServerIdx,
-	}
-}
-
-// SetServers updates the DNS servers used by this client
-// This is particularly useful for testing
-func (c *DNSClient) SetServers(servers []string) {
-	if len(servers) > 0 {
-		c.servers = servers
-		c.currentServerIdx = 0
-	}
-}
-
-// GetServers returns the current list of DNS servers
-func (c *DNSClient) GetServers() []string {
-	return append([]string{}, c.servers...)
-}
-
 // numRetries returns the number of retries to use for DNS lookups. If the configured
 // DNSMaxRetries is 0, it defaults to 5 retries.
 func (c *DNSClient) numRetries() int {
