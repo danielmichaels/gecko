@@ -298,12 +298,13 @@ func TestAssessEmailSecurity_DKIM(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := pgContainer.Pool.Exec(ctx, "DELETE FROM dkim_findings WHERE domain_id = $1", domain.ID)
-			if err != nil {
-				t.Fatalf("Failed to clear previous findings: %v", err)
-			}
-			// Reset the mock server for this test
-			mockServer.ClearRecords()
+			t.Cleanup(func() {
+				_, err := pgContainer.Pool.Exec(ctx, "DELETE FROM dkim_findings WHERE domain_id = $1", domain.ID)
+				if err != nil {
+					t.Fatalf("Failed to clear previous findings: %v", err)
+				}
+				mockServer.ClearRecords()
+			})
 
 			// Add SPF record to indicate the domain handles email
 			if tt.handlesEmail {
@@ -490,13 +491,13 @@ func TestAssessEmailSecurity_DMARC(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := pgContainer.Pool.Exec(ctx, "DELETE FROM dmarc_findings WHERE domain_id = $1", domain.ID)
-			if err != nil {
-				t.Fatalf("Failed to clear previous findings: %v", err)
-			}
-
-			// Reset the mock server for this test
-			mockServer.ClearRecords()
+			t.Cleanup(func() {
+				_, err := pgContainer.Pool.Exec(ctx, "DELETE FROM dmarc_findings WHERE domain_id = $1", domain.ID)
+				if err != nil {
+					t.Fatalf("Failed to clear previous findings: %v", err)
+				}
+				mockServer.ClearRecords()
+			})
 
 			// Add SPF record to indicate the domain handles email
 			if tt.handlesEmail {

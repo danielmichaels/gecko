@@ -31,10 +31,11 @@ type PostgresContainer struct {
 
 func CreatePostgresContainer(ctx context.Context) (*PostgresContainer, error) {
 	pgContainer, err := postgres.Run(ctx,
-		"postgres:15.3-alpine",
+		"postgres:16-alpine",
 		postgres.WithDatabase("test-db"),
 		postgres.WithUsername("postgres"),
 		postgres.WithPassword("postgres"),
+		postgres.WithSQLDriver("pgx"),
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
 				WithOccurrence(2).WithStartupTimeout(15*time.Second)),
@@ -46,27 +47,29 @@ func CreatePostgresContainer(ctx context.Context) (*PostgresContainer, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if err := runMigrations(connStr); err != nil {
+		return nil, err
+	}
+
+	if err := loadTestData(ctx, connStr); err != nil {
+		return nil, err
+	}
+	// todo: consider removing this if not used long term
+	if err := pgContainer.Snapshot(ctx, postgres.WithSnapshotName("test-snap")); err != nil {
+		return nil, err
+	}
+
 	poolConfig, err := pgxpool.ParseConfig(connStr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse pool config: %w", err)
 	}
-
 	poolConfig.MaxConnLifetime = 3 * time.Minute
 	poolConfig.MaxConnIdleTime = 30 * time.Second
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create connection pool: %w", err)
-	}
-	if err := runMigrations(connStr); err != nil {
-		pool.Close()
-		return nil, err
-	}
-
-	// Load test data
-	if err := loadTestData(ctx, pool); err != nil {
-		pool.Close()
-		return nil, err
 	}
 	queries := store.New(pool)
 	return &PostgresContainer{
@@ -98,7 +101,7 @@ func runMigrations(connStr string) error {
 	return nil
 }
 
-func loadTestData(ctx context.Context, pool *pgxpool.Pool) error {
+func loadTestData(ctx context.Context, connStr string) error {
 	// Read the test data SQL file
 	possiblePaths := []string{
 		"sql/tests/test-data.sql",       // From project root
@@ -126,13 +129,15 @@ func loadTestData(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 
 	slog.Info("Found test data file", "path", foundPath)
-
-	// Execute the test data SQL
-	_, err = pool.Exec(ctx, string(testData))
+	db, err := sql.Open("pgx", connStr)
+	if err != nil {
+		return fmt.Errorf("failed to open database for loading test data: %w", err)
+	}
+	defer db.Close()
+	_, err = db.ExecContext(ctx, string(testData))
 	if err != nil {
 		return fmt.Errorf("failed to execute test data SQL: %w", err)
 	}
-
 	return nil
 }
 
