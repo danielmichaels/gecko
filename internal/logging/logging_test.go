@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/danielmichaels/gecko/internal/tracing"
 	"log/slog"
 	"testing"
+
+	"github.com/danielmichaels/gecko/internal/tracing"
 )
 
 func TestSlogHandler_WithAttrs(t *testing.T) {
