@@ -2,12 +2,13 @@ package assessor
 
 import (
 	"context"
+	"testing"
+
 	"github.com/danielmichaels/gecko/internal/dnsclient"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/danielmichaels/gecko/internal/testhelpers"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/miekg/dns"
-	"testing"
 )
 
 func TestAssessEmailSecurity_SPFIssues(t *testing.T) {
@@ -128,7 +129,10 @@ func TestAssessEmailSecurity_SPFIssues(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var txtRecords []store.TxtRecords
 
-			txtRecords, err := pgContainer.Queries.RecordsGetTXTByDomainID(ctx, pgtype.Int4{Int32: txtRecordIDs[tt.txtRecordIdx], Valid: true})
+			txtRecords, err := pgContainer.Queries.RecordsGetTXTByDomainID(
+				ctx,
+				pgtype.Int4{Int32: txtRecordIDs[tt.txtRecordIdx], Valid: true},
+			)
 			if err != nil {
 				t.Fatalf("Failed to get TXT record: %v", err)
 			}
@@ -144,7 +148,10 @@ func TestAssessEmailSecurity_SPFIssues(t *testing.T) {
 				t.Fatalf("assessSPF failed: %v", err)
 			}
 
-			findings, err := pgContainer.Queries.AssessGetSPFFindings(ctx, pgtype.Int4{Int32: domain.ID, Valid: true})
+			findings, err := pgContainer.Queries.AssessGetSPFFindings(
+				ctx,
+				pgtype.Int4{Int32: domain.ID, Valid: true},
+			)
 			if err != nil {
 				t.Fatalf("Failed to get SPF findings: %v", err)
 			}
@@ -204,7 +211,12 @@ func TestAssessEmailSecurity_DKIM(t *testing.T) {
 	if err := mockServer.Start(); err != nil {
 		t.Fatalf("Failed to start mock DNS server: %v", err)
 	}
-	defer mockServer.Stop()
+	defer func(mockServer *testhelpers.MockDNSServer) {
+		err := mockServer.Stop()
+		if err != nil {
+			t.Fatalf("Failed to stop mock DNS server: %v", err)
+		}
+	}(mockServer)
 
 	domain, err := pgContainer.Queries.DomainsGetByID(ctx, "domain_00000001")
 	if err != nil {
@@ -299,7 +311,11 @@ func TestAssessEmailSecurity_DKIM(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Cleanup(func() {
-				_, err := pgContainer.Pool.Exec(ctx, "DELETE FROM dkim_findings WHERE domain_id = $1", domain.ID)
+				_, err := pgContainer.Pool.Exec(
+					ctx,
+					"DELETE FROM dkim_findings WHERE domain_id = $1",
+					domain.ID,
+				)
 				if err != nil {
 					t.Fatalf("Failed to clear previous findings: %v", err)
 				}
@@ -308,7 +324,12 @@ func TestAssessEmailSecurity_DKIM(t *testing.T) {
 
 			// Add SPF record to indicate the domain handles email
 			if tt.handlesEmail {
-				err = mockServer.AddRecord(domain.Name, dns.TypeTXT, 3600, "v=spf1 include:_spf.google.com -all")
+				err = mockServer.AddRecord(
+					domain.Name,
+					dns.TypeTXT,
+					3600,
+					"v=spf1 include:_spf.google.com -all",
+				)
 				if err != nil {
 					t.Fatalf("Failed to add SPF record: %v", err)
 				}
@@ -339,7 +360,10 @@ func TestAssessEmailSecurity_DKIM(t *testing.T) {
 			}
 
 			// Get the findings from the database
-			findings, err := pgContainer.Queries.AssessGetDKIMFindings(ctx, pgtype.Int4{Int32: domain.ID, Valid: true})
+			findings, err := pgContainer.Queries.AssessGetDKIMFindings(
+				ctx,
+				pgtype.Int4{Int32: domain.ID, Valid: true},
+			)
 			if err != nil {
 				t.Fatalf("Failed to get DKIM findings: %v", err)
 			}
@@ -381,7 +405,8 @@ func TestAssessEmailSecurity_DKIM(t *testing.T) {
 					t.Errorf("Status: got=%s, want=%s", got, want)
 				}
 
-				if got, want := foundSelector, tt.wantSelector; got != want && tt.wantSelector != "" {
+				if got, want := foundSelector, tt.wantSelector; got != want &&
+					tt.wantSelector != "" {
 					t.Errorf("Selector: got=%s, want=%s", got, want)
 				}
 			}
@@ -405,7 +430,12 @@ func TestAssessEmailSecurity_DMARC(t *testing.T) {
 	if err := mockServer.Start(); err != nil {
 		t.Fatalf("Failed to start mock DNS server: %v", err)
 	}
-	defer mockServer.Stop()
+	defer func(mockServer *testhelpers.MockDNSServer) {
+		err := mockServer.Stop()
+		if err != nil {
+			t.Fatalf("Failed to stop mock DNS server: %v", err)
+		}
+	}(mockServer)
 
 	domain, err := pgContainer.Queries.DomainsGetByID(ctx, "domain_00000001")
 	if err != nil {
@@ -434,18 +464,22 @@ func TestAssessEmailSecurity_DMARC(t *testing.T) {
 		wantPolicy    string
 	}{
 		{
-			name:          "valid DMARC record",
-			handlesEmail:  true,
-			dmarcRecords:  []string{"v=DMARC1; p=reject; rua=mailto:reports@example.com; ruf=mailto:forensic@example.com"},
+			name:         "valid DMARC record",
+			handlesEmail: true,
+			dmarcRecords: []string{
+				"v=DMARC1; p=reject; rua=mailto:reports@example.com; ruf=mailto:forensic@example.com",
+			},
 			wantSeverity:  store.FindingSeverityInfo,
 			wantStatus:    store.FindingStatusClosed,
 			wantIssueType: DMARCCompliant,
 			wantPolicy:    "v=DMARC1; p=reject; rua=mailto:reports@example.com; ruf=mailto:forensic@example.com",
 		},
 		{
-			name:          "weak policy",
-			handlesEmail:  true,
-			dmarcRecords:  []string{"v=DMARC1; p=none; rua=mailto:reports@example.com; ruf=mailto:forensic@example.com"},
+			name:         "weak policy",
+			handlesEmail: true,
+			dmarcRecords: []string{
+				"v=DMARC1; p=none; rua=mailto:reports@example.com; ruf=mailto:forensic@example.com",
+			},
 			wantSeverity:  store.FindingSeverityHigh,
 			wantStatus:    store.FindingStatusOpen,
 			wantIssueType: DMARCWeakPolicy,
@@ -492,7 +526,11 @@ func TestAssessEmailSecurity_DMARC(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Cleanup(func() {
-				_, err := pgContainer.Pool.Exec(ctx, "DELETE FROM dmarc_findings WHERE domain_id = $1", domain.ID)
+				_, err := pgContainer.Pool.Exec(
+					ctx,
+					"DELETE FROM dmarc_findings WHERE domain_id = $1",
+					domain.ID,
+				)
 				if err != nil {
 					t.Fatalf("Failed to clear previous findings: %v", err)
 				}

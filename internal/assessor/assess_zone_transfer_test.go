@@ -42,14 +42,17 @@ func TestAssessZoneTransfer(t *testing.T) {
 	}
 
 	// Store a mock zone transfer attempt
-	err = pgContainer.Queries.ScannersStoreZoneTransferAttempt(ctx, store.ScannersStoreZoneTransferAttemptParams{
-		DomainID:      pgtype.Int4{Int32: domain.ID, Valid: true},
-		Nameserver:    "ns1.example.com:53",
-		TransferType:  "AXFR",
-		WasSuccessful: true,
-		ResponseData:  mockDataJSON,
-		ErrorMessage:  pgtype.Text{},
-	})
+	err = pgContainer.Queries.ScannersStoreZoneTransferAttempt(
+		ctx,
+		store.ScannersStoreZoneTransferAttemptParams{
+			DomainID:      pgtype.Int4{Int32: domain.ID, Valid: true},
+			Nameserver:    "ns1.example.com:53",
+			TransferType:  "AXFR",
+			WasSuccessful: true,
+			ResponseData:  mockDataJSON,
+			ErrorMessage:  pgtype.Text{},
+		},
+	)
 	if err != nil {
 		t.Fatalf("Failed to store zone transfer attempt: %v", err)
 	}
@@ -61,7 +64,10 @@ func TestAssessZoneTransfer(t *testing.T) {
 	}
 
 	// Retrieve the findings
-	findings, err := pgContainer.Queries.AssessGetZoneTransferFindings(ctx, pgtype.Int4{Int32: domain.ID, Valid: true})
+	findings, err := pgContainer.Queries.AssessGetZoneTransferFindings(
+		ctx,
+		pgtype.Int4{Int32: domain.ID, Valid: true},
+	)
 	if err != nil {
 		t.Fatalf("Failed to get zone transfer findings: %v", err)
 	}
@@ -95,7 +101,10 @@ func TestAssessZoneTransfer(t *testing.T) {
 
 	// Verify primary finding
 	if findingsContainer.PrimaryFinding.Severity != string(store.FindingSeverityCritical) {
-		t.Errorf("Expected primary finding severity to be Critical, got %s", findingsContainer.PrimaryFinding.Severity)
+		t.Errorf(
+			"Expected primary finding severity to be Critical, got %s",
+			findingsContainer.PrimaryFinding.Severity,
+		)
 	}
 
 	// Verify sensitive info findings
@@ -183,7 +192,11 @@ func TestExtractZoneTransferAssessment(t *testing.T) {
 
 	// Verify record counts - adjust expected values to match actual counts
 	if assessment.RecordCounts.Total != mockData.RecordCounts.Total {
-		t.Errorf("Expected %d total records, got %d", mockData.RecordCounts.Total, assessment.RecordCounts.Total)
+		t.Errorf(
+			"Expected %d total records, got %d",
+			mockData.RecordCounts.Total,
+			assessment.RecordCounts.Total,
+		)
 	}
 
 	// Check if A records are counted correctly
@@ -310,7 +323,13 @@ func createMockZoneTransferData() *dnsrecords.ZoneTransferData {
 					TTL:    3600,
 					Class:  1,
 					RRType: 16,
-					Data:   map[string]any{"txt": []any{"password=secret123", "api_key=abcdef123456", "user=admin@example.com"}},
+					Data: map[string]any{
+						"txt": []any{
+							"password=secret123",
+							"api_key=abcdef123456",
+							"user=admin@example.com",
+						},
+					},
 				},
 			},
 		},
@@ -319,15 +338,6 @@ func createMockZoneTransferData() *dnsrecords.ZoneTransferData {
 	}
 }
 
-// Helper function to check if a slice contains a string
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
-}
 func containsAny(slice []string, items ...string) bool {
 	for _, item := range items {
 		for _, s := range slice {

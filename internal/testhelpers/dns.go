@@ -2,22 +2,23 @@ package testhelpers
 
 import (
 	"fmt"
-	"github.com/miekg/dns"
 	"log/slog"
 	"net"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/miekg/dns"
 )
 
 // MockDNSServer represents a mock DNS server for testing
 type MockDNSServer struct {
 	Server     *dns.Server
-	Port       int
 	Records    map[string]map[uint16][]dns.RR
-	mu         sync.RWMutex
-	ListenAddr string
 	Logger     *slog.Logger
+	ListenAddr string
+	Port       int
+	mu         sync.RWMutex
 }
 
 // NewMockDNSServer creates a new mock DNS server
@@ -109,7 +110,12 @@ func (s *MockDNSServer) AddRecord(name string, rrtype uint16, ttl uint32, rdata 
 		}
 	case dns.TypeCNAME:
 		rr = &dns.CNAME{
-			Hdr:    dns.RR_Header{Name: fqdn, Rrtype: dns.TypeCNAME, Class: dns.ClassINET, Ttl: ttl},
+			Hdr: dns.RR_Header{
+				Name:   fqdn,
+				Rrtype: dns.TypeCNAME,
+				Class:  dns.ClassINET,
+				Ttl:    ttl,
+			},
 			Target: dns.Fqdn(rdata),
 		}
 	case dns.TypeTXT:
@@ -140,13 +146,18 @@ func (s *MockDNSServer) AddRecord(name string, rrtype uint16, ttl uint32, rdata 
 		pref := uint16(10)
 		mx := ""
 		if len(parts) >= 2 {
-			fmt.Sscanf(parts[0], "%d", &pref)
+			_, _ = fmt.Sscanf(parts[0], "%d", &pref)
 			mx = parts[1]
 		} else if len(parts) == 1 {
 			mx = parts[0]
 		}
 		rr = &dns.MX{
-			Hdr:        dns.RR_Header{Name: fqdn, Rrtype: dns.TypeMX, Class: dns.ClassINET, Ttl: ttl},
+			Hdr: dns.RR_Header{
+				Name:   fqdn,
+				Rrtype: dns.TypeMX,
+				Class:  dns.ClassINET,
+				Ttl:    ttl,
+			},
 			Preference: pref,
 			Mx:         dns.Fqdn(mx),
 		}
@@ -164,11 +175,11 @@ func (s *MockDNSServer) AddRecord(name string, rrtype uint16, ttl uint32, rdata 
 		if len(parts) >= 7 {
 			primary = parts[0]
 			hostmaster = parts[1]
-			fmt.Sscanf(parts[2], "%d", &serial)
-			fmt.Sscanf(parts[3], "%d", &refresh)
-			fmt.Sscanf(parts[4], "%d", &retry)
-			fmt.Sscanf(parts[5], "%d", &expire)
-			fmt.Sscanf(parts[6], "%d", &minimum)
+			_, _ = fmt.Sscanf(parts[2], "%d", &serial)
+			_, _ = fmt.Sscanf(parts[3], "%d", &refresh)
+			_, _ = fmt.Sscanf(parts[4], "%d", &retry)
+			_, _ = fmt.Sscanf(parts[5], "%d", &expire)
+			_, _ = fmt.Sscanf(parts[6], "%d", &minimum)
 		}
 
 		rr = &dns.SOA{
@@ -206,7 +217,11 @@ func (s *MockDNSServer) handleRequest(w dns.ResponseWriter, r *dns.Msg) {
 	}
 
 	if len(r.Question) == 0 {
-		w.WriteMsg(m)
+		err := w.WriteMsg(m)
+		if err != nil {
+			s.Logger.Error("Error writing response", "error", err)
+			return
+		}
 		return
 	}
 
@@ -219,10 +234,16 @@ func (s *MockDNSServer) handleRequest(w dns.ResponseWriter, r *dns.Msg) {
 	// Check if we have records for this name and type
 	if records, ok := s.Records[q.Name]; ok {
 		if rrs, ok := records[q.Qtype]; ok {
-			for _, rr := range rrs {
-				m.Answer = append(m.Answer, rr)
-			}
-			s.Logger.Debug("Returning records", "name", q.Name, "type", q.Qtype, "count", len(m.Answer))
+			m.Answer = append(m.Answer, rrs...)
+			s.Logger.Debug(
+				"Returning records",
+				"name",
+				q.Name,
+				"type",
+				q.Qtype,
+				"count",
+				len(m.Answer),
+			)
 		}
 	}
 

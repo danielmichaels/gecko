@@ -4,14 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
+	"os"
+	"time"
+
 	"github.com/danielmichaels/gecko/assets"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
-	"log/slog"
-	"os"
-	"time"
 
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -24,9 +25,9 @@ var TestLogger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 
 type PostgresContainer struct {
 	*postgres.PostgresContainer
-	ConnectionString string
 	Pool             *pgxpool.Pool
 	Queries          *store.Queries
+	ConnectionString string
 }
 
 func CreatePostgresContainer(ctx context.Context) (*PostgresContainer, error) {
@@ -79,6 +80,7 @@ func CreatePostgresContainer(ctx context.Context) (*PostgresContainer, error) {
 		Queries:           queries,
 	}, nil
 }
+
 func runMigrations(connStr string) error {
 	// Get a connection from the pool
 	db, err := sql.Open("pgx", connStr)

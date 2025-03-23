@@ -1,11 +1,12 @@
 package testhelpers
 
 import (
-	"github.com/danielmichaels/gecko/internal/dnsclient"
-	"github.com/miekg/dns"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/danielmichaels/gecko/internal/dnsclient"
+	"github.com/miekg/dns"
 )
 
 func TestDNSClient_WithMockServer(t *testing.T) {
@@ -20,7 +21,12 @@ func TestDNSClient_WithMockServer(t *testing.T) {
 	if err := mockServer.Start(); err != nil {
 		t.Fatalf("Failed to start mock DNS server: %v", err)
 	}
-	defer mockServer.Stop()
+	defer func(mockServer *MockDNSServer) {
+		err := mockServer.Stop()
+		if err != nil {
+			t.Fatalf("Failed to stop mock DNS server: %v", err)
+		}
+	}(mockServer)
 
 	// Add test records
 	testDomain := "example.com"

@@ -69,9 +69,9 @@ var (
 )
 
 type assessData struct {
-	handlesEmail bool
-	domainID     int
 	txtRecords   []store.TxtRecords
+	domainID     int
+	handlesEmail bool
 }
 
 func (a *Assessor) assessSPF(ctx context.Context, d assessData) error {
@@ -168,7 +168,6 @@ func (a *Assessor) assessDKIM(ctx context.Context, d assessData, selectors []str
 	}
 
 	domainName := domain.Name
-	var checkedSelectors []string
 	var foundValidDKIM bool
 	var validSelectors []string
 
@@ -176,10 +175,8 @@ func (a *Assessor) assessDKIM(ctx context.Context, d assessData, selectors []str
 		selectors = knownDkimSelectors
 	}
 
-	// First pass: find any valid DKIM records
 	for _, selector := range selectors {
 		selectorDomain := fmt.Sprintf("%s._domainkey.%s", selector, domainName)
-		checkedSelectors = append(checkedSelectors, selectorDomain)
 
 		dkimRecords, selectorFound := a.dnsClient.LookupTXT(selectorDomain)
 
@@ -189,10 +186,10 @@ func (a *Assessor) assessDKIM(ctx context.Context, d assessData, selectors []str
 					foundValidDKIM = true
 					validSelectors = append(validSelectors, selector)
 
-					// Process the valid DKIM record
 					hasIssues := false
 
-					if strings.Contains(recordValue, "k=rsa") && strings.Contains(recordValue, "p=") {
+					if strings.Contains(recordValue, "k=rsa") &&
+						strings.Contains(recordValue, "p=") {
 						keyString := extractKeyFromDKIM(recordValue)
 						if len(keyString) < MinDKIMKeyLength {
 							hasIssues = true
@@ -235,7 +232,10 @@ func (a *Assessor) assessDKIM(ctx context.Context, d assessData, selectors []str
 
 	// Only create a single "missing DKIM" finding if no valid DKIM records were found
 	if !foundValidDKIM && d.handlesEmail {
-		details := fmt.Sprintf("No DKIM records found for any common selectors and domain has MX records. Checked: %s", strings.Join(selectors, ", "))
+		details := fmt.Sprintf(
+			"No DKIM records found for any common selectors and domain has MX records. Checked: %s",
+			strings.Join(selectors, ", "),
+		)
 		if err := a.createEmailFinding(ctx, FindingDKIM, d.domainID, pgtype.Int4{},
 			store.FindingSeverityHigh, store.FindingStatusOpen,
 			DKIMMissing, "", details); err != nil {
@@ -319,7 +319,8 @@ func (a *Assessor) assessDMARC(ctx context.Context, d assessData) error {
 						WithPolicy(policy)); err != nil {
 						return err
 					}
-					if !strings.Contains(recordValue, "rua=") || !strings.Contains(recordValue, "ruf=") {
+					if !strings.Contains(recordValue, "rua=") ||
+						!strings.Contains(recordValue, "ruf=") {
 						if err := a.createEmailFinding(ctx, FindingDMARC, d.domainID, pgtype.Int4{},
 							store.FindingSeverityMedium, store.FindingStatusOpen,
 							DMARCMissingTags, recordValue,
@@ -413,8 +414,6 @@ type EmailFindingOption func(*emailFindingParams)
 type emailFindingParams struct {
 	ctx         context.Context
 	findingType string
-	domainID    int
-	recordID    pgtype.Int4
 	severity    store.FindingSeverity
 	status      store.FindingStatus
 	issueType   string
@@ -422,6 +421,8 @@ type emailFindingParams struct {
 	details     string
 	selector    string
 	policy      string
+	domainID    int
+	recordID    pgtype.Int4
 }
 
 // WithSelector sets the DKIM selector
@@ -491,10 +492,18 @@ func (a *Assessor) createEmailFinding(
 				Status:      params.status,
 				Selector:    pgtype.Text{String: params.selector, Valid: true},
 				IssueType:   params.issueType,
-				DkimValue:   pgtype.Text{String: params.recordValue, Valid: params.recordValue != ""},
-				Details:     pgtype.Text{String: params.details, Valid: true},
+				DkimValue: pgtype.Text{
+					String: params.recordValue,
+					Valid:  params.recordValue != "",
+				},
+				Details: pgtype.Text{String: params.details, Valid: true},
 			}
-			return a.createFinding(ctx, dkimParams, "create DKIM with selector finding", params.issueType)
+			return a.createFinding(
+				ctx,
+				dkimParams,
+				"create DKIM with selector finding",
+				params.issueType,
+			)
 		}
 		// Use AssessCreateDKIMFindingNoSelectorParams when no selector is provided
 		dkimParams := store.AssessCreateDKIMFindingNoSelectorParams{

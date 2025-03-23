@@ -347,11 +347,11 @@ type ZoneTransferData struct {
 	Domain       string           `json:"domain"`
 	Nameserver   string           `json:"nameserver"`
 	Timestamp    string           `json:"timestamp"`
-	RecordCounts RecordCount      `json:"record_counts"`
-	Records      RecordCollection `json:"records"`
-	Vulnerable   bool             `json:"vulnerable,omitempty"`
 	TransferType string           `json:"transfer_type,omitempty"`
 	Error        string           `json:"error,omitempty"`
+	Records      RecordCollection `json:"records"`
+	RecordCounts RecordCount      `json:"record_counts"`
+	Vulnerable   bool             `json:"vulnerable,omitempty"`
 }
 
 // RecordCount represents the count of different types of DNS records in a zone transfer.
@@ -372,12 +372,12 @@ type RecordCollection struct {
 
 // SerializedRecord represents a DNS record in a format that can be marshaled to JSON
 type SerializedRecord struct {
+	Data   map[string]any `json:"data"`
 	Type   string         `json:"type"`
 	Name   string         `json:"name"`
 	TTL    uint32         `json:"ttl"`
 	Class  uint16         `json:"class"`
 	RRType uint16         `json:"rrtype"`
-	Data   map[string]any `json:"data"`
 }
 
 // SerializeRecord converts a DNS resource record (RR) into a standardized SerializedRecord

@@ -18,12 +18,12 @@ import (
 // FindingsContainer aggregates and organizes security findings from a zone transfer analysis
 // including primary findings, sensitive information, internal exposure, and security issues
 type FindingsContainer struct {
+	RecordData       map[string][]any       `json:"raw_record_data"`
 	PrimaryFinding   Finding                `json:"primary_finding"`
+	Assessment       ZoneTransferAssessment `json:"assessment_data"`
 	SensitiveInfo    []Finding              `json:"sensitive_info_findings,omitempty"`
 	InternalExposure []Finding              `json:"internal_exposure_findings,omitempty"`
 	SecurityIssues   []Finding              `json:"security_issues_findings,omitempty"`
-	Assessment       ZoneTransferAssessment `json:"assessment_data"`
-	RecordData       map[string][]any       `json:"raw_record_data"`
 }
 
 // Finding represents a single security finding
@@ -43,8 +43,8 @@ type ZoneTransferAssessment struct {
 
 // RecordCountMetrics tracks statistics about the DNS records discovered
 type RecordCountMetrics struct {
-	Total  int            `json:"total"`
 	ByType map[string]int `json:"by_type"`
+	Total  int            `json:"total"`
 }
 
 // SensitiveInformation captures potentially sensitive data exposed in records

@@ -2,11 +2,12 @@ package dnsclient
 
 import (
 	"fmt"
-	"github.com/danielmichaels/gecko/internal/testhelpers"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/danielmichaels/gecko/internal/testhelpers"
 
 	"github.com/danielmichaels/gecko/internal/dnsrecords"
 
@@ -583,6 +584,7 @@ func TestParseRRSIG(t *testing.T) {
 		})
 	}
 }
+
 func TestDNSClient_LookupRecord(t *testing.T) {
 	// Create a mock DNS server
 	mockServer, err := testhelpers.NewMockDNSServer()
@@ -592,7 +594,12 @@ func TestDNSClient_LookupRecord(t *testing.T) {
 	if err := mockServer.Start(); err != nil {
 		t.Fatalf("Failed to start mock DNS server: %v", err)
 	}
-	defer mockServer.Stop()
+	defer func(mockServer *testhelpers.MockDNSServer) {
+		err := mockServer.Stop()
+		if err != nil {
+			t.Fatalf("Failed to stop mock DNS server: %v", err)
+		}
+	}(mockServer)
 
 	// Create a DNS client that uses our mock server
 	client := New(
@@ -709,7 +716,12 @@ func TestDNSClient_LookupNonExistentRecord(t *testing.T) {
 	if err := mockServer.Start(); err != nil {
 		t.Fatalf("Failed to start mock DNS server: %v", err)
 	}
-	defer mockServer.Stop()
+	defer func(mockServer *testhelpers.MockDNSServer) {
+		err := mockServer.Stop()
+		if err != nil {
+			t.Fatalf("Failed to stop mock DNS server: %v", err)
+		}
+	}(mockServer)
 
 	// Create a DNS client that uses our mock server
 	client := New(
@@ -722,13 +734,17 @@ func TestDNSClient_LookupNonExistentRecord(t *testing.T) {
 
 	// Verify the results
 	if ok {
-		t.Errorf("Expected lookup to fail for non-existent domain, but it succeeded with results: %v", results)
+		t.Errorf(
+			"Expected lookup to fail for non-existent domain, but it succeeded with results: %v",
+			results,
+		)
 	}
 
 	if len(results) != 0 {
 		t.Errorf("Expected empty results for non-existent domain, got: %v", results)
 	}
 }
+
 func TestDNSClient_GetParentZone(t *testing.T) {
 	client := New()
 
@@ -757,7 +773,12 @@ func TestDNSClient_GetParentZone(t *testing.T) {
 			}
 
 			if zone != tc.expectedZone {
-				t.Errorf("For domain %q, expected parent zone %q, got %q", tc.domain, tc.expectedZone, zone)
+				t.Errorf(
+					"For domain %q, expected parent zone %q, got %q",
+					tc.domain,
+					tc.expectedZone,
+					zone,
+				)
 			}
 		})
 	}

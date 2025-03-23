@@ -3,9 +3,10 @@ package assessor
 import (
 	"context"
 	"fmt"
-	"github.com/danielmichaels/gecko/internal/dnsclient"
 	"log/slog"
 	"os"
+
+	"github.com/danielmichaels/gecko/internal/dnsclient"
 
 	"github.com/danielmichaels/gecko/internal/store"
 )
