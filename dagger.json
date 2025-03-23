@@ -1,8 +1,15 @@
 {
   "name": "backend",
-  "engineVersion": "v0.16.2",
+  "engineVersion": "v0.16.3",
   "sdk": {
     "source": "go"
   },
+  "dependencies": [
+    {
+      "name": "testcontainers",
+      "source": "github.com/vito/daggerverse/testcontainers@bb76eb355a160de01b4719a5b9197b852cba8b12",
+      "pin": "bb76eb355a160de01b4719a5b9197b852cba8b12"
+    }
+  ],
   "source": "ci"
 }
