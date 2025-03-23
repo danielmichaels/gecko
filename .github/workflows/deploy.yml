@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@master
         with:
           fetch-depth: 1
-      - name: lint
+      - name: test
         uses: dagger/dagger-for-github@main
         with:
           version: ${{ env.DAGGER_VERSION }}
