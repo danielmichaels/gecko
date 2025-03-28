@@ -82,6 +82,14 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 			rw,
 			&AssessCNAMEDanglingWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},
 		)
+		river.AddWorker(
+			rw,
+			&AssessZoneTransferWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},
+		)
+		river.AddWorker(
+			rw,
+			&AssessEmailSecurityWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},
+		)
 		riverConfig.Workers = rw
 		riverConfig.MaxAttempts = 5
 		riverConfig.Queues = map[string]river.QueueConfig{

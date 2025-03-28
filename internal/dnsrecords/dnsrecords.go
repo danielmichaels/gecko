@@ -1,9 +1,11 @@
 package dnsrecords
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/miekg/dns"
 )
@@ -336,4 +338,194 @@ func ParseSOARecord(domain, record string) (*SOAResult, error) {
 		MinimumTTL: uint32(minTTL),
 		IsValid:    true,
 	}, nil
+}
+
+// ZoneTransferData represents the result of a DNS zone transfer operation.
+// It captures details about the transferred zone, including domain, nameserver, record counts,
+// and the actual DNS records retrieved during the transfer.
+type ZoneTransferData struct {
+	Domain       string           `json:"domain"`
+	Nameserver   string           `json:"nameserver"`
+	Timestamp    string           `json:"timestamp"`
+	TransferType string           `json:"transfer_type,omitempty"`
+	Error        string           `json:"error,omitempty"`
+	Records      RecordCollection `json:"records"`
+	RecordCounts RecordCount      `json:"record_counts"`
+	Vulnerable   bool             `json:"vulnerable,omitempty"`
+}
+
+// RecordCount represents the count of different types of DNS records in a zone transfer.
+// It tracks the number of AXFR (Authoritative Transfer), IXFR (Incremental Transfer),
+// and total records retrieved during the transfer.
+type RecordCount struct {
+	AXFR  int `json:"axfr"`
+	IXFR  int `json:"ixfr"`
+	Total int `json:"total"`
+}
+
+// RecordCollection represents a collection of DNS records categorized by transfer type.
+// It contains separate slices for AXFR (Authoritative Transfer) and IXFR (Incremental Transfer) records.
+type RecordCollection struct {
+	AXFR []SerializedRecord `json:"axfr"`
+	IXFR []SerializedRecord `json:"ixfr"`
+}
+
+// SerializedRecord represents a DNS record in a format that can be marshaled to JSON
+type SerializedRecord struct {
+	Data   map[string]any `json:"data"`
+	Type   string         `json:"type"`
+	Name   string         `json:"name"`
+	TTL    uint32         `json:"ttl"`
+	Class  uint16         `json:"class"`
+	RRType uint16         `json:"rrtype"`
+}
+
+// SerializeRecord converts a DNS resource record (RR) into a standardized SerializedRecord
+// that can be easily marshaled to JSON. It extracts common header information and
+// specific type-dependent data for various DNS record types.
+func SerializeRecord(rr dns.RR) SerializedRecord {
+	header := rr.Header()
+	rec := SerializedRecord{
+		Type:   dns.TypeToString[header.Rrtype],
+		Name:   header.Name,
+		TTL:    header.Ttl,
+		Class:  header.Class,
+		RRType: header.Rrtype,
+		Data:   make(map[string]any),
+	}
+
+	// switch over all the possible RR types
+	switch record := rr.(type) {
+	case *dns.A:
+		rec.Data["ip"] = record.A.String()
+	case *dns.AAAA:
+		rec.Data["ip"] = record.AAAA.String()
+	case *dns.CNAME:
+		rec.Data["target"] = record.Target
+	case *dns.MX:
+		rec.Data["preference"] = record.Preference
+		rec.Data["mx"] = record.Mx
+	case *dns.TXT:
+		rec.Data["txt"] = record.Txt
+	case *dns.NS:
+		rec.Data["ns"] = record.Ns
+	case *dns.SOA:
+		rec.Data["ns"] = record.Ns
+		rec.Data["mbox"] = record.Mbox
+		rec.Data["serial"] = record.Serial
+		rec.Data["refresh"] = record.Refresh
+		rec.Data["retry"] = record.Retry
+		rec.Data["expire"] = record.Expire
+		rec.Data["minttl"] = record.Minttl
+	case *dns.PTR:
+		rec.Data["ptr"] = record.Ptr
+	case *dns.SRV:
+		rec.Data["priority"] = record.Priority
+		rec.Data["weight"] = record.Weight
+		rec.Data["port"] = record.Port
+		rec.Data["target"] = record.Target
+	case *dns.CAA:
+		rec.Data["flag"] = record.Flag
+		rec.Data["tag"] = record.Tag
+		rec.Data["value"] = record.Value
+	case *dns.DNSKEY:
+		rec.Data["flags"] = record.Flags
+		rec.Data["protocol"] = record.Protocol
+		rec.Data["algorithm"] = record.Algorithm
+		rec.Data["publicKey"] = record.PublicKey
+	case *dns.DS:
+		rec.Data["keyTag"] = record.KeyTag
+		rec.Data["algorithm"] = record.Algorithm
+		rec.Data["digestType"] = record.DigestType
+		rec.Data["digest"] = record.Digest
+	case *dns.RRSIG:
+		rec.Data["typeCovered"] = record.TypeCovered
+		rec.Data["algorithm"] = record.Algorithm
+		rec.Data["labels"] = record.Labels
+		rec.Data["origTtl"] = record.OrigTtl
+		rec.Data["expiration"] = record.Expiration
+		rec.Data["inception"] = record.Inception
+		rec.Data["keyTag"] = record.KeyTag
+		rec.Data["signerName"] = record.SignerName
+		rec.Data["signature"] = record.Signature
+	case *dns.HINFO:
+		rec.Data["cpu"] = record.Cpu
+		rec.Data["os"] = record.Os
+	case *dns.NAPTR:
+		rec.Data["order"] = record.Order
+		rec.Data["preference"] = record.Preference
+		rec.Data["flags"] = record.Flags
+		rec.Data["service"] = record.Service
+		rec.Data["regexp"] = record.Regexp
+		rec.Data["replacement"] = record.Replacement
+	case *dns.SSHFP:
+		rec.Data["algorithm"] = record.Algorithm
+		rec.Data["type"] = record.Type
+		rec.Data["fingerprint"] = record.FingerPrint
+	case *dns.TLSA:
+		rec.Data["usage"] = record.Usage
+		rec.Data["selector"] = record.Selector
+		rec.Data["matchingType"] = record.MatchingType
+		rec.Data["certificate"] = record.Certificate
+	case *dns.DNAME:
+		rec.Data["target"] = record.Target
+	}
+	return rec
+}
+
+// FormatResult returns a JSON-formatted representation of zone transfer results for a nameserver
+func (z *ZoneTransferResult) FormatResult(nameserver string) (string, error) {
+	data := ZoneTransferData{
+		Nameserver: nameserver,
+		Timestamp:  time.Now().UTC().Format(time.RFC3339),
+		RecordCounts: RecordCount{
+			AXFR:  len(z.AXFR[nameserver]),
+			IXFR:  len(z.IXFR[nameserver]),
+			Total: len(z.AXFR[nameserver]) + len(z.IXFR[nameserver]),
+		},
+		Records: RecordCollection{},
+	}
+
+	for _, record := range z.AXFR[nameserver] {
+		data.Records.AXFR = append(data.Records.AXFR, SerializeRecord(record))
+	}
+
+	for _, record := range z.IXFR[nameserver] {
+		data.Records.IXFR = append(data.Records.IXFR, SerializeRecord(record))
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonData), nil
+}
+
+func (z *ZoneTransferResult) ToAssessmentData() *ZoneTransferData {
+	data := &ZoneTransferData{
+		Domain:       z.Domain,
+		Timestamp:    time.Now().UTC().Format(time.RFC3339),
+		Vulnerable:   z.Vulnerable,
+		RecordCounts: RecordCount{},
+		Records:      RecordCollection{},
+	}
+
+	for _, records := range z.AXFR {
+		for _, record := range records {
+			data.Records.AXFR = append(data.Records.AXFR, SerializeRecord(record))
+		}
+		data.RecordCounts.AXFR += len(records)
+		data.RecordCounts.Total += len(records)
+	}
+
+	for _, records := range z.IXFR {
+		for _, record := range records {
+			data.Records.IXFR = append(data.Records.IXFR, SerializeRecord(record))
+		}
+		data.RecordCounts.IXFR += len(records)
+		data.RecordCounts.Total += len(records)
+	}
+
+	return data
 }

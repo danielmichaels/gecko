@@ -156,28 +156,38 @@ func (w *ScanZoneTransferWorker) Work(
 	start := time.Now()
 
 	s := scanner.NewScanner(scanner.Config{Logger: &w.Logger, Store: w.Store})
-	result := s.ScanZoneTransfer(job.Args.Domain)
+	dUID, err := s.ScanZoneTransfer(ctx, job.Args.Domain)
+	if err != nil {
+		return err
+	}
 
 	w.Logger.InfoContext(ctx,
 		"zone transfer scan complete",
 		"domain", job.Args.Domain,
-		"vulnerable", result.Vulnerable,
-		"nameservers", result.NS,
 		"duration", time.Since(start),
 	)
 
-	if result.Vulnerable {
-		// todo: insert to PgxPool here
-		w.Logger.WarnContext(ctx,
-			"zone transfer vulnerability detected",
-			"domain", job.Args.Domain,
-			"nameservers", result.NS,
-			"successful_transfers", result.SuccessfulTransfers,
-		)
-	} else {
-		w.Logger.InfoContext(ctx, "zone transfer not possible", "domain", job.Args.Domain, "ns", result.NS)
+	// todo: should we allow configuration to scan without auto assessing
+	tx, err := w.PgxPool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
 	}
-
+	defer func(tx pgx.Tx, ctx context.Context) {
+		if err != nil {
+			err := tx.Rollback(ctx)
+			if err != nil {
+				w.Logger.Error("transaction rollback", "error", err)
+			}
+		}
+	}(tx, ctx)
+	rc := river.ClientFromContext[pgx.Tx](ctx)
+	_, err = rc.InsertTx(ctx, tx, AssessZoneTransferArgs{
+		DomainUID: dUID,
+	}, nil)
+	if err != nil {
+		w.Logger.Error("failed to queue resolver job", "domain", dUID, "error", err)
+	}
+	err = tx.Commit(ctx)
 	return nil
 }
 

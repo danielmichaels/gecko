@@ -95,6 +95,21 @@ SELECT id,
 FROM domains
 WHERE tenant_id = $1
   AND name = $2;
+-- name: DomainsGetByIdentifier :one
+-- Read a domain by ID, UID, or name and tenant ID (no auth)
+SELECT id,
+       uid,
+       tenant_id,
+       name,
+       domain_type,
+       source,
+       status,
+       created_at,
+       updated_at
+FROM domains
+WHERE tenant_id = $1
+  AND (id = $2 OR uid = $3 OR name = $4)
+LIMIT 1;
 
 -- name: DomainsUpdateByID :one
 -- Update a domain's status (no auth)

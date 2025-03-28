@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/danielmichaels/gecko/internal/tracing"
+
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/danielmichaels/gecko/internal/dnsclient"
@@ -45,7 +47,8 @@ func (w *EnumerateSubdomainWorker) Work(
 	ctx context.Context,
 	job *river.Job[EnumerateSubdomainArgs],
 ) (enumErr error) {
-	dnsClient := dnsclient.NewDNSClient()
+	ctx = tracing.WithNewTraceID(ctx, true)
+	dnsClient := dnsclient.New()
 	tx, err := w.PgxPool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -54,7 +57,7 @@ func (w *EnumerateSubdomainWorker) Work(
 		if enumErr != nil {
 			err := tx.Rollback(ctx)
 			if err != nil {
-				w.Logger.Error("transaction rollback", "error", err)
+				w.Logger.ErrorContext(ctx, "transaction rollback", "error", err)
 			}
 		}
 	}(tx, ctx)
@@ -66,12 +69,21 @@ func (w *EnumerateSubdomainWorker) Work(
 		job.Args.Domain,
 		job.Args.Concurrency,
 		func(entry *resolve.HostEntry) {
-			w.Logger.Info("enumerate_subdomain", "host", entry.Host)
+			w.Logger.InfoContext(ctx, "enumerate_subdomain", "host", entry.Host)
+			// future: do we recursively enumerate subdomains?
+			// future: remove subfinder with gecko implementation
 			_, err := rc.InsertTx(ctx, tx, ResolveDomainArgs{
 				Domain: entry.Host,
 			}, nil)
 			if err != nil {
-				w.Logger.Error("failed to queue resolver job", "domain", entry.Host, "error", err)
+				w.Logger.ErrorContext(
+					ctx,
+					"failed to queue resolver job",
+					"domain",
+					entry.Host,
+					"error",
+					err,
+				)
 			}
 		},
 	)
@@ -105,7 +117,8 @@ type ResolveDomainWorker struct {
 }
 
 func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDomainArgs]) error {
-	dnsClient := dnsclient.NewDNSClient()
+	ctx = tracing.WithNewTraceID(ctx, true)
+	dnsClient := dnsclient.New()
 
 	result := dnsclient.SubdomainResult{
 		Name: job.Args.Domain,
@@ -222,13 +235,13 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 		for _, entry := range r.entries {
 			parsed, err := r.parser(result.Name, entry)
 			if err != nil {
-				w.Logger.Error("failed to parse record",
+				w.Logger.ErrorContext(ctx, "failed to parse record",
 					"type", r.name,
 					"domain", result.Name,
 					"error", err)
 				continue
 			}
-			w.Logger.Info("parsed record", "parsed", parsed, "type", r.name)
+			w.Logger.InfoContext(ctx, "parsed record", "parsed", parsed, "type", r.name)
 			d, err := w.Store.DomainsCreate(ctx, store.DomainsCreateParams{
 				TenantID:   pgtype.Int4{Int32: 1, Valid: true},
 				Name:       result.Name,
@@ -248,7 +261,7 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 				if err != nil {
 					return err
 				}
-				w.Logger.Debug(
+				w.Logger.DebugContext(ctx,
 					"found A record",
 					"ip",
 					a.Ipv4Address,
@@ -265,7 +278,7 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 				if err != nil {
 					return err
 				}
-				w.Logger.Debug(
+				w.Logger.DebugContext(ctx,
 					"found AAAA record",
 					"ipv6",
 					aaaa.Ipv6Address,
@@ -283,7 +296,7 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 				if err != nil {
 					return err
 				}
-				w.Logger.Debug(
+				w.Logger.DebugContext(ctx,
 					"found CNAME record",
 					"target",
 					cname.Target,
@@ -306,7 +319,16 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 				if err != nil {
 					return err
 				}
-				w.Logger.Debug("found MX record", "record", mx, "uid", mx.Uid, "domain", d.Name)
+				w.Logger.DebugContext(
+					ctx,
+					"found MX record",
+					"record",
+					mx,
+					"uid",
+					mx.Uid,
+					"domain",
+					d.Name,
+				)
 
 			case "TXT":
 				txt, err := w.Store.RecordsCreateTXT(ctx, store.RecordsCreateTXTParams{
@@ -316,7 +338,7 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 				if err != nil {
 					return err
 				}
-				w.Logger.Debug(
+				w.Logger.DebugContext(ctx,
 					"found TXT record",
 					"value",
 					txt.Value,
@@ -334,7 +356,7 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 				if err != nil {
 					return err
 				}
-				w.Logger.Debug(
+				w.Logger.DebugContext(ctx,
 					"found NS record",
 					"nameserver",
 					ns.Nameserver,
@@ -352,7 +374,7 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 				if err != nil {
 					return err
 				}
-				w.Logger.Debug(
+				w.Logger.DebugContext(ctx,
 					"found PTR record",
 					"target",
 					ptr.Target,
@@ -377,7 +399,16 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 				if err != nil {
 					return err
 				}
-				w.Logger.Debug("found SRV record", "record", srv, "uid", srv.Uid, "domain", d.Name)
+				w.Logger.DebugContext(
+					ctx,
+					"found SRV record",
+					"record",
+					srv,
+					"uid",
+					srv.Uid,
+					"domain",
+					d.Name,
+				)
 
 			case "CAA":
 				cv, err := dnsrecords.ParseCAA(d.Name, entry)
@@ -393,7 +424,16 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 				if err != nil {
 					return err
 				}
-				w.Logger.Debug("found CAA record", "record", caa, "uid", caa.Uid, "domain", d.Name)
+				w.Logger.DebugContext(
+					ctx,
+					"found CAA record",
+					"record",
+					caa,
+					"uid",
+					caa.Uid,
+					"domain",
+					d.Name,
+				)
 			case "DNSKEY":
 				ds, err := dnsrecords.ParseDNSKEY(d.Name, entry)
 				if err != nil {
@@ -409,7 +449,7 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 				if err != nil {
 					return err
 				}
-				w.Logger.Debug(
+				w.Logger.DebugContext(ctx,
 					"found DNSKEY record",
 					"record",
 					dnskey,
@@ -437,7 +477,16 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 				if err != nil {
 					return err
 				}
-				w.Logger.Debug("found SOA record", "record", soa, "uid", soa.Uid, "domain", d.Name)
+				w.Logger.DebugContext(
+					ctx,
+					"found SOA record",
+					"record",
+					soa,
+					"uid",
+					soa.Uid,
+					"domain",
+					d.Name,
+				)
 
 			case "DS":
 				dv, err := dnsrecords.ParseDS(d.Name, entry)
@@ -454,7 +503,16 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 				if err != nil {
 					return err
 				}
-				w.Logger.Debug("found DS record", "record", ds, "uid", ds.Uid, "domain", d.Name)
+				w.Logger.DebugContext(
+					ctx,
+					"found DS record",
+					"record",
+					ds,
+					"uid",
+					ds.Uid,
+					"domain",
+					d.Name,
+				)
 
 			case "RRSIG":
 				// fixme: this isn't working as expected; SERVFAIL issues
@@ -477,7 +535,7 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 				if err != nil {
 					return err
 				}
-				w.Logger.Debug(
+				w.Logger.DebugContext(ctx,
 					"found RRSIG record",
 					"record",
 					rrsig,
@@ -488,6 +546,39 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 				)
 			}
 		}
+	}
+
+	if len(result.TXT) > 0 {
+		// todo: make configurable
+		domain, err := w.Store.DomainsGetByName(ctx, store.DomainsGetByNameParams{
+			Name:     job.Args.Domain,
+			TenantID: pgtype.Int4{Int32: 1, Valid: true}, // todo: get tenant id from job args
+		})
+		if err != nil {
+			w.Logger.ErrorContext(ctx, "failed to get domain for email security assessment",
+				"domain", job.Args.Domain, "error", err)
+			return err
+		}
+		tx, err := w.PgxPool.BeginTx(ctx, pgx.TxOptions{})
+		if err != nil {
+			return err
+		}
+		defer func(tx pgx.Tx, ctx context.Context) {
+			err := tx.Rollback(ctx)
+			if err != nil {
+				w.Logger.ErrorContext(ctx, "failed to rollback tx", "err", err)
+			}
+		}(tx, ctx)
+		rc := river.ClientFromContext[pgx.Tx](ctx)
+		_, err = rc.InsertTx(ctx, tx, AssessEmailSecurityArgs{
+			DomainUID: domain.Uid,
+			DomainID:  int(domain.ID),
+		}, nil)
+		if err != nil {
+			w.Logger.WarnContext(ctx, "failed to queue email security assessment",
+				"domain", domain.Uid, "error", err)
+		}
+		return tx.Commit(ctx)
 	}
 
 	return nil

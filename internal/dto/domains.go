@@ -8,7 +8,7 @@ import (
 )
 
 type Domain struct {
-	ID         string `json:"id"`
+	UID        string `json:"uid"`
 	Domain     string `json:"domain"`
 	DomainType string `json:"domain_type"`
 	Source     string `json:"source"`
@@ -19,7 +19,7 @@ type Domain struct {
 
 func (d Domain) String() string {
 	return fmt.Sprintf("%-20s %-20s %-10s %-15s %-10s %-25s %-25s",
-		d.ID, d.Domain, d.DomainType, d.Source, d.Status, d.CreatedAt, d.UpdatedAt)
+		d.UID, d.Domain, d.DomainType, d.Source, d.Status, d.CreatedAt, d.UpdatedAt)
 }
 
 type DomainRecord struct {
@@ -37,7 +37,7 @@ type DomainRecord struct {
 // DomainToAPI converts a store.Domains model to a Domain API response.
 func DomainToAPI(d store.Domains) Domain {
 	return Domain{
-		ID:         d.Uid,
+		UID:        d.Uid,
 		Domain:     d.Name,
 		DomainType: string(d.DomainType),
 		Source:     string(d.Source),

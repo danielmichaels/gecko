@@ -11,6 +11,53 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getNameserversForDomain = `-- name: GetNameserversForDomain :many
+SELECT
+    id,
+    uid,
+    domain_id,
+    created_at,
+    updated_at
+FROM ns_records
+WHERE domain_id = $1
+`
+
+type GetNameserversForDomainRow struct {
+	ID        int32              `json:"id"`
+	Uid       string             `json:"uid"`
+	DomainID  pgtype.Int4        `json:"domain_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+// name,
+// ip_address,
+func (q *Queries) GetNameserversForDomain(ctx context.Context, domainID pgtype.Int4) ([]GetNameserversForDomainRow, error) {
+	rows, err := q.db.Query(ctx, getNameserversForDomain, domainID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetNameserversForDomainRow{}
+	for rows.Next() {
+		var i GetNameserversForDomainRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const recordsCreateA = `-- name: RecordsCreateA :one
 INSERT INTO a_records (domain_id, ipv4_address)
 VALUES ($1, $2)

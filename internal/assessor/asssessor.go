@@ -1,44 +1,68 @@
 package assessor
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
-	"time"
+	"os"
+
+	"github.com/danielmichaels/gecko/internal/dnsclient"
 
 	"github.com/danielmichaels/gecko/internal/store"
 )
 
-// Output interface to ensure all assessors return a structured result
-type Output interface {
-	GetBaseResult() AssessmentResultBase
-}
-
 type Config struct {
-	Logger *slog.Logger
-	Store  *store.Queries
+	Logger    *slog.Logger
+	Store     *store.Queries
+	DNSClient *dnsclient.DNSClient
 }
 
-type Assess struct {
-	logger *slog.Logger
-	store  *store.Queries
+type Assessor struct {
+	logger    *slog.Logger
+	store     *store.Queries
+	dnsClient *dnsclient.DNSClient
 }
 
-func NewAssessor(cfg Config) *Assess {
-	return &Assess{
-		logger: cfg.Logger,
-		store:  cfg.Store,
+func NewAssessor(cfg Config) *Assessor {
+	logger := cfg.Logger
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
+	}
+
+	dnsClient := cfg.DNSClient
+	if dnsClient == nil {
+		dnsClient = dnsclient.New()
+	}
+
+	return &Assessor{
+		store:     cfg.Store,
+		logger:    logger,
+		dnsClient: dnsClient,
 	}
 }
 
-type AssessmentResultBase struct {
-	Timestamp    time.Time   `json:"timestamp"`          // Time of assessment
-	RawData      interface{} `json:"raw_data,omitempty"` // Optional: Raw data related to the finding (e.g., specific records involved)
-	Domain       string      `json:"domain"`             // Domain being assessed
-	AssessorType string      `json:"assessor_type"`      // Type of assessor (e.g., "DanglingCNAMEAssessor")
-	Severity     string      `json:"severity"`           // Severity of finding (e.g., "High", "Medium", "Low", "Info", "None")
-	Message      string      `json:"message"`            // Human-readable message summarizing the finding
-}
-
-// GetBaseResult implementation - to satisfy the Output interface
-func (r AssessmentResultBase) GetBaseResult() AssessmentResultBase {
-	return r
+func (a *Assessor) createFinding(
+	ctx context.Context,
+	params interface{},
+	logMessage string,
+	issueType string,
+) error {
+	var err error
+	switch p := params.(type) {
+	case store.AssessCreateSPFFindingParams:
+		err = a.store.AssessCreateSPFFinding(ctx, p)
+	case store.AssessCreateDKIMFindingParams:
+		err = a.store.AssessCreateDKIMFinding(ctx, p)
+	case store.AssessCreateDKIMFindingNoSelectorParams:
+		err = a.store.AssessCreateDKIMFindingNoSelector(ctx, p)
+	case store.AssessCreateDMARCFindingParams:
+		err = a.store.AssessCreateDMARCFinding(ctx, p)
+	default:
+		return fmt.Errorf("unsupported finding type")
+	}
+	if err != nil {
+		a.logger.WarnContext(ctx, logMessage, "error", err)
+		return fmt.Errorf("create finding: %s %w", issueType, err)
+	}
+	return nil
 }

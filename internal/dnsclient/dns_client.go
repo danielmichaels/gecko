@@ -72,18 +72,63 @@ type DNSClient struct {
 	currentServerIdx int
 }
 
-// NewDNSClient creates a new DNSClient instance with the configured DNS servers and a logger.
+// DNSClientOption is a function that modifies a DNSClient
+type DNSClientOption func(*DNSClient)
+
+// WithServers sets custom DNS servers for the client
+func WithServers(servers []string) DNSClientOption {
+	return func(c *DNSClient) {
+		if len(servers) > 0 {
+			c.servers = servers
+			c.currentServerIdx = 0
+		}
+	}
+}
+
+// WithLogger sets a custom logger for the client
+func WithLogger(logger *slog.Logger) DNSClientOption {
+	return func(c *DNSClient) {
+		if logger != nil {
+			c.logger = logger
+		}
+	}
+}
+
+// WithClient sets a custom DNS client
+func WithClient(client *dns.Client) DNSClientOption {
+	return func(c *DNSClient) {
+		if client != nil {
+			c.client = client
+		}
+	}
+}
+
+// New creates a new DNSClient instance with the configured DNS servers and a logger.
 // It initializes the DNS client and sets the current server index to 0.
-func NewDNSClient() *DNSClient {
+// Optional functional options can be provided to customize the client.
+func New(opts ...DNSClientOption) *DNSClient {
 	cfg := config.AppConfig()
 	logger, _ := logging.SetupLogger("dns-client", cfg)
-	return &DNSClient{
+
+	client := &DNSClient{
 		servers:          getDNSServers(),
 		client:           new(dns.Client),
 		currentServerIdx: 0,
 		logger:           logger,
 		conf:             cfg,
 	}
+
+	// Apply any provided options
+	for _, opt := range opts {
+		opt(client)
+	}
+
+	return client
+}
+
+// GetServers returns the current list of DNS servers
+func (c *DNSClient) GetServers() []string {
+	return append([]string{}, c.servers...)
 }
 
 // getDNSServers returns the slice of DNS servers to be used for DNS lookups.
@@ -386,7 +431,7 @@ func (c *DNSClient) IsZoneApex(domain string) bool {
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(domain), dns.TypeSOA)
 
-	client := NewDNSClient()
+	client := New()
 	response, ok := client.sendDNSSECQuery(m)
 
 	return ok && len(response.Answer) > 0

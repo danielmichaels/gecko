@@ -6,8 +6,6 @@ import (
 	"fmt"
 )
 
-var goVersion = "1.24"
-
 type Backend struct{}
 
 func (m *Backend) Lint(ctx context.Context, src *dagger.Directory) (string, error) {
@@ -21,13 +19,32 @@ func (m *Backend) Lint(ctx context.Context, src *dagger.Directory) (string, erro
 		Stdout(ctx)
 }
 func (m *Backend) Test(ctx context.Context, src *dagger.Directory) (string, error) {
-	return dag.Container().
+	if _, err := dag.Testcontainers().DockerService().Start(ctx); err != nil {
+		return "", err
+	}
+	pg := dag.Container().
+		From("postgres:16-alpine").
+		WithEnvVariable("POSTGRES_PASSWORD", "postgres").
+		WithEnvVariable("POSTGRES_USER", "postgres").
+		WithEnvVariable("POSTGRES_DB", "test-db").
+		With(dag.Testcontainers().Setup).
+		AsService(dagger.ContainerAsServiceOpts{UseEntrypoint: true})
+	svc := dag.Container().
 		From("danielmichaels/ci-toolkit").
 		WithDirectory("/src", src).
+		With(dag.Testcontainers().Setup).
+		WithWorkdir("/src")
+	return svc.
+		WithServiceBinding("db", pg).
+		WithEnvVariable("POSTGRES_DB", "test-db").
+		WithEnvVariable("POSTGRES_USER", "postgres").
+		WithEnvVariable("POSTGRES_PASSWORD", "postgres").
 		WithWorkdir("/src").
 		WithExec([]string{"go", "build", "-v", "./..."}, dagger.ContainerWithExecOpts{}).
 		WithExec([]string{"go", "test", "-v", "-race", "./..."}, dagger.ContainerWithExecOpts{}).
+		With(dag.Testcontainers().Setup).
 		Stdout(ctx)
+
 }
 
 func (m *Backend) Build(
@@ -71,7 +88,7 @@ func (m *Backend) Publish(
 	registryPassword *dagger.Secret,
 	tags []string,
 ) ([]string, error) {
-	addr := []string{}
+	var addr []string
 	b, err := m.Build(ctx, buildContext, dockerfile)
 	if err != nil {
 		return addr, err

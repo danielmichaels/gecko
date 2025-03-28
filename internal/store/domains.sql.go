@@ -337,6 +337,64 @@ func (q *Queries) DomainsGetByID(ctx context.Context, uid string) (DomainsGetByI
 	return i, err
 }
 
+const domainsGetByIdentifier = `-- name: DomainsGetByIdentifier :one
+SELECT id,
+       uid,
+       tenant_id,
+       name,
+       domain_type,
+       source,
+       status,
+       created_at,
+       updated_at
+FROM domains
+WHERE tenant_id = $1
+  AND (id = $2 OR uid = $3 OR name = $4)
+LIMIT 1
+`
+
+type DomainsGetByIdentifierParams struct {
+	TenantID pgtype.Int4 `json:"tenant_id"`
+	ID       int32       `json:"id"`
+	Uid      string      `json:"uid"`
+	Name     string      `json:"name"`
+}
+
+type DomainsGetByIdentifierRow struct {
+	ID         int32              `json:"id"`
+	Uid        string             `json:"uid"`
+	TenantID   pgtype.Int4        `json:"tenant_id"`
+	Name       string             `json:"name"`
+	DomainType DomainType         `json:"domain_type"`
+	Source     DomainSource       `json:"source"`
+	Status     DomainStatus       `json:"status"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+}
+
+// Read a domain by ID, UID, or name and tenant ID (no auth)
+func (q *Queries) DomainsGetByIdentifier(ctx context.Context, arg DomainsGetByIdentifierParams) (DomainsGetByIdentifierRow, error) {
+	row := q.db.QueryRow(ctx, domainsGetByIdentifier,
+		arg.TenantID,
+		arg.ID,
+		arg.Uid,
+		arg.Name,
+	)
+	var i DomainsGetByIdentifierRow
+	err := row.Scan(
+		&i.ID,
+		&i.Uid,
+		&i.TenantID,
+		&i.Name,
+		&i.DomainType,
+		&i.Source,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const domainsGetByName = `-- name: DomainsGetByName :one
 SELECT id,
        uid,
