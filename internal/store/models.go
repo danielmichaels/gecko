@@ -395,18 +395,6 @@ type CaaComplianceFindings struct {
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
-type CaaComplianceFindingsHistory struct {
-	ID           int32              `json:"id"`
-	RecordID     pgtype.Int4        `json:"record_id"`
-	Severity     FindingSeverity    `json:"severity"`
-	Status       FindingStatus      `json:"status"`
-	IssueType    string             `json:"issue_type"`
-	StandardName pgtype.Text        `json:"standard_name"`
-	Details      pgtype.Text        `json:"details"`
-	ChangeType   string             `json:"change_type"`
-	ChangedAt    pgtype.Timestamptz `json:"changed_at"`
-}
-
 type CaaConfigurationFindings struct {
 	ID          int32              `json:"id"`
 	Uid         string             `json:"uid"`
@@ -418,17 +406,6 @@ type CaaConfigurationFindings struct {
 	Details     pgtype.Text        `json:"details"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
-}
-
-type CaaConfigurationFindingsHistory struct {
-	ID         int32              `json:"id"`
-	RecordID   pgtype.Int4        `json:"record_id"`
-	Severity   FindingSeverity    `json:"severity"`
-	Status     FindingStatus      `json:"status"`
-	IssueType  string             `json:"issue_type"`
-	Details    pgtype.Text        `json:"details"`
-	ChangeType string             `json:"change_type"`
-	ChangedAt  pgtype.Timestamptz `json:"changed_at"`
 }
 
 type CaaRecords struct {
@@ -464,27 +441,6 @@ type Certificates struct {
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
 }
 
-type CertificatesHistory struct {
-	ID            int32              `json:"id"`
-	RecordID      pgtype.Int4        `json:"record_id"`
-	NotBefore     pgtype.Timestamptz `json:"not_before"`
-	NotAfter      pgtype.Timestamptz `json:"not_after"`
-	Issuer        string             `json:"issuer"`
-	IssuerOrgName pgtype.Text        `json:"issuer_org_name"`
-	IssuerCountry pgtype.Text        `json:"issuer_country"`
-	Subject       string             `json:"subject"`
-	KeyAlgorithm  string             `json:"key_algorithm"`
-	KeyStrength   int32              `json:"key_strength"`
-	Sans          []string           `json:"sans"`
-	DnsNames      []string           `json:"dns_names"`
-	IsCa          bool               `json:"is_ca"`
-	IssuerCertUrl []string           `json:"issuer_cert_url"`
-	CipherSuite   string             `json:"cipher_suite"`
-	TlsVersion    string             `json:"tls_version"`
-	ChangeType    string             `json:"change_type"`
-	ChangedAt     pgtype.Timestamptz `json:"changed_at"`
-}
-
 type CnameRecords struct {
 	ID        int32              `json:"id"`
 	Uid       string             `json:"uid"`
@@ -508,18 +464,6 @@ type CnameRedirectionFindings struct {
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
 }
 
-type CnameRedirectionFindingsHistory struct {
-	ID          int32              `json:"id"`
-	RecordID    pgtype.Int4        `json:"record_id"`
-	Severity    FindingSeverity    `json:"severity"`
-	Status      FindingStatus      `json:"status"`
-	IssueType   string             `json:"issue_type"`
-	ChainLength pgtype.Int4        `json:"chain_length"`
-	Details     pgtype.Text        `json:"details"`
-	ChangeType  string             `json:"change_type"`
-	ChangedAt   pgtype.Timestamptz `json:"changed_at"`
-}
-
 type DanglingCnameFindings struct {
 	ID               int32              `json:"id"`
 	Uid              string             `json:"uid"`
@@ -532,19 +476,6 @@ type DanglingCnameFindings struct {
 	Details          pgtype.Text        `json:"details"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
-}
-
-type DanglingCnameFindingsHistory struct {
-	ID               int32              `json:"id"`
-	RecordID         pgtype.Int4        `json:"record_id"`
-	Severity         FindingSeverity    `json:"severity"`
-	Status           FindingStatus      `json:"status"`
-	TargetDomain     string             `json:"target_domain"`
-	ServiceProvider  pgtype.Text        `json:"service_provider"`
-	TakeoverPossible bool               `json:"takeover_possible"`
-	Details          pgtype.Text        `json:"details"`
-	ChangeType       string             `json:"change_type"`
-	ChangedAt        pgtype.Timestamptz `json:"changed_at"`
 }
 
 type DkimFindings struct {
@@ -562,18 +493,6 @@ type DkimFindings struct {
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
-type DkimFindingsHistory struct {
-	ID         int32              `json:"id"`
-	RecordID   pgtype.Int4        `json:"record_id"`
-	Severity   FindingSeverity    `json:"severity"`
-	Status     FindingStatus      `json:"status"`
-	Selector   pgtype.Text        `json:"selector"`
-	IssueType  string             `json:"issue_type"`
-	Details    pgtype.Text        `json:"details"`
-	ChangeType string             `json:"change_type"`
-	ChangedAt  pgtype.Timestamptz `json:"changed_at"`
-}
-
 type DmarcFindings struct {
 	ID          int32              `json:"id"`
 	Uid         string             `json:"uid"`
@@ -587,18 +506,6 @@ type DmarcFindings struct {
 	DmarcValue  pgtype.Text        `json:"dmarc_value"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
-}
-
-type DmarcFindingsHistory struct {
-	ID         int32              `json:"id"`
-	RecordID   pgtype.Int4        `json:"record_id"`
-	Severity   FindingSeverity    `json:"severity"`
-	Status     FindingStatus      `json:"status"`
-	Policy     pgtype.Text        `json:"policy"`
-	IssueType  string             `json:"issue_type"`
-	Details    pgtype.Text        `json:"details"`
-	ChangeType string             `json:"change_type"`
-	ChangedAt  pgtype.Timestamptz `json:"changed_at"`
 }
 
 type DnsResolutionConsistencyFindings struct {
@@ -617,21 +524,6 @@ type DnsResolutionConsistencyFindings struct {
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
-type DnsResolutionConsistencyFindingsHistory struct {
-	ID              int32              `json:"id"`
-	RecordID        pgtype.Int4        `json:"record_id"`
-	Severity        FindingSeverity    `json:"severity"`
-	Status          FindingStatus      `json:"status"`
-	RecordType      string             `json:"record_type"`
-	Resolver1       string             `json:"resolver1"`
-	Resolver1Result pgtype.Text        `json:"resolver1_result"`
-	Resolver2       string             `json:"resolver2"`
-	Resolver2Result pgtype.Text        `json:"resolver2_result"`
-	Details         pgtype.Text        `json:"details"`
-	ChangeType      string             `json:"change_type"`
-	ChangedAt       pgtype.Timestamptz `json:"changed_at"`
-}
-
 type DnsResolutionLatencyFindings struct {
 	ID          int32              `json:"id"`
 	Uid         string             `json:"uid"`
@@ -645,20 +537,6 @@ type DnsResolutionLatencyFindings struct {
 	Details     pgtype.Text        `json:"details"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
-}
-
-type DnsResolutionLatencyFindingsHistory struct {
-	ID          int32              `json:"id"`
-	RecordID    pgtype.Int4        `json:"record_id"`
-	Severity    FindingSeverity    `json:"severity"`
-	Status      FindingStatus      `json:"status"`
-	RecordType  string             `json:"record_type"`
-	Resolver    string             `json:"resolver"`
-	LatencyMs   int32              `json:"latency_ms"`
-	ThresholdMs int32              `json:"threshold_ms"`
-	Details     pgtype.Text        `json:"details"`
-	ChangeType  string             `json:"change_type"`
-	ChangedAt   pgtype.Timestamptz `json:"changed_at"`
 }
 
 type DnskeyRecords struct {
@@ -686,18 +564,6 @@ type DnssecComplianceFindings struct {
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
-type DnssecComplianceFindingsHistory struct {
-	ID           int32              `json:"id"`
-	RecordID     pgtype.Int4        `json:"record_id"`
-	Severity     FindingSeverity    `json:"severity"`
-	Status       FindingStatus      `json:"status"`
-	IssueType    string             `json:"issue_type"`
-	StandardName pgtype.Text        `json:"standard_name"`
-	Details      pgtype.Text        `json:"details"`
-	ChangeType   string             `json:"change_type"`
-	ChangedAt    pgtype.Timestamptz `json:"changed_at"`
-}
-
 type DnssecFindings struct {
 	ID             int32              `json:"id"`
 	Uid            string             `json:"uid"`
@@ -710,17 +576,6 @@ type DnssecFindings struct {
 	Details        pgtype.Text        `json:"details"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
-}
-
-type DnssecFindingsHistory struct {
-	ID         int32              `json:"id"`
-	RecordID   pgtype.Int4        `json:"record_id"`
-	Severity   FindingSeverity    `json:"severity"`
-	Status     FindingStatus      `json:"status"`
-	IssueType  string             `json:"issue_type"`
-	Details    pgtype.Text        `json:"details"`
-	ChangeType string             `json:"change_type"`
-	ChangedAt  pgtype.Timestamptz `json:"changed_at"`
 }
 
 type DomainObservations struct {
@@ -777,19 +632,6 @@ type EmailAuthComplianceFindings struct {
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
-type EmailAuthComplianceFindingsHistory struct {
-	ID           int32              `json:"id"`
-	RecordID     pgtype.Int4        `json:"record_id"`
-	Severity     FindingSeverity    `json:"severity"`
-	Status       FindingStatus      `json:"status"`
-	AuthType     string             `json:"auth_type"`
-	IssueType    string             `json:"issue_type"`
-	StandardName pgtype.Text        `json:"standard_name"`
-	Details      pgtype.Text        `json:"details"`
-	ChangeType   string             `json:"change_type"`
-	ChangedAt    pgtype.Timestamptz `json:"changed_at"`
-}
-
 type MinimumRecordSetFindings struct {
 	ID                int32              `json:"id"`
 	Uid               string             `json:"uid"`
@@ -801,18 +643,6 @@ type MinimumRecordSetFindings struct {
 	Details           pgtype.Text        `json:"details"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
-}
-
-type MinimumRecordSetFindingsHistory struct {
-	ID                int32              `json:"id"`
-	RecordID          pgtype.Int4        `json:"record_id"`
-	Severity          FindingSeverity    `json:"severity"`
-	Status            FindingStatus      `json:"status"`
-	IssueType         string             `json:"issue_type"`
-	MissingRecordType string             `json:"missing_record_type"`
-	Details           pgtype.Text        `json:"details"`
-	ChangeType        string             `json:"change_type"`
-	ChangedAt         pgtype.Timestamptz `json:"changed_at"`
 }
 
 type MxRecords struct {
@@ -840,19 +670,6 @@ type NameserverReachabilityFindings struct {
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
 }
 
-type NameserverReachabilityFindingsHistory struct {
-	ID             int32              `json:"id"`
-	RecordID       pgtype.Int4        `json:"record_id"`
-	Severity       FindingSeverity    `json:"severity"`
-	Status         FindingStatus      `json:"status"`
-	Nameserver     string             `json:"nameserver"`
-	IssueType      string             `json:"issue_type"`
-	ResponseTimeMs pgtype.Int4        `json:"response_time_ms"`
-	Details        pgtype.Text        `json:"details"`
-	ChangeType     string             `json:"change_type"`
-	ChangedAt      pgtype.Timestamptz `json:"changed_at"`
-}
-
 type NameserverRedundancyFindings struct {
 	ID               int32              `json:"id"`
 	Uid              string             `json:"uid"`
@@ -867,19 +684,6 @@ type NameserverRedundancyFindings struct {
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
 }
 
-type NameserverRedundancyFindingsHistory struct {
-	ID               int32              `json:"id"`
-	RecordID         pgtype.Int4        `json:"record_id"`
-	Severity         FindingSeverity    `json:"severity"`
-	Status           FindingStatus      `json:"status"`
-	IssueType        string             `json:"issue_type"`
-	NameserverCount  int32              `json:"nameserver_count"`
-	RecommendedCount int32              `json:"recommended_count"`
-	Details          pgtype.Text        `json:"details"`
-	ChangeType       string             `json:"change_type"`
-	ChangedAt        pgtype.Timestamptz `json:"changed_at"`
-}
-
 type NsConfigurationFindings struct {
 	ID         int32              `json:"id"`
 	Uid        string             `json:"uid"`
@@ -892,18 +696,6 @@ type NsConfigurationFindings struct {
 	Details    pgtype.Text        `json:"details"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
-}
-
-type NsConfigurationFindingsHistory struct {
-	ID         int32              `json:"id"`
-	RecordID   pgtype.Int4        `json:"record_id"`
-	Severity   FindingSeverity    `json:"severity"`
-	Status     FindingStatus      `json:"status"`
-	IssueType  string             `json:"issue_type"`
-	Nameserver string             `json:"nameserver"`
-	Details    pgtype.Text        `json:"details"`
-	ChangeType string             `json:"change_type"`
-	ChangedAt  pgtype.Timestamptz `json:"changed_at"`
 }
 
 type NsRecords struct {
@@ -930,20 +722,6 @@ type OpenPortFindings struct {
 	Details      pgtype.Text        `json:"details"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
-}
-
-type OpenPortFindingsHistory struct {
-	ID         int32              `json:"id"`
-	RecordID   pgtype.Int4        `json:"record_id"`
-	Severity   FindingSeverity    `json:"severity"`
-	Status     FindingStatus      `json:"status"`
-	IpAddress  string             `json:"ip_address"`
-	Port       int32              `json:"port"`
-	Service    pgtype.Text        `json:"service"`
-	IssueType  string             `json:"issue_type"`
-	Details    pgtype.Text        `json:"details"`
-	ChangeType string             `json:"change_type"`
-	ChangedAt  pgtype.Timestamptz `json:"changed_at"`
 }
 
 type PtrRecords struct {
@@ -1013,18 +791,6 @@ type SpfFindings struct {
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
-type SpfFindingsHistory struct {
-	ID         int32              `json:"id"`
-	RecordID   pgtype.Int4        `json:"record_id"`
-	Severity   FindingSeverity    `json:"severity"`
-	Status     FindingStatus      `json:"status"`
-	IssueType  string             `json:"issue_type"`
-	SpfValue   pgtype.Text        `json:"spf_value"`
-	Details    pgtype.Text        `json:"details"`
-	ChangeType string             `json:"change_type"`
-	ChangedAt  pgtype.Timestamptz `json:"changed_at"`
-}
-
 type SrvRecords struct {
 	ID        int32              `json:"id"`
 	Uid       string             `json:"uid"`
@@ -1079,18 +845,6 @@ type ZoneTransferAttempts struct {
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
 }
 
-type ZoneTransferAttemptsHistory struct {
-	ID            int32              `json:"id"`
-	RecordID      pgtype.Int4        `json:"record_id"`
-	Nameserver    string             `json:"nameserver"`
-	TransferType  string             `json:"transfer_type"`
-	WasSuccessful bool               `json:"was_successful"`
-	ResponseData  []byte             `json:"response_data"`
-	ErrorMessage  pgtype.Text        `json:"error_message"`
-	ChangeType    string             `json:"change_type"`
-	ChangedAt     pgtype.Timestamptz `json:"changed_at"`
-}
-
 type ZoneTransferFindings struct {
 	ID                   int32              `json:"id"`
 	Uid                  string             `json:"uid"`
@@ -1105,18 +859,4 @@ type ZoneTransferFindings struct {
 	TransferDetails      []byte             `json:"transfer_details"`
 	CreatedAt            pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
-}
-
-type ZoneTransferFindingsHistory struct {
-	ID                   int32              `json:"id"`
-	RecordID             pgtype.Int4        `json:"record_id"`
-	Severity             FindingSeverity    `json:"severity"`
-	Status               FindingStatus      `json:"status"`
-	Nameserver           string             `json:"nameserver"`
-	ZoneTransferPossible bool               `json:"zone_transfer_possible"`
-	TransferType         TransferType       `json:"transfer_type"`
-	Details              pgtype.Text        `json:"details"`
-	TransferDetails      []byte             `json:"transfer_details"`
-	ChangeType           string             `json:"change_type"`
-	ChangedAt            pgtype.Timestamptz `json:"changed_at"`
 }

@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/danielmichaels/gecko/internal/dnsclient"
+	"github.com/danielmichaels/gecko/internal/observer"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -48,7 +49,7 @@ func (s *Scan) ScanZoneTransfer(ctx context.Context, domainName string) (string,
 			continue
 		}
 
-		err = s.store.ScannersStoreZoneTransferAttempt(
+		inserted, sErr := s.store.ScannersStoreZoneTransferAttempt(
 			ctx,
 			store.ScannersStoreZoneTransferAttemptParams{
 				DomainID:      pgtype.Int4{Int32: domain.ID, Valid: true},
@@ -58,16 +59,18 @@ func (s *Scan) ScanZoneTransfer(ctx context.Context, domainName string) (string,
 				ResponseData:  js,
 			},
 		)
-		if err != nil {
-			s.logger.Error("Failed to store successful zone transfer attempt", "error", err)
+		if sErr != nil {
+			s.logger.Error("Failed to store successful zone transfer attempt", "error", sErr)
+			continue
 		}
+		s.emitAttemptObservation(ctx, nameserver, string(transferType), true, "", inserted)
 	}
 
 	// Store failed zone transfer attempts
 	for _, ns := range result.NS {
 		nsAddr := ns + ":53"
 		if _, found := result.SuccessfulTransfers[nsAddr]; !found {
-			err := s.store.ScannersStoreZoneTransferAttempt(
+			inserted, sErr := s.store.ScannersStoreZoneTransferAttempt(
 				ctx,
 				store.ScannersStoreZoneTransferAttemptParams{
 					DomainID:      pgtype.Int4{Int32: domain.ID, Valid: true},
@@ -77,17 +80,47 @@ func (s *Scan) ScanZoneTransfer(ctx context.Context, domainName string) (string,
 					ErrorMessage:  pgtype.Text{String: "Transfer refused or failed", Valid: true},
 				},
 			)
-			if err != nil {
+			if sErr != nil {
 				s.logger.Error(
 					"Failed to store failed zone transfer attempt",
 					"error",
-					err,
+					sErr,
 					"domain",
 					domain.Uid,
 				)
+				continue
 			}
+			s.emitAttemptObservation(
+				ctx, nsAddr, string(store.TransferTypeAXFRIXFR), false, "Transfer refused or failed", inserted,
+			)
 		}
 	}
 
 	return domain.Uid, nil
+}
+
+// emitAttemptObservation appends a created/updated observation for a zone
+// transfer attempt when running under a real scan.
+func (s *Scan) emitAttemptObservation(
+	ctx context.Context,
+	nameserver, transferType string,
+	wasSuccessful bool,
+	errorMessage string,
+	inserted bool,
+) {
+	if !s.identity.Recordable() {
+		return
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"nameserver":     nameserver,
+		"transfer_type":  transferType,
+		"was_successful": wasSuccessful,
+		"error_message":  errorMessage,
+	})
+	if err := observer.New(s.store).RecordFindingChange(
+		ctx, s.identity, observer.EntityZoneTransferAttempt, nameserver, inserted, payload,
+	); err != nil {
+		s.logger.Error("failed to emit zone transfer attempt observation",
+			"nameserver", nameserver, "error", err)
+	}
 }

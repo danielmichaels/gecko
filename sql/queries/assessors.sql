@@ -1,4 +1,4 @@
--- name: StoreZoneTransferFinding :exec
+-- name: StoreZoneTransferFinding :one
 INSERT INTO zone_transfer_findings (domain_id,
                                     ns_record_id,
                                     severity,
@@ -16,9 +16,10 @@ ON CONFLICT (domain_id, nameserver)
                   zone_transfer_possible = $6,
                   transfer_type          = $7,
                   details                = $8,
-                  transfer_details       = $9;
+                  transfer_details       = $9
+RETURNING (xmax = 0)::boolean AS inserted;
 
--- name: AssessCreateSPFFinding :exec
+-- name: AssessCreateSPFFinding :one
 INSERT INTO spf_findings (domain_id,
                           txt_record_id,
                           severity,
@@ -32,7 +33,8 @@ ON CONFLICT (domain_id, issue_type)
                   severity      = $3,
                   status        = $4,
                   spf_value     = $6,
-                  details       = $7;
+                  details       = $7
+RETURNING (xmax = 0)::boolean AS inserted;
 
 -- name: AssessGetSPFFindings :many
 SELECT *
@@ -47,7 +49,7 @@ FROM spf_findings sf
 WHERE d.uid = $1
 ORDER BY sf.severity ASC, sf.created_at DESC;
 
--- name: AssessCreateDKIMFinding :exec
+-- name: AssessCreateDKIMFinding :one
 INSERT INTO dkim_findings (domain_id,
                            txt_record_id,
                            severity,
@@ -63,8 +65,9 @@ WHERE selector IS NOT NULL
                   severity      = $3,
                   status        = $4,
                   dkim_value    = $7,
-                  details       = $8;
--- name: AssessCreateDKIMFindingNoSelector :exec
+                  details       = $8
+RETURNING (xmax = 0)::boolean AS inserted;
+-- name: AssessCreateDKIMFindingNoSelector :one
 INSERT INTO dkim_findings (domain_id,
                            txt_record_id,
                            severity,
@@ -80,7 +83,8 @@ ON CONFLICT (domain_id, issue_type)
                   severity      = $3,
                   status        = $4,
                   dkim_value    = $6,
-                  details       = $7;
+                  details       = $7
+RETURNING (xmax = 0)::boolean AS inserted;
 
 -- name: AssessGetDKIMFindings :many
 SELECT *
@@ -95,7 +99,7 @@ FROM dkim_findings df
 WHERE d.uid = $1
 ORDER BY df.severity ASC, df.created_at DESC;
 
--- name: AssessCreateDMARCFinding :exec
+-- name: AssessCreateDMARCFinding :one
 INSERT INTO dmarc_findings (domain_id,
                             txt_record_id,
                             severity,
@@ -111,7 +115,8 @@ ON CONFLICT (domain_id, issue_type)
                   status        = $4,
                   policy        = $5,
                   dmarc_value  = $7,
-                  details       = $8;
+                  details       = $8
+RETURNING (xmax = 0)::boolean AS inserted;
 
 -- name: AssessGetDMARCFindings :many
 SELECT *

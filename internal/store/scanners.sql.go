@@ -58,7 +58,7 @@ func (q *Queries) ScannersGetZoneTransferAttempts(ctx context.Context, domainID 
 	return items, nil
 }
 
-const scannersStoreZoneTransferAttempt = `-- name: ScannersStoreZoneTransferAttempt :exec
+const scannersStoreZoneTransferAttempt = `-- name: ScannersStoreZoneTransferAttempt :one
 INSERT INTO zone_transfer_attempts (domain_id,
                                     nameserver,
                                     transfer_type,
@@ -72,6 +72,7 @@ ON CONFLICT (domain_id, nameserver)
                   response_data  = $5,
                   error_message  = $6,
                   updated_at     = NOW()
+RETURNING (xmax = 0)::boolean AS inserted
 `
 
 type ScannersStoreZoneTransferAttemptParams struct {
@@ -83,8 +84,8 @@ type ScannersStoreZoneTransferAttemptParams struct {
 	ErrorMessage  pgtype.Text  `json:"error_message"`
 }
 
-func (q *Queries) ScannersStoreZoneTransferAttempt(ctx context.Context, arg ScannersStoreZoneTransferAttemptParams) error {
-	_, err := q.db.Exec(ctx, scannersStoreZoneTransferAttempt,
+func (q *Queries) ScannersStoreZoneTransferAttempt(ctx context.Context, arg ScannersStoreZoneTransferAttemptParams) (bool, error) {
+	row := q.db.QueryRow(ctx, scannersStoreZoneTransferAttempt,
 		arg.DomainID,
 		arg.Nameserver,
 		arg.TransferType,
@@ -92,5 +93,7 @@ func (q *Queries) ScannersStoreZoneTransferAttempt(ctx context.Context, arg Scan
 		arg.ResponseData,
 		arg.ErrorMessage,
 	)
-	return err
+	var inserted bool
+	err := row.Scan(&inserted)
+	return inserted, err
 }

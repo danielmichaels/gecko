@@ -42,7 +42,7 @@ func TestAssessZoneTransfer(t *testing.T) {
 	}
 
 	// Store a mock zone transfer attempt
-	err = pgContainer.Queries.ScannersStoreZoneTransferAttempt(
+	_, err = pgContainer.Queries.ScannersStoreZoneTransferAttempt(
 		ctx,
 		store.ScannersStoreZoneTransferAttemptParams{
 			DomainID:      pgtype.Int4{Int32: domain.ID, Valid: true},

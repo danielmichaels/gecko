@@ -37,6 +37,12 @@ const (
 	EntityDNSKEYRecord = "dnskey_record"
 	EntityDSRecord     = "ds_record"
 	EntityRRSIGRecord  = "rrsig_record"
+
+	EntityZoneTransferAttempt = "zone_transfer_attempt"
+	EntitySPFFinding          = "spf_finding"
+	EntityDKIMFinding         = "dkim_finding"
+	EntityDMARCFinding        = "dmarc_finding"
+	EntityZoneTransferFinding = "zone_transfer_finding"
 )
 
 // DomainIdentity is the stable identity stamped onto every observation. It is
@@ -48,6 +54,13 @@ type DomainIdentity struct {
 	TenantID   int32
 	DomainID   int32
 	ScanID     int64
+}
+
+// Recordable reports whether the identity is populated enough to stamp an
+// observation. The assessor/scanner only set it when running under a real scan,
+// so unit tests that exercise finding logic without a scan skip emission.
+func (id DomainIdentity) Recordable() bool {
+	return id.TenantID != 0 && id.DomainID != 0
 }
 
 // Recorder writes observed DNS facts into the live projection and the
@@ -127,6 +140,26 @@ func (r *Recorder) sync(
 		}
 	}
 	return nil
+}
+
+// RecordFindingChange emits one observation for a finding/attempt that the
+// caller has already upserted into its projection. `inserted` (from the upsert's
+// xmax=0 flag) decides created vs updated. Unlike the DNS-record recorders this
+// does not sync deletions — findings and attempts are upsert-only (never deleted
+// by the assessor/scanner), matching the behavior the dropped *_history triggers
+// captured.
+func (r *Recorder) RecordFindingChange(
+	ctx context.Context,
+	ident DomainIdentity,
+	entityType, entityKey string,
+	inserted bool,
+	payload []byte,
+) error {
+	changeType := ChangeUpdated
+	if inserted {
+		changeType = ChangeCreated
+	}
+	return r.emit(ctx, ident, entityType, entityKey, changeType, payload)
 }
 
 // emit appends one row to the observation log, stamping the denormalized domain

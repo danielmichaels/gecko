@@ -155,7 +155,11 @@ func (w *ScanZoneTransferWorker) Work(
 	ctx = tracing.WithNewTraceID(ctx, true)
 	start := time.Now()
 
-	s := scanner.NewScanner(scanner.Config{Logger: &w.Logger, Store: w.Store})
+	s := scanner.NewScanner(scanner.Config{
+		Logger:   &w.Logger,
+		Store:    w.Store,
+		Identity: job.Args.Identity(),
+	})
 	if _, err := s.ScanZoneTransfer(ctx, job.Args.DomainName); err != nil {
 		return err
 	}

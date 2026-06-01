@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const assessCreateDKIMFinding = `-- name: AssessCreateDKIMFinding :exec
+const assessCreateDKIMFinding = `-- name: AssessCreateDKIMFinding :one
 INSERT INTO dkim_findings (domain_id,
                            txt_record_id,
                            severity,
@@ -28,6 +28,7 @@ WHERE selector IS NOT NULL
                   status        = $4,
                   dkim_value    = $7,
                   details       = $8
+RETURNING (xmax = 0)::boolean AS inserted
 `
 
 type AssessCreateDKIMFindingParams struct {
@@ -41,8 +42,8 @@ type AssessCreateDKIMFindingParams struct {
 	Details     pgtype.Text     `json:"details"`
 }
 
-func (q *Queries) AssessCreateDKIMFinding(ctx context.Context, arg AssessCreateDKIMFindingParams) error {
-	_, err := q.db.Exec(ctx, assessCreateDKIMFinding,
+func (q *Queries) AssessCreateDKIMFinding(ctx context.Context, arg AssessCreateDKIMFindingParams) (bool, error) {
+	row := q.db.QueryRow(ctx, assessCreateDKIMFinding,
 		arg.DomainID,
 		arg.TxtRecordID,
 		arg.Severity,
@@ -52,10 +53,12 @@ func (q *Queries) AssessCreateDKIMFinding(ctx context.Context, arg AssessCreateD
 		arg.DkimValue,
 		arg.Details,
 	)
-	return err
+	var inserted bool
+	err := row.Scan(&inserted)
+	return inserted, err
 }
 
-const assessCreateDKIMFindingNoSelector = `-- name: AssessCreateDKIMFindingNoSelector :exec
+const assessCreateDKIMFindingNoSelector = `-- name: AssessCreateDKIMFindingNoSelector :one
 INSERT INTO dkim_findings (domain_id,
                            txt_record_id,
                            severity,
@@ -72,6 +75,7 @@ ON CONFLICT (domain_id, issue_type)
                   status        = $4,
                   dkim_value    = $6,
                   details       = $7
+RETURNING (xmax = 0)::boolean AS inserted
 `
 
 type AssessCreateDKIMFindingNoSelectorParams struct {
@@ -84,8 +88,8 @@ type AssessCreateDKIMFindingNoSelectorParams struct {
 	Details     pgtype.Text     `json:"details"`
 }
 
-func (q *Queries) AssessCreateDKIMFindingNoSelector(ctx context.Context, arg AssessCreateDKIMFindingNoSelectorParams) error {
-	_, err := q.db.Exec(ctx, assessCreateDKIMFindingNoSelector,
+func (q *Queries) AssessCreateDKIMFindingNoSelector(ctx context.Context, arg AssessCreateDKIMFindingNoSelectorParams) (bool, error) {
+	row := q.db.QueryRow(ctx, assessCreateDKIMFindingNoSelector,
 		arg.DomainID,
 		arg.TxtRecordID,
 		arg.Severity,
@@ -94,10 +98,12 @@ func (q *Queries) AssessCreateDKIMFindingNoSelector(ctx context.Context, arg Ass
 		arg.DkimValue,
 		arg.Details,
 	)
-	return err
+	var inserted bool
+	err := row.Scan(&inserted)
+	return inserted, err
 }
 
-const assessCreateDMARCFinding = `-- name: AssessCreateDMARCFinding :exec
+const assessCreateDMARCFinding = `-- name: AssessCreateDMARCFinding :one
 INSERT INTO dmarc_findings (domain_id,
                             txt_record_id,
                             severity,
@@ -114,6 +120,7 @@ ON CONFLICT (domain_id, issue_type)
                   policy        = $5,
                   dmarc_value  = $7,
                   details       = $8
+RETURNING (xmax = 0)::boolean AS inserted
 `
 
 type AssessCreateDMARCFindingParams struct {
@@ -127,8 +134,8 @@ type AssessCreateDMARCFindingParams struct {
 	Details     pgtype.Text     `json:"details"`
 }
 
-func (q *Queries) AssessCreateDMARCFinding(ctx context.Context, arg AssessCreateDMARCFindingParams) error {
-	_, err := q.db.Exec(ctx, assessCreateDMARCFinding,
+func (q *Queries) AssessCreateDMARCFinding(ctx context.Context, arg AssessCreateDMARCFindingParams) (bool, error) {
+	row := q.db.QueryRow(ctx, assessCreateDMARCFinding,
 		arg.DomainID,
 		arg.TxtRecordID,
 		arg.Severity,
@@ -138,10 +145,12 @@ func (q *Queries) AssessCreateDMARCFinding(ctx context.Context, arg AssessCreate
 		arg.DmarcValue,
 		arg.Details,
 	)
-	return err
+	var inserted bool
+	err := row.Scan(&inserted)
+	return inserted, err
 }
 
-const assessCreateSPFFinding = `-- name: AssessCreateSPFFinding :exec
+const assessCreateSPFFinding = `-- name: AssessCreateSPFFinding :one
 INSERT INTO spf_findings (domain_id,
                           txt_record_id,
                           severity,
@@ -156,6 +165,7 @@ ON CONFLICT (domain_id, issue_type)
                   status        = $4,
                   spf_value     = $6,
                   details       = $7
+RETURNING (xmax = 0)::boolean AS inserted
 `
 
 type AssessCreateSPFFindingParams struct {
@@ -168,8 +178,8 @@ type AssessCreateSPFFindingParams struct {
 	Details     pgtype.Text     `json:"details"`
 }
 
-func (q *Queries) AssessCreateSPFFinding(ctx context.Context, arg AssessCreateSPFFindingParams) error {
-	_, err := q.db.Exec(ctx, assessCreateSPFFinding,
+func (q *Queries) AssessCreateSPFFinding(ctx context.Context, arg AssessCreateSPFFindingParams) (bool, error) {
+	row := q.db.QueryRow(ctx, assessCreateSPFFinding,
 		arg.DomainID,
 		arg.TxtRecordID,
 		arg.Severity,
@@ -178,7 +188,9 @@ func (q *Queries) AssessCreateSPFFinding(ctx context.Context, arg AssessCreateSP
 		arg.SpfValue,
 		arg.Details,
 	)
-	return err
+	var inserted bool
+	err := row.Scan(&inserted)
+	return inserted, err
 }
 
 const assessDKIMFindingsByDomainID = `-- name: AssessDKIMFindingsByDomainID :many
@@ -506,7 +518,7 @@ func (q *Queries) AssessGetZoneTransferFindingsByDomainUID(ctx context.Context, 
 	return items, nil
 }
 
-const storeZoneTransferFinding = `-- name: StoreZoneTransferFinding :exec
+const storeZoneTransferFinding = `-- name: StoreZoneTransferFinding :one
 INSERT INTO zone_transfer_findings (domain_id,
                                     ns_record_id,
                                     severity,
@@ -525,6 +537,7 @@ ON CONFLICT (domain_id, nameserver)
                   transfer_type          = $7,
                   details                = $8,
                   transfer_details       = $9
+RETURNING (xmax = 0)::boolean AS inserted
 `
 
 type StoreZoneTransferFindingParams struct {
@@ -539,8 +552,8 @@ type StoreZoneTransferFindingParams struct {
 	TransferDetails      []byte          `json:"transfer_details"`
 }
 
-func (q *Queries) StoreZoneTransferFinding(ctx context.Context, arg StoreZoneTransferFindingParams) error {
-	_, err := q.db.Exec(ctx, storeZoneTransferFinding,
+func (q *Queries) StoreZoneTransferFinding(ctx context.Context, arg StoreZoneTransferFindingParams) (bool, error) {
+	row := q.db.QueryRow(ctx, storeZoneTransferFinding,
 		arg.DomainID,
 		arg.NsRecordID,
 		arg.Severity,
@@ -551,5 +564,7 @@ func (q *Queries) StoreZoneTransferFinding(ctx context.Context, arg StoreZoneTra
 		arg.Details,
 		arg.TransferDetails,
 	)
-	return err
+	var inserted bool
+	err := row.Scan(&inserted)
+	return inserted, err
 }

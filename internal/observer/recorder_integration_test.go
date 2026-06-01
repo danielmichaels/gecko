@@ -148,6 +148,49 @@ func TestRecorderRecordA(t *testing.T) {
 	}
 }
 
+// TestNoLegacyHistoryTablesRemain asserts the shadow-table audit pattern is fully
+// decommissioned: after all migrations (incl. 00008 + 00009) no *_history table
+// survives, while the live projection tables and updated_at_trigger do.
+func TestNoLegacyHistoryTablesRemain(t *testing.T) {
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("failed to create postgres container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	var historyTables int
+	if err := pc.Pool.QueryRow(ctx,
+		`SELECT count(*) FROM information_schema.tables
+		 WHERE table_schema='public' AND table_name LIKE '%\_history'`,
+	).Scan(&historyTables); err != nil {
+		t.Fatalf("count history tables: %v", err)
+	}
+	if historyTables != 0 {
+		t.Errorf("expected 0 *_history tables after migrations, got %d", historyTables)
+	}
+
+	// Sanity: a live projection table and the kept updated_at_trigger remain.
+	var liveTables, updatedAtFn int
+	if err := pc.Pool.QueryRow(ctx,
+		`SELECT count(*) FROM information_schema.tables
+		 WHERE table_schema='public' AND table_name='a_records'`,
+	).Scan(&liveTables); err != nil {
+		t.Fatalf("count a_records: %v", err)
+	}
+	if liveTables != 1 {
+		t.Errorf("expected live a_records table to remain, got %d", liveTables)
+	}
+	if err := pc.Pool.QueryRow(ctx,
+		`SELECT count(*) FROM pg_proc WHERE proname='updated_at_trigger'`,
+	).Scan(&updatedAtFn); err != nil {
+		t.Fatalf("count updated_at_trigger: %v", err)
+	}
+	if updatedAtFn != 1 {
+		t.Errorf("expected updated_at_trigger() to remain, got %d", updatedAtFn)
+	}
+}
+
 // TestRecorderRecordSRV exercises a rich type whose key (target|port|priority)
 // excludes a mutable field (weight): a weight change behind the same key must be
 // an "updated", not a delete+create.

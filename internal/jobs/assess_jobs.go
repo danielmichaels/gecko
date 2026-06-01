@@ -78,8 +78,9 @@ func (w *AssessZoneTransferWorker) Work(
 	start := time.Now()
 	w.Logger.InfoContext(ctx, "assess zone transfer started", "domain", job.Args.DomainUID)
 	a := assessor.NewAssessor(assessor.Config{
-		Logger: &w.Logger,
-		Store:  w.Store,
+		Logger:   &w.Logger,
+		Store:    w.Store,
+		Identity: job.Args.Identity(),
 	})
 	err := a.AssessZoneTransfer(ctx, job.Args.DomainUID)
 	if err != nil {
@@ -123,8 +124,9 @@ func (w *AssessEmailSecurityWorker) Work(
 	start := time.Now()
 	w.Logger.InfoContext(ctx, "assess email security started", "domain", job.Args.DomainUID)
 	a := assessor.NewAssessor(assessor.Config{
-		Logger: &w.Logger,
-		Store:  w.Store,
+		Logger:   &w.Logger,
+		Store:    w.Store,
+		Identity: job.Args.Identity(),
 	})
 	err := a.AssessEmailSecurity(ctx, int(job.Args.DomainID))
 	if err != nil {

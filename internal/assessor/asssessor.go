@@ -2,11 +2,13 @@ package assessor
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
 
 	"github.com/danielmichaels/gecko/internal/dnsclient"
+	"github.com/danielmichaels/gecko/internal/observer"
 
 	"github.com/danielmichaels/gecko/internal/store"
 )
@@ -15,12 +17,16 @@ type Config struct {
 	Logger    *slog.Logger
 	Store     *store.Queries
 	DNSClient *dnsclient.DNSClient
+	// Identity is the scan identity used to stamp observations. Left zero in unit
+	// tests (which exercise finding logic without a scan); emission is skipped then.
+	Identity observer.DomainIdentity
 }
 
 type Assessor struct {
 	logger    *slog.Logger
 	store     *store.Queries
 	dnsClient *dnsclient.DNSClient
+	identity  observer.DomainIdentity
 }
 
 func NewAssessor(cfg Config) *Assessor {
@@ -38,25 +44,56 @@ func NewAssessor(cfg Config) *Assessor {
 		store:     cfg.Store,
 		logger:    logger,
 		dnsClient: dnsClient,
+		identity:  cfg.Identity,
 	}
 }
 
+// createFinding upserts an email-security finding and, when running under a real
+// scan, emits a created/updated observation for it. entity_type, entity_key, and
+// payload are derived from the finding params.
 func (a *Assessor) createFinding(
 	ctx context.Context,
 	params interface{},
 	logMessage string,
 	issueType string,
 ) error {
-	var err error
+	var (
+		inserted   bool
+		err        error
+		entityType string
+		entityKey  string
+		payload    []byte
+	)
 	switch p := params.(type) {
 	case store.AssessCreateSPFFindingParams:
-		err = a.store.AssessCreateSPFFinding(ctx, p)
+		inserted, err = a.store.AssessCreateSPFFinding(ctx, p)
+		entityType, entityKey = observer.EntitySPFFinding, p.IssueType
+		payload = findingPayload(map[string]any{
+			"issue_type": p.IssueType, "severity": string(p.Severity),
+			"status": string(p.Status), "value": p.SpfValue.String, "details": p.Details.String,
+		})
 	case store.AssessCreateDKIMFindingParams:
-		err = a.store.AssessCreateDKIMFinding(ctx, p)
+		inserted, err = a.store.AssessCreateDKIMFinding(ctx, p)
+		entityType = observer.EntityDKIMFinding
+		entityKey = p.IssueType + "|" + p.Selector.String
+		payload = findingPayload(map[string]any{
+			"issue_type": p.IssueType, "selector": p.Selector.String, "severity": string(p.Severity),
+			"status": string(p.Status), "value": p.DkimValue.String, "details": p.Details.String,
+		})
 	case store.AssessCreateDKIMFindingNoSelectorParams:
-		err = a.store.AssessCreateDKIMFindingNoSelector(ctx, p)
+		inserted, err = a.store.AssessCreateDKIMFindingNoSelector(ctx, p)
+		entityType, entityKey = observer.EntityDKIMFinding, p.IssueType
+		payload = findingPayload(map[string]any{
+			"issue_type": p.IssueType, "severity": string(p.Severity),
+			"status": string(p.Status), "value": p.DkimValue.String, "details": p.Details.String,
+		})
 	case store.AssessCreateDMARCFindingParams:
-		err = a.store.AssessCreateDMARCFinding(ctx, p)
+		inserted, err = a.store.AssessCreateDMARCFinding(ctx, p)
+		entityType, entityKey = observer.EntityDMARCFinding, p.IssueType
+		payload = findingPayload(map[string]any{
+			"issue_type": p.IssueType, "severity": string(p.Severity), "status": string(p.Status),
+			"policy": p.Policy.String, "value": p.DmarcValue.String, "details": p.Details.String,
+		})
 	default:
 		return fmt.Errorf("unsupported finding type")
 	}
@@ -64,5 +101,18 @@ func (a *Assessor) createFinding(
 		a.logger.WarnContext(ctx, logMessage, "error", err)
 		return fmt.Errorf("create finding: %s %w", issueType, err)
 	}
+
+	if a.identity.Recordable() {
+		rec := observer.New(a.store)
+		if oErr := rec.RecordFindingChange(ctx, a.identity, entityType, entityKey, inserted, payload); oErr != nil {
+			a.logger.WarnContext(ctx, "failed to emit finding observation",
+				"entity_type", entityType, "entity_key", entityKey, "error", oErr)
+		}
+	}
 	return nil
+}
+
+func findingPayload(m map[string]any) []byte {
+	b, _ := json.Marshal(m)
+	return b
 }

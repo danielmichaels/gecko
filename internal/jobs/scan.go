@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/danielmichaels/gecko/internal/observer"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -21,6 +22,18 @@ type DomainJobArgs struct {
 	DomainUID  string `json:"domain_uid"`
 	DomainName string `json:"domain_name"`
 	ScanID     int64  `json:"scan_id"`
+}
+
+// Identity maps the job's domain args onto the observer's identity, used to
+// stamp observations emitted by the scanner/assessor.
+func (a DomainJobArgs) Identity() observer.DomainIdentity {
+	return observer.DomainIdentity{
+		TenantID:   a.TenantID,
+		DomainID:   a.DomainID,
+		DomainUID:  a.DomainUID,
+		DomainName: a.DomainName,
+		ScanID:     a.ScanID,
+	}
 }
 
 // DomainScanTarget is the identity of the domain to scan, passed into
