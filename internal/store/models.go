@@ -372,14 +372,6 @@ type ARecords struct {
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
-type ARecordsHistory struct {
-	ID          int32              `json:"id"`
-	RecordID    pgtype.Int4        `json:"record_id"`
-	Ipv4Address string             `json:"ipv4_address"`
-	ChangeType  string             `json:"change_type"`
-	ChangedAt   pgtype.Timestamptz `json:"changed_at"`
-}
-
 type AaaaRecords struct {
 	ID          int32              `json:"id"`
 	Uid         string             `json:"uid"`
@@ -387,14 +379,6 @@ type AaaaRecords struct {
 	Ipv6Address string             `json:"ipv6_address"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
-}
-
-type AaaaRecordsHistory struct {
-	ID          int32              `json:"id"`
-	RecordID    pgtype.Int4        `json:"record_id"`
-	Ipv6Address string             `json:"ipv6_address"`
-	ChangeType  string             `json:"change_type"`
-	ChangedAt   pgtype.Timestamptz `json:"changed_at"`
 }
 
 type CaaComplianceFindings struct {
@@ -458,16 +442,6 @@ type CaaRecords struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
-type CaaRecordsHistory struct {
-	ID         int32              `json:"id"`
-	RecordID   pgtype.Int4        `json:"record_id"`
-	Flags      int32              `json:"flags"`
-	Tag        string             `json:"tag"`
-	Value      string             `json:"value"`
-	ChangeType string             `json:"change_type"`
-	ChangedAt  pgtype.Timestamptz `json:"changed_at"`
-}
-
 type Certificates struct {
 	ID            int32              `json:"id"`
 	Uid           string             `json:"uid"`
@@ -518,14 +492,6 @@ type CnameRecords struct {
 	Target    string             `json:"target"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
-}
-
-type CnameRecordsHistory struct {
-	ID         int32              `json:"id"`
-	RecordID   pgtype.Int4        `json:"record_id"`
-	Target     string             `json:"target"`
-	ChangeType string             `json:"change_type"`
-	ChangedAt  pgtype.Timestamptz `json:"changed_at"`
 }
 
 type CnameRedirectionFindings struct {
@@ -707,17 +673,6 @@ type DnskeyRecords struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
-type DnskeyRecordsHistory struct {
-	ID         int32              `json:"id"`
-	RecordID   pgtype.Int4        `json:"record_id"`
-	PublicKey  string             `json:"public_key"`
-	Flags      int32              `json:"flags"`
-	Protocol   int32              `json:"protocol"`
-	Algorithm  int32              `json:"algorithm"`
-	ChangeType string             `json:"change_type"`
-	ChangedAt  pgtype.Timestamptz `json:"changed_at"`
-}
-
 type DnssecComplianceFindings struct {
 	ID           int32              `json:"id"`
 	Uid          string             `json:"uid"`
@@ -807,17 +762,6 @@ type DsRecords struct {
 	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
 }
 
-type DsRecordsHistory struct {
-	ID         int32              `json:"id"`
-	RecordID   pgtype.Int4        `json:"record_id"`
-	KeyTag     int32              `json:"key_tag"`
-	Algorithm  int32              `json:"algorithm"`
-	DigestType int32              `json:"digest_type"`
-	Digest     string             `json:"digest"`
-	ChangeType string             `json:"change_type"`
-	ChangedAt  pgtype.Timestamptz `json:"changed_at"`
-}
-
 type EmailAuthComplianceFindings struct {
 	ID           int32              `json:"id"`
 	Uid          string             `json:"uid"`
@@ -879,15 +823,6 @@ type MxRecords struct {
 	Target     string             `json:"target"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
-}
-
-type MxRecordsHistory struct {
-	ID         int32              `json:"id"`
-	RecordID   pgtype.Int4        `json:"record_id"`
-	Preference int32              `json:"preference"`
-	Target     string             `json:"target"`
-	ChangeType string             `json:"change_type"`
-	ChangedAt  pgtype.Timestamptz `json:"changed_at"`
 }
 
 type NameserverReachabilityFindings struct {
@@ -980,14 +915,6 @@ type NsRecords struct {
 	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
 }
 
-type NsRecordsHistory struct {
-	ID         int32              `json:"id"`
-	RecordID   pgtype.Int4        `json:"record_id"`
-	Nameserver string             `json:"nameserver"`
-	ChangeType string             `json:"change_type"`
-	ChangedAt  pgtype.Timestamptz `json:"changed_at"`
-}
-
 type OpenPortFindings struct {
 	ID           int32              `json:"id"`
 	Uid          string             `json:"uid"`
@@ -1028,14 +955,6 @@ type PtrRecords struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
-type PtrRecordsHistory struct {
-	ID         int32              `json:"id"`
-	RecordID   pgtype.Int4        `json:"record_id"`
-	Target     string             `json:"target"`
-	ChangeType string             `json:"change_type"`
-	ChangedAt  pgtype.Timestamptz `json:"changed_at"`
-}
-
 type RrsigRecords struct {
 	ID          int32              `json:"id"`
 	Uid         string             `json:"uid"`
@@ -1051,22 +970,6 @@ type RrsigRecords struct {
 	Signature   string             `json:"signature"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
-}
-
-type RrsigRecordsHistory struct {
-	ID          int32              `json:"id"`
-	RecordID    pgtype.Int4        `json:"record_id"`
-	TypeCovered int32              `json:"type_covered"`
-	Algorithm   int32              `json:"algorithm"`
-	Labels      int32              `json:"labels"`
-	OriginalTtl int32              `json:"original_ttl"`
-	Expiration  int32              `json:"expiration"`
-	Inception   int32              `json:"inception"`
-	KeyTag      int32              `json:"key_tag"`
-	SignerName  string             `json:"signer_name"`
-	Signature   string             `json:"signature"`
-	ChangeType  string             `json:"change_type"`
-	ChangedAt   pgtype.Timestamptz `json:"changed_at"`
 }
 
 type Scans struct {
@@ -1094,20 +997,6 @@ type SoaRecords struct {
 	MinimumTtl int32              `json:"minimum_ttl"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
-}
-
-type SoaRecordsHistory struct {
-	ID         int32              `json:"id"`
-	RecordID   pgtype.Int4        `json:"record_id"`
-	Nameserver string             `json:"nameserver"`
-	Email      string             `json:"email"`
-	Serial     int64              `json:"serial"`
-	Refresh    int32              `json:"refresh"`
-	Retry      int32              `json:"retry"`
-	Expire     int32              `json:"expire"`
-	MinimumTtl int32              `json:"minimum_ttl"`
-	ChangeType string             `json:"change_type"`
-	ChangedAt  pgtype.Timestamptz `json:"changed_at"`
 }
 
 type SpfFindings struct {
@@ -1148,17 +1037,6 @@ type SrvRecords struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
-type SrvRecordsHistory struct {
-	ID         int32              `json:"id"`
-	RecordID   pgtype.Int4        `json:"record_id"`
-	Target     string             `json:"target"`
-	Port       int32              `json:"port"`
-	Weight     int32              `json:"weight"`
-	Priority   int32              `json:"priority"`
-	ChangeType string             `json:"change_type"`
-	ChangedAt  pgtype.Timestamptz `json:"changed_at"`
-}
-
 type Tenants struct {
 	ID        int32              `json:"id"`
 	Uid       string             `json:"uid"`
@@ -1174,14 +1052,6 @@ type TxtRecords struct {
 	Value     string             `json:"value"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
-}
-
-type TxtRecordsHistory struct {
-	ID         int32              `json:"id"`
-	RecordID   pgtype.Int4        `json:"record_id"`
-	Value      string             `json:"value"`
-	ChangeType string             `json:"change_type"`
-	ChangedAt  pgtype.Timestamptz `json:"changed_at"`
 }
 
 type Users struct {
