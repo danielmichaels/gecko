@@ -329,3 +329,47 @@ SELECT
     updated_at
 FROM ns_records
 WHERE domain_id = $1;
+
+-- Per-type projection deletes. The recorder loads current keys via the matching
+-- RecordsGet*ByDomainID query, diffs against the authoritatively-observed set,
+-- and deletes the stale keys (emitting a 'deleted' observation per key). The
+-- delete predicate matches each type's natural key (its ON CONFLICT tuple).
+
+-- name: RecordsDeleteA :exec
+DELETE FROM a_records WHERE domain_id = $1 AND ipv4_address = $2;
+
+-- name: RecordsDeleteAAAA :exec
+DELETE FROM aaaa_records WHERE domain_id = $1 AND ipv6_address = $2;
+
+-- name: RecordsDeleteMX :exec
+DELETE FROM mx_records WHERE domain_id = $1 AND preference = $2 AND target = $3;
+
+-- name: RecordsDeleteTXT :exec
+DELETE FROM txt_records WHERE domain_id = $1 AND value = $2;
+
+-- name: RecordsDeleteNS :exec
+DELETE FROM ns_records WHERE domain_id = $1 AND nameserver = $2;
+
+-- name: RecordsDeleteCNAME :exec
+DELETE FROM cname_records WHERE domain_id = $1 AND target = $2;
+
+-- name: RecordsDeletePTR :exec
+DELETE FROM ptr_records WHERE domain_id = $1 AND target = $2;
+
+-- name: RecordsDeleteSRV :exec
+DELETE FROM srv_records WHERE domain_id = $1 AND target = $2 AND port = $3 AND priority = $4;
+
+-- name: RecordsDeleteSOA :exec
+DELETE FROM soa_records WHERE domain_id = $1;
+
+-- name: RecordsDeleteDNSKEY :exec
+DELETE FROM dnskey_records WHERE domain_id = $1 AND public_key = $2;
+
+-- name: RecordsDeleteDS :exec
+DELETE FROM ds_records WHERE domain_id = $1 AND digest = $2;
+
+-- name: RecordsDeleteRRSIG :exec
+DELETE FROM rrsig_records WHERE domain_id = $1 AND type_covered = $2 AND signer_name = $3;
+
+-- name: RecordsDeleteCAA :exec
+DELETE FROM caa_records WHERE domain_id = $1 AND tag = $2 AND value = $3;
