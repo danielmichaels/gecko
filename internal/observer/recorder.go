@@ -15,6 +15,30 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+// Change types stored in domain_observations.change_type.
+const (
+	ChangeCreated = "created"
+	ChangeUpdated = "updated"
+	ChangeDeleted = "deleted"
+)
+
+// Entity types stored in domain_observations.entity_type.
+const (
+	EntityARecord      = "a_record"
+	EntityAAAARecord   = "aaaa_record"
+	EntityCNAMERecord  = "cname_record"
+	EntityMXRecord     = "mx_record"
+	EntityTXTRecord    = "txt_record"
+	EntityNSRecord     = "ns_record"
+	EntitySOARecord    = "soa_record"
+	EntityPTRRecord    = "ptr_record"
+	EntityCAARecord    = "caa_record"
+	EntitySRVRecord    = "srv_record"
+	EntityDNSKEYRecord = "dnskey_record"
+	EntityDSRecord     = "ds_record"
+	EntityRRSIGRecord  = "rrsig_record"
+)
+
 // DomainIdentity is the stable identity stamped onto every observation. It is
 // defined here (rather than reusing jobs.DomainJobArgs) so the observer package
 // does not import jobs — jobs imports observer, and the reverse would cycle.
@@ -38,53 +62,67 @@ func New(q *store.Queries) *Recorder {
 	return &Recorder{q: q}
 }
 
-// RecordA syncs the observed A records for a domain: it upserts every observed
-// IP into the projection, emits a "created" observation for each genuinely new
-// IP, and — only when the resolution was authoritative — deletes projection rows
-// whose IPs were not observed and emits a matching "deleted" observation.
-func (r *Recorder) RecordA(
+// observedEntity is one record seen in the current scan: its canonical payload
+// and a closure that upserts it into the projection.
+type observedEntity struct {
+	upsert  func(context.Context) error
+	payload []byte
+}
+
+// currentEntity is one record already in the projection: its canonical payload
+// and a closure that deletes it.
+type currentEntity struct {
+	delete  func(context.Context) error
+	payload []byte
+}
+
+// sync is the generic per-type engine. It upserts every observed entity (so the
+// projection reflects current truth), then emits created/updated observations and
+// — only when authoritative — deletes projection rows absent from the observed
+// set, emitting a matching deleted observation. The caller supplies the observed
+// and current entities keyed by each type's natural key; payloads are compared to
+// distinguish updated from unchanged.
+func (r *Recorder) sync(
 	ctx context.Context,
 	ident DomainIdentity,
-	observedIPs []string,
+	entityType string,
+	observed map[string]observedEntity,
+	current map[string]currentEntity,
 	authoritative bool,
 ) error {
-	domainID := pgtype.Int4{Int32: ident.DomainID, Valid: true}
-
-	currentRows, err := r.q.RecordsGetAByDomainID(ctx, domainID)
-	if err != nil {
-		return fmt.Errorf("load current A records: %w", err)
+	obsPayloads := make(map[string]string, len(observed))
+	for k, e := range observed {
+		obsPayloads[k] = string(e.payload)
 	}
-	current := make([]string, len(currentRows))
-	for i, row := range currentRows {
-		current[i] = row.Ipv4Address
+	curPayloads := make(map[string]string, len(current))
+	for k, e := range current {
+		curPayloads[k] = string(e.payload)
 	}
 
-	// Upsert every observed IP so the projection reflects current truth. The
-	// upsert is idempotent; observations distinguish genuinely-new from unchanged.
-	for _, ip := range observedIPs {
-		if _, err := r.q.RecordsCreateA(ctx, store.RecordsCreateAParams{
-			DomainID:    domainID,
-			Ipv4Address: ip,
-		}); err != nil {
-			return fmt.Errorf("upsert A record %q: %w", ip, err)
+	// Upsert every observed entity (created, updated, and unchanged) so the
+	// projection — and its updated_at — reflect the current scan.
+	for k := range observed {
+		if err := observed[k].upsert(ctx); err != nil {
+			return fmt.Errorf("upsert %s %q: %w", entityType, k, err)
 		}
 	}
 
-	created, deleted := planChanges(observedIPs, current, authoritative)
-
-	for _, ip := range created {
-		if err := r.emit(ctx, ident, EntityARecord, ip, ChangeCreated, aPayload(ip)); err != nil {
+	created, updated, deleted := planSync(obsPayloads, curPayloads, authoritative)
+	for _, k := range created {
+		if err := r.emit(ctx, ident, entityType, k, ChangeCreated, observed[k].payload); err != nil {
 			return err
 		}
 	}
-	for _, ip := range deleted {
-		if err := r.q.RecordsDeleteA(ctx, store.RecordsDeleteAParams{
-			DomainID:    domainID,
-			Ipv4Address: ip,
-		}); err != nil {
-			return fmt.Errorf("delete A record %q: %w", ip, err)
+	for _, k := range updated {
+		if err := r.emit(ctx, ident, entityType, k, ChangeUpdated, observed[k].payload); err != nil {
+			return err
 		}
-		if err := r.emit(ctx, ident, EntityARecord, ip, ChangeDeleted, aPayload(ip)); err != nil {
+	}
+	for _, k := range deleted {
+		if err := current[k].delete(ctx); err != nil {
+			return fmt.Errorf("delete %s %q: %w", entityType, k, err)
+		}
+		if err := r.emit(ctx, ident, entityType, k, ChangeDeleted, current[k].payload); err != nil {
 			return err
 		}
 	}
@@ -116,56 +154,40 @@ func (r *Recorder) emit(
 	return nil
 }
 
-func aPayload(ip string) []byte {
-	b, _ := json.Marshal(map[string]string{"ipv4_address": ip})
+// payloadJSON marshals a payload map deterministically (encoding/json sorts map
+// keys), so observed and current payloads built from the same fields compare
+// byte-for-byte and updated detection is stable.
+func payloadJSON(m map[string]any) []byte {
+	b, _ := json.Marshal(m)
 	return b
 }
 
-// Change types stored in domain_observations.change_type.
-const (
-	ChangeCreated = "created"
-	ChangeUpdated = "updated"
-	ChangeDeleted = "deleted"
-)
-
-// Entity types stored in domain_observations.entity_type.
-const (
-	EntityARecord = "a_record"
-)
-
-// planChanges compares the authoritatively observed key set against the current
-// projection key set and returns the keys to create and to delete. Deletions are
-// only proposed when `authoritative` is true: an indeterminate resolution
-// (SERVFAIL/timeout) yields an empty observed set with authoritative=false, and
-// treating that as "everything was deleted" would emit phantom deletions.
-//
-// Keys present in both sets are unchanged and appear in neither return value.
-// Outputs are sorted for deterministic observation ordering.
-func planChanges(observed, current []string, authoritative bool) (created, deleted []string) {
-	observedSet := make(map[string]struct{}, len(observed))
-	for _, k := range observed {
-		observedSet[k] = struct{}{}
-	}
-	currentSet := make(map[string]struct{}, len(current))
-	for _, k := range current {
-		currentSet[k] = struct{}{}
-	}
-
-	// Iterate the sets (not the input slices) so duplicate observed keys — which
-	// DNS can legitimately return — collapse to one created entry.
-	for k := range observedSet {
-		if _, ok := currentSet[k]; !ok {
+// planSync compares observed vs current entities (keyed by their natural key,
+// valued by a canonical payload string) and classifies each into created,
+// updated (key in both but payload changed), or deleted. Deletions are gated on
+// `authoritative` so an indeterminate resolution never deletes. Outputs sorted.
+func planSync(
+	observed, current map[string]string,
+	authoritative bool,
+) (created, updated, deleted []string) {
+	for k, ov := range observed {
+		cv, ok := current[k]
+		switch {
+		case !ok:
 			created = append(created, k)
+		case ov != cv:
+			updated = append(updated, k)
 		}
 	}
 	if authoritative {
-		for k := range currentSet {
-			if _, ok := observedSet[k]; !ok {
+		for k := range current {
+			if _, ok := observed[k]; !ok {
 				deleted = append(deleted, k)
 			}
 		}
 	}
 	sort.Strings(created)
+	sort.Strings(updated)
 	sort.Strings(deleted)
-	return created, deleted
+	return created, updated, deleted
 }

@@ -147,3 +147,102 @@ func TestRecorderRecordA(t *testing.T) {
 		t.Errorf("created observations unexpectedly changed = %d, want 2", c)
 	}
 }
+
+// TestRecorderRecordSRV exercises a rich type whose key (target|port|priority)
+// excludes a mutable field (weight): a weight change behind the same key must be
+// an "updated", not a delete+create.
+func TestRecorderRecordSRV(t *testing.T) {
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("failed to create postgres container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	const tenantID = int32(1)
+	d, err := pc.Queries.DomainsInsert(ctx, store.DomainsInsertParams{
+		TenantID:   pgtype.Int4{Int32: tenantID, Valid: true},
+		Name:       "srv.example.com",
+		DomainType: store.DomainTypeSubdomain,
+		Source:     store.DomainSourceUserSupplied,
+		Status:     store.DomainStatusActive,
+	})
+	if err != nil {
+		t.Fatalf("create domain: %v", err)
+	}
+	scan, err := pc.Queries.ScansCreate(ctx, store.ScansCreateParams{
+		TenantID:   tenantID,
+		DomainID:   pgtype.Int4{Int32: d.ID, Valid: true},
+		DomainUid:  d.Uid,
+		DomainName: d.Name,
+		Source:     store.DomainSourceUserSupplied,
+	})
+	if err != nil {
+		t.Fatalf("create scan: %v", err)
+	}
+	ident := observer.DomainIdentity{
+		TenantID: tenantID, DomainID: d.ID, DomainUID: d.Uid, DomainName: d.Name, ScanID: scan.ID,
+	}
+	record := func(entries []string) {
+		t.Helper()
+		tx, err := pc.Pool.BeginTx(ctx, pgx.TxOptions{})
+		if err != nil {
+			t.Fatalf("begin tx: %v", err)
+		}
+		rec := observer.New(pc.Queries.WithTx(tx))
+		if err := rec.RecordSRV(ctx, ident, entries, true); err != nil {
+			_ = tx.Rollback(ctx)
+			t.Fatalf("RecordSRV: %v", err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			t.Fatalf("commit: %v", err)
+		}
+	}
+	obsCount := func(changeType string) int {
+		var n int
+		if err := pc.Pool.QueryRow(ctx,
+			`SELECT count(*) FROM domain_observations
+			 WHERE domain_name=$1 AND entity_type=$2 AND change_type=$3`,
+			d.Name, observer.EntitySRVRecord, changeType,
+		).Scan(&n); err != nil {
+			t.Fatalf("count observations: %v", err)
+		}
+		return n
+	}
+	currentWeight := func() int {
+		var w int
+		if err := pc.Pool.QueryRow(ctx,
+			`SELECT weight FROM srv_records WHERE domain_id=$1`, d.ID,
+		).Scan(&w); err != nil {
+			t.Fatalf("query srv weight: %v", err)
+		}
+		return w
+	}
+
+	// entry format is "target port weight priority" (as dnsclient formats SRV).
+	record([]string{"sip.example.com. 5060 10 20"})
+	if c := obsCount(observer.ChangeCreated); c != 1 {
+		t.Errorf("created = %d, want 1", c)
+	}
+
+	// Same key (target|port|priority), changed weight -> updated, not create/delete.
+	record([]string{"sip.example.com. 5060 99 20"})
+	if c := obsCount(observer.ChangeUpdated); c != 1 {
+		t.Errorf("updated = %d, want 1", c)
+	}
+	if c := obsCount(observer.ChangeCreated); c != 1 {
+		t.Errorf("created should stay 1, got %d", c)
+	}
+	if c := obsCount(observer.ChangeDeleted); c != 0 {
+		t.Errorf("deleted should be 0 (weight change is an update), got %d", c)
+	}
+	if w := currentWeight(); w != 99 {
+		t.Errorf("projection weight = %d, want 99 (updated in place)", w)
+	}
+
+	// Authoritative empty -> the record is deleted.
+	record(nil)
+	if c := obsCount(observer.ChangeDeleted); c != 1 {
+		t.Errorf("deleted = %d, want 1", c)
+	}
+}

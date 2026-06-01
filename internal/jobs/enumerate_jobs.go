@@ -171,335 +171,75 @@ type ResolveDomainWorker struct {
 	PgxPool *pgxpool.Pool
 }
 
-// recordARecords syncs A records through the observation recorder inside a single
-// transaction, so the projection upsert/delete and its observations commit or
-// roll back together.
-func (w *ResolveDomainWorker) recordARecords(
+// recordResolved syncs every resolved DNS record type for one scan through the
+// observation recorder inside a single transaction, so the whole scan's
+// projection changes and observations commit or roll back together.
+func (w *ResolveDomainWorker) recordResolved(
 	ctx context.Context,
 	ident DomainJobArgs,
-	ips []string,
-	status dnsclient.ResolutionStatus,
+	resolved observer.Resolved,
 ) (err error) {
 	tx, err := w.PgxPool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return fmt.Errorf("begin A recorder transaction: %w", err)
+		return fmt.Errorf("begin recorder transaction: %w", err)
 	}
 	defer func() {
 		if err != nil {
 			if rbErr := tx.Rollback(ctx); rbErr != nil && rbErr != pgx.ErrTxClosed {
-				w.Logger.ErrorContext(ctx, "A recorder rollback", "error", rbErr)
+				w.Logger.ErrorContext(ctx, "recorder rollback", "error", rbErr)
 			}
 		}
 	}()
 	rec := observer.New(w.Store.WithTx(tx))
-	if err = rec.RecordA(ctx, observer.DomainIdentity{
+	if err = rec.RecordAll(ctx, observer.DomainIdentity{
 		TenantID:   ident.TenantID,
 		DomainID:   ident.DomainID,
 		DomainUID:  ident.DomainUID,
 		DomainName: ident.DomainName,
 		ScanID:     ident.ScanID,
-	}, ips, status.Authoritative()); err != nil {
+	}, resolved); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
 }
 
-// Work resolves the threaded domain's records and persists them to the live
-// projection tables. The domain identity (tenant/id/uid/name) arrives on the job
-// args, so the worker never rediscovers the domain by name and never creates it
-// — discovered domains are created by EnumerateSubdomainWorker, user domains by
-// the API handler. Observation emission and authoritative deletes are layered on
-// in Phase 2.
+// Work resolves every DNS record type for the threaded domain with a three-way
+// resolution status and syncs them through the observation recorder: the live
+// projection is kept current, the change log is appended, and deletions are
+// applied only on an authoritative result. The domain identity arrives on the
+// job args, so the worker never rediscovers or creates the domain.
 func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDomainArgs]) error {
 	ctx = tracing.WithNewTraceID(ctx, true)
 	dnsClient := dnsclient.New()
+	fqdn := job.Args.DomainName + "."
 
-	domainName := job.Args.DomainName
-	domainID := pgtype.Int4{Int32: job.Args.DomainID, Valid: true}
-
-	result := dnsclient.SubdomainResult{Name: domainName}
-
-	// A records flow through the observation recorder below (projection + change
-	// log + authoritative-delete gating), so they are intentionally absent from
-	// this legacy upsert-only loop. Remaining types are migrated in Phase 3.
-	lookups := []struct {
-		field  *[]string
-		lookup func(string) ([]string, bool)
-	}{
-		{&result.AAAA, dnsClient.LookupAAAA},
-		{&result.CNAME, dnsClient.LookupCNAME},
-		{&result.MX, dnsClient.LookupMX},
-		{&result.TXT, dnsClient.LookupTXT},
-		{&result.NS, dnsClient.LookupNS},
-		{&result.PTR, dnsClient.LookupPTR},
-		{&result.SRV, dnsClient.LookupSRV},
-		{&result.CAA, dnsClient.LookupCAA},
-		{&result.DNSKEY, dnsClient.LookupDNSKEY},
-		{&result.SOA, dnsClient.LookupSOA},
-		{&result.DS, dnsClient.LookupDS},
-		{&result.RRSIG, dnsClient.LookupRRSIG},
+	lookup := func(qtype uint16) observer.TypeResult {
+		entries, status := dnsClient.LookupWithStatus(fqdn, qtype)
+		return observer.TypeResult{Entries: entries, Authoritative: status.Authoritative()}
+	}
+	resolved := observer.Resolved{
+		A:      lookup(dns.TypeA),
+		AAAA:   lookup(dns.TypeAAAA),
+		CNAME:  lookup(dns.TypeCNAME),
+		MX:     lookup(dns.TypeMX),
+		TXT:    lookup(dns.TypeTXT),
+		NS:     lookup(dns.TypeNS),
+		SOA:    lookup(dns.TypeSOA),
+		PTR:    lookup(dns.TypePTR),
+		CAA:    lookup(dns.TypeCAA),
+		SRV:    lookup(dns.TypeSRV),
+		DNSKEY: lookup(dns.TypeDNSKEY),
+		DS:     lookup(dns.TypeDS),
+		RRSIG:  lookup(dns.TypeRRSIG),
 	}
 
-	for _, l := range lookups {
-		if records, ok := l.lookup(domainName + "."); ok && len(records) > 0 {
-			*l.field = records
-		}
-	}
-
-	// A records: resolve with a three-way status and sync through the observation
-	// recorder, which keeps the projection in step, appends the change log, and
-	// gates deletions on an authoritative result.
-	aIPs, aStatus := dnsClient.LookupWithStatus(domainName+".", dns.TypeA)
-	if err := w.recordARecords(ctx, job.Args.DomainJobArgs, aIPs, aStatus); err != nil {
+	if err := w.recordResolved(ctx, job.Args.DomainJobArgs, resolved); err != nil {
 		return err
 	}
 
-	records := []struct {
-		parser  func(string, string) (interface{}, error)
-		name    string
-		entries []string
-	}{
-		{
-			func(d, r string) (interface{}, error) { return dnsrecords.ParseAAAA(d, r) },
-			"AAAA",
-			result.AAAA,
-		},
-		{
-			func(d, r string) (interface{}, error) { return dnsrecords.ParseCNAME(d, r) },
-			"CNAME",
-			result.CNAME,
-		},
-		{
-			func(d, r string) (interface{}, error) { return dnsrecords.ParseTXT(d, r) },
-			"TXT",
-			result.TXT,
-		},
-		{func(d, r string) (interface{}, error) { return dnsrecords.ParseNS(d, r) }, "NS", result.NS},
-		{func(d, r string) (interface{}, error) { return dnsrecords.ParseMX(d, r) }, "MX", result.MX},
-		{
-			func(d, r string) (interface{}, error) { return dnsrecords.ParseSOARecord(d, r) },
-			"SOA",
-			result.SOA,
-		},
-		{
-			func(d, r string) (interface{}, error) { return dnsrecords.ParsePTR(d, r) },
-			"PTR",
-			result.PTR,
-		},
-		{
-			func(d, r string) (interface{}, error) { return dnsrecords.ParseCAA(d, r) },
-			"CAA",
-			result.CAA,
-		},
-		{
-			func(d, r string) (interface{}, error) { return dnsrecords.ParseDNSKEY(d, r) },
-			"DNSKEY",
-			result.DNSKEY,
-		},
-		{func(d, r string) (interface{}, error) { return dnsrecords.ParseDS(d, r) }, "DS", result.DS},
-		{
-			func(d, r string) (interface{}, error) { return dnsrecords.ParseRRSIG(d, r) },
-			"RRSIG",
-			result.RRSIG,
-		},
-		{
-			func(d, r string) (interface{}, error) { return dnsrecords.ParseSRV(d, r) },
-			"SRV",
-			result.SRV,
-		},
-	}
-
-	for _, r := range records {
-		for _, entry := range r.entries {
-			parsed, err := r.parser(domainName, entry)
-			if err != nil {
-				w.Logger.ErrorContext(ctx, "failed to parse record",
-					"type", r.name,
-					"domain", domainName,
-					"error", err)
-				continue
-			}
-			w.Logger.InfoContext(ctx, "parsed record", "parsed", parsed, "type", r.name)
-			switch r.name {
-			case "AAAA":
-				aaaa, err := w.Store.RecordsCreateAAAA(ctx, store.RecordsCreateAAAAParams{
-					DomainID:    domainID,
-					Ipv6Address: entry,
-				})
-				if err != nil {
-					return err
-				}
-				w.Logger.DebugContext(ctx, "found AAAA record",
-					"ipv6", aaaa.Ipv6Address, "uid", aaaa.Uid, "domain", domainName)
-			case "CNAME":
-				cname, err := w.Store.RecordsCreateCNAME(ctx, store.RecordsCreateCNAMEParams{
-					DomainID: domainID,
-					Target:   entry,
-				})
-				if err != nil {
-					return err
-				}
-				w.Logger.DebugContext(ctx, "found CNAME record",
-					"target", cname.Target, "uid", cname.Uid, "domain", domainName)
-			case "MX":
-				mv, err := dnsrecords.ParseMX(domainName, entry)
-				if err != nil {
-					return err
-				}
-				mx, err := w.Store.RecordsCreateMX(ctx, store.RecordsCreateMXParams{
-					DomainID:   domainID,
-					Preference: int32(mv.Preference),
-					Target:     mv.Target,
-				})
-				if err != nil {
-					return err
-				}
-				w.Logger.DebugContext(ctx, "found MX record",
-					"record", mx, "uid", mx.Uid, "domain", domainName)
-			case "TXT":
-				txt, err := w.Store.RecordsCreateTXT(ctx, store.RecordsCreateTXTParams{
-					DomainID: domainID,
-					Value:    entry,
-				})
-				if err != nil {
-					return err
-				}
-				w.Logger.DebugContext(ctx, "found TXT record",
-					"value", txt.Value, "uid", txt.Uid, "domain", domainName)
-			case "NS":
-				ns, err := w.Store.RecordsCreateNS(ctx, store.RecordsCreateNSParams{
-					DomainID:   domainID,
-					Nameserver: entry,
-				})
-				if err != nil {
-					return err
-				}
-				w.Logger.DebugContext(ctx, "found NS record",
-					"nameserver", ns.Nameserver, "uid", ns.Uid, "domain", domainName)
-			case "PTR":
-				ptr, err := w.Store.RecordsCreatePTR(ctx, store.RecordsCreatePTRParams{
-					DomainID: domainID,
-					Target:   entry,
-				})
-				if err != nil {
-					return err
-				}
-				w.Logger.DebugContext(ctx, "found PTR record",
-					"target", ptr.Target, "uid", ptr.Uid, "domain", domainName)
-			case "SRV":
-				sv, err := dnsrecords.ParseSRV(domainName, entry)
-				if err != nil {
-					return err
-				}
-				srv, err := w.Store.RecordsCreateSRV(ctx, store.RecordsCreateSRVParams{
-					DomainID: domainID,
-					Target:   sv.Target,
-					Port:     int32(sv.Port),
-					Weight:   int32(sv.Weight),
-					Priority: int32(sv.Priority),
-				})
-				if err != nil {
-					return err
-				}
-				w.Logger.DebugContext(ctx, "found SRV record",
-					"record", srv, "uid", srv.Uid, "domain", domainName)
-			case "CAA":
-				cv, err := dnsrecords.ParseCAA(domainName, entry)
-				if err != nil {
-					return err
-				}
-				caa, err := w.Store.RecordsCreateCAA(ctx, store.RecordsCreateCAAParams{
-					DomainID: domainID,
-					Flags:    int32(cv.Flag),
-					Tag:      cv.Tag,
-					Value:    cv.Value,
-				})
-				if err != nil {
-					return err
-				}
-				w.Logger.DebugContext(ctx, "found CAA record",
-					"record", caa, "uid", caa.Uid, "domain", domainName)
-			case "DNSKEY":
-				ds, err := dnsrecords.ParseDNSKEY(domainName, entry)
-				if err != nil {
-					return err
-				}
-				dnskey, err := w.Store.RecordsCreateDNSKEY(ctx, store.RecordsCreateDNSKEYParams{
-					DomainID:  domainID,
-					PublicKey: ds.PublicKey,
-					Flags:     int32(ds.Flags),
-					Protocol:  int32(ds.Protocol),
-					Algorithm: int32(ds.Algorithm),
-				})
-				if err != nil {
-					return err
-				}
-				w.Logger.DebugContext(ctx, "found DNSKEY record",
-					"record", dnskey, "uid", dnskey.Uid, "domain", domainName)
-			case "SOA":
-				sv, err := dnsrecords.ParseSOARecord(domainName, entry)
-				if err != nil {
-					return err
-				}
-				soa, err := w.Store.RecordsCreateSOA(ctx, store.RecordsCreateSOAParams{
-					DomainID:   domainID,
-					Nameserver: sv.NameServer,
-					Email:      sv.AdminEmail,
-					Serial:     int64(sv.Serial),
-					Refresh:    int32(sv.Refresh),
-					Retry:      int32(sv.Retry),
-					Expire:     int32(sv.Expire),
-					MinimumTtl: int32(sv.MinimumTTL),
-				})
-				if err != nil {
-					return err
-				}
-				w.Logger.DebugContext(ctx, "found SOA record",
-					"record", soa, "uid", soa.Uid, "domain", domainName)
-			case "DS":
-				dv, err := dnsrecords.ParseDS(domainName, entry)
-				if err != nil {
-					return err
-				}
-				ds, err := w.Store.RecordsCreateDS(ctx, store.RecordsCreateDSParams{
-					DomainID:   domainID,
-					KeyTag:     int32(dv.KeyTag),
-					Algorithm:  int32(dv.Algorithm),
-					DigestType: int32(dv.DigestType),
-					Digest:     dv.Digest,
-				})
-				if err != nil {
-					return err
-				}
-				w.Logger.DebugContext(ctx, "found DS record",
-					"record", ds, "uid", ds.Uid, "domain", domainName)
-			case "RRSIG":
-				rv, err := dnsrecords.ParseRRSIG(domainName, entry)
-				if err != nil {
-					return err
-				}
-				rrsig, err := w.Store.RecordsCreateRRSIG(ctx, store.RecordsCreateRRSIGParams{
-					DomainID:    domainID,
-					TypeCovered: int32(rv.TypeCovered),
-					Algorithm:   int32(rv.Algorithm),
-					Labels:      int32(rv.Labels),
-					OriginalTtl: int32(rv.OriginalTTL),
-					Expiration:  int32(rv.Expiration),
-					Inception:   int32(rv.Inception),
-					KeyTag:      int32(rv.KeyTag),
-					SignerName:  rv.SignerName,
-					Signature:   rv.Signature,
-				})
-				if err != nil {
-					return err
-				}
-				w.Logger.DebugContext(ctx, "found RRSIG record",
-					"record", rrsig, "uid", rrsig.Uid, "domain", domainName)
-			}
-		}
-	}
-
-	if len(result.TXT) > 0 {
+	// Email security assessment is data-dependent: enqueue only when TXT records
+	// were discovered (SPF/DKIM/DMARC live in TXT).
+	if len(resolved.TXT.Entries) > 0 {
 		tx, err := w.PgxPool.BeginTx(ctx, pgx.TxOptions{})
 		if err != nil {
 			return err
