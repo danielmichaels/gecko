@@ -179,4 +179,15 @@ func (app *Server) registerEndpoints(api huma.API) {
 		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
 		Middlewares:   huma.Middlewares{ApiKeyAuth(api)},
 	}, app.handleRecordsHistory)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "domain_timeline",
+		Method:        http.MethodGet,
+		Path:          "/api/domains/{id}/timeline",
+		Summary:       "Scan-by-scan change timeline for a domain (grouped by scan)",
+		Tags:          []string{"Records"},
+		DefaultStatus: http.StatusOK,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{ApiKeyAuth(api)},
+	}, app.handleDomainTimeline)
 }

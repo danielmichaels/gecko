@@ -138,6 +138,34 @@ type RecordHistory struct {
 	ObservedAt string          `json:"observed_at"`
 }
 
+// ScanDiff is one scan in a domain's timeline together with the changes observed
+// during it — the scan-diff view the per-table *_history model couldn't serve.
+type ScanDiff struct {
+	ScanID       string          `json:"scan_id"`
+	ScanUID      string          `json:"scan_uid"`
+	Source       string          `json:"source"`
+	StartedAt    string          `json:"started_at"`
+	ParentScanID string          `json:"parent_scan_id,omitempty"`
+	Changes      []RecordHistory `json:"changes"`
+}
+
+// ScanToScanDiff converts a stored scan row plus its observations into API shape.
+func ScanToScanDiff(s store.Scans, changes []RecordHistory) ScanDiff {
+	sd := ScanDiff{
+		ScanID:  strconv.FormatInt(s.ID, 10),
+		ScanUID: s.Uid,
+		Source:  string(s.Source),
+		Changes: changes,
+	}
+	if s.ParentScanID.Valid {
+		sd.ParentScanID = strconv.FormatInt(s.ParentScanID.Int64, 10)
+	}
+	if s.StartedAt.Valid {
+		sd.StartedAt = s.StartedAt.Time.Format(time.RFC3339)
+	}
+	return sd
+}
+
 // ObservationToRecordHistory converts a stored observation row into its API shape.
 func ObservationToRecordHistory(o store.DomainObservations) RecordHistory {
 	rh := RecordHistory{

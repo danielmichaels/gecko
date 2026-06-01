@@ -238,7 +238,7 @@ const scansListByParent = `-- name: ScansListByParent :many
 SELECT id, uid, tenant_id, domain_id, domain_uid, domain_name, parent_scan_id, source, started_at
 FROM scans
 WHERE parent_scan_id = $1
-ORDER BY started_at DESC
+ORDER BY started_at DESC, id DESC
 `
 
 // Child scans of an apex scan (lineage). Lets the timeline group discovered
@@ -278,7 +278,7 @@ SELECT id, uid, tenant_id, domain_id, domain_uid, domain_name, parent_scan_id, s
 FROM scans
 WHERE tenant_id = $1
   AND domain_name = $2
-ORDER BY started_at DESC
+ORDER BY started_at DESC, id DESC
 `
 
 type ScansListByTenantDomainNameParams struct {

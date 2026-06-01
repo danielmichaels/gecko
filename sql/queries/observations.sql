@@ -28,7 +28,7 @@ LIMIT 1;
 SELECT id, uid, tenant_id, domain_id, domain_uid, domain_name, parent_scan_id, source, started_at
 FROM scans
 WHERE parent_scan_id = $1
-ORDER BY started_at DESC;
+ORDER BY started_at DESC, id DESC;
 
 -- name: ScansListByTenantDomainName :many
 -- All scans for a (tenant, domain name), newest first.
@@ -36,7 +36,7 @@ SELECT id, uid, tenant_id, domain_id, domain_uid, domain_name, parent_scan_id, s
 FROM scans
 WHERE tenant_id = $1
   AND domain_name = $2
-ORDER BY started_at DESC;
+ORDER BY started_at DESC, id DESC;
 
 -- name: ObservationsCreate :one
 -- Append one change to the observation log.
