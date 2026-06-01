@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Gecko — Continuous DNS attack-surface monitoring</title>
+<style>
+  :root {
+    --bg: #0a0e0d;
+    --bg-2: #0d1614;
+    --panel: #111b18;
+    --panel-2: #16231f;
+    --line: #1f302b;
+    --text: #e8f0ed;
+    --muted: #8aa39b;
+    --green: #2ee6a0;
+    --green-dim: #1aa876;
+    --amber: #ffb454;
+    --red: #ff6b6b;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace; }
+  a { color: inherit; text-decoration: none; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+  .accent { color: var(--green); }
+
+  /* glow background */
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(680px 380px at 78% -8%, rgba(46,230,160,.14), transparent 60%),
+      radial-gradient(560px 360px at 8% 12%, rgba(46,230,160,.06), transparent 60%);
+    pointer-events: none; z-index: 0;
+  }
+  main, header, footer { position: relative; z-index: 1; }
+
+  /* nav */
+  header {
+    position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(12px);
+    background: rgba(10,14,13,.72);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; letter-spacing: -.02em; }
+  .logo {
+    width: 30px; height: 30px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--green), var(--green-dim));
+    display: grid; place-items: center; color: #05140f; font-weight: 800; font-size: 18px;
+    box-shadow: 0 0 24px rgba(46,230,160,.35);
+  }
+  .nav-links { display: flex; gap: 28px; align-items: center; }
+  .nav-links a { color: var(--muted); font-size: 14px; transition: color .15s; }
+  .nav-links a:hover { color: var(--text); }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 18px; border-radius: 10px; font-weight: 600; font-size: 14px;
+    border: 1px solid transparent; cursor: pointer; transition: transform .12s, background .15s, border .15s;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn-primary { background: var(--green); color: #05140f; }
+  .btn-primary:hover { background: #46f0b0; }
+  .btn-ghost { border-color: var(--line); color: var(--text); background: transparent; }
+  .btn-ghost:hover { border-color: var(--green-dim); }
+  .nav-cta { display: flex; gap: 12px; align-items: center; }
+
+  /* hero */
+  .hero { padding: 96px 0 72px; text-align: center; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 14px; border: 1px solid var(--line); border-radius: 999px;
+    font-size: 13px; color: var(--muted); margin-bottom: 28px; background: var(--panel);
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); }
+  h1 {
+    font-size: clamp(38px, 6vw, 64px); line-height: 1.04; letter-spacing: -.03em;
+    font-weight: 800; max-width: 880px; margin: 0 auto 22px;
+  }
+  h1 .accent { background: linear-gradient(120deg, var(--green), #7af0c8); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+  .sub { font-size: clamp(17px, 2.2vw, 21px); color: var(--muted); max-width: 640px; margin: 0 auto 38px; }
+  .hero-cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .btn-lg { padding: 14px 26px; font-size: 16px; border-radius: 12px; }
+
+  /* scan demo */
+  .scanbox {
+    margin: 56px auto 0; max-width: 720px; text-align: left;
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    overflow: hidden; box-shadow: 0 30px 80px -30px rgba(0,0,0,.7);
+  }
+  .scan-head { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel-2); }
+  .tl { width: 11px; height: 11px; border-radius: 50%; }
+  .scan-title { margin-left: 10px; font-size: 13px; color: var(--muted); }
+  .scan-input { display: flex; gap: 10px; padding: 18px 16px; border-bottom: 1px solid var(--line); }
+  .scan-input input {
+    flex: 1; background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 14px; color: var(--text); font-size: 15px; font-family: inherit;
+  }
+  .scan-input input:focus { outline: none; border-color: var(--green-dim); }
+  .scan-body { padding: 8px 16px 18px; font-size: 14px; }
+  .scan-row { display: flex; align-items: center; gap: 12px; padding: 9px 4px; border-bottom: 1px dashed var(--line); }
+  .scan-row:last-child { border-bottom: none; }
+  .tag { font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 6px; min-width: 64px; text-align: center; }
+  .tag.crit { background: rgba(255,107,107,.14); color: var(--red); }
+  .tag.warn { background: rgba(255,180,84,.14); color: var(--amber); }
+  .tag.ok   { background: rgba(46,230,160,.14); color: var(--green); }
+  .scan-row .what { flex: 1; color: var(--text); }
+  .scan-row .meta { color: var(--muted); font-size: 12.5px; }
+  .grade { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .grade-badge {
+    width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center;
+    font-weight: 800; font-size: 22px; background: rgba(255,180,84,.14); color: var(--amber);
+    border: 1px solid rgba(255,180,84,.3);
+  }
+
+  /* sections */
+  section { padding: 80px 0; }
+  .eyebrow { color: var(--green); font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 14px; }
+  h2 { font-size: clamp(28px, 4vw, 42px); letter-spacing: -.02em; line-height: 1.1; margin-bottom: 16px; font-weight: 800; }
+  .lede { color: var(--muted); font-size: 18px; max-width: 620px; }
+  .center { text-align: center; }
+  .center .lede { margin: 0 auto; }
+
+  /* problem cards */
+  .grid { display: grid; gap: 18px; margin-top: 44px; }
+  .grid-3 { grid-template-columns: repeat(3, 1fr); }
+  .grid-2 { grid-template-columns: repeat(2, 1fr); }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 26px; transition: border .15s, transform .15s;
+  }
+  .card:hover { border-color: var(--green-dim); transform: translateY(-2px); }
+  .card h3 { font-size: 18px; margin-bottom: 8px; letter-spacing: -.01em; }
+  .card p { color: var(--muted); font-size: 14.5px; }
+  .card .ico { font-size: 22px; margin-bottom: 14px; display: block; }
+
+  /* how it works */
+  .steps { display: grid; grid-template-columns: repeat(3,1fr); gap: 18px; margin-top: 44px; counter-reset: s; }
+  .step { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 26px; position: relative; }
+  .step::before {
+    counter-increment: s; content: counter(s);
+    font-family: ui-monospace, monospace; font-size: 13px; font-weight: 700;
+    color: var(--green); border: 1px solid var(--green-dim); border-radius: 8px;
+    width: 30px; height: 30px; display: grid; place-items: center; margin-bottom: 16px;
+  }
+  .step h3 { font-size: 17px; margin-bottom: 8px; }
+  .step p { color: var(--muted); font-size: 14px; }
+  .step .arrow { position: absolute; right: -13px; top: 50%; color: var(--line); font-size: 20px; }
+
+  /* open core split */
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 44px; }
+  .plan { border-radius: var(--radius); padding: 30px; border: 1px solid var(--line); background: var(--panel); }
+  .plan.hosted { border-color: var(--green-dim); background: linear-gradient(180deg, rgba(46,230,160,.06), var(--panel)); position: relative; }
+  .plan .kicker { font-size: 13px; color: var(--muted); margin-bottom: 6px; font-weight: 600; }
+  .plan h3 { font-size: 24px; margin-bottom: 4px; }
+  .plan .price { font-size: 14px; color: var(--green); font-weight: 600; margin-bottom: 18px; }
+  .plan ul { list-style: none; }
+  .plan li { padding: 8px 0 8px 26px; position: relative; color: var(--muted); font-size: 14.5px; border-top: 1px solid var(--line); }
+  .plan li:first-child { border-top: none; }
+  .plan li::before { content: "✓"; position: absolute; left: 0; color: var(--green); font-weight: 700; }
+  .badge-top { position: absolute; top: -11px; right: 22px; background: var(--green); color: #05140f; font-size: 11px; font-weight: 800; padding: 3px 10px; border-radius: 999px; letter-spacing: .04em; }
+
+  /* pricing */
+  .tiers { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-top: 44px; }
+  .tier { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 26px 22px; display: flex; flex-direction: column; }
+  .tier.feat { border-color: var(--green); box-shadow: 0 0 0 1px var(--green-dim), 0 24px 60px -28px rgba(46,230,160,.4); }
+  .tier .tname { font-size: 14px; color: var(--muted); font-weight: 600; }
+  .tier .tprice { font-size: 32px; font-weight: 800; letter-spacing: -.02em; margin: 6px 0 2px; }
+  .tier .tprice small { font-size: 14px; color: var(--muted); font-weight: 500; }
+  .tier .tnote { color: var(--muted); font-size: 13px; margin-bottom: 18px; min-height: 34px; }
+  .tier ul { list-style: none; margin-bottom: 22px; flex: 1; }
+  .tier li { padding: 6px 0 6px 22px; position: relative; font-size: 13.5px; color: var(--muted); }
+  .tier li::before { content: "→"; position: absolute; left: 0; color: var(--green-dim); }
+  .tier .btn { width: 100%; justify-content: center; }
+
+  /* mssp banner */
+  .banner {
+    margin-top: 0; border: 1px solid var(--green-dim); border-radius: 18px; padding: 44px;
+    background: linear-gradient(120deg, rgba(46,230,160,.08), rgba(46,230,160,.02));
+    display: flex; align-items: center; justify-content: space-between; gap: 30px; flex-wrap: wrap;
+  }
+  .banner h2 { margin-bottom: 8px; }
+  .banner p { color: var(--muted); max-width: 540px; }
+
+  /* research strip */
+  .stat-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 18px; margin-top: 40px; }
+  .stat { text-align: center; padding: 26px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+  .stat .n { font-size: 40px; font-weight: 800; letter-spacing: -.03em; color: var(--green); }
+  .stat .l { color: var(--muted); font-size: 14px; margin-top: 4px; }
+
+  /* final cta */
+  .final { text-align: center; padding: 96px 0; }
+  .final h2 { font-size: clamp(30px,5vw,48px); margin-bottom: 18px; }
+
+  /* footer */
+  footer { border-top: 1px solid var(--line); padding: 48px 0 60px; color: var(--muted); font-size: 14px; }
+  .foot { display: flex; justify-content: space-between; gap: 30px; flex-wrap: wrap; }
+  .foot-col h4 { color: var(--text); font-size: 13px; margin-bottom: 14px; letter-spacing: .04em; text-transform: uppercase; }
+  .foot-col a { display: block; color: var(--muted); padding: 4px 0; font-size: 14px; }
+  .foot-col a:hover { color: var(--green); }
+  .note { margin-top: 36px; padding-top: 24px; border-top: 1px solid var(--line); font-size: 12.5px; color: #5e736c; }
+
+  @media (max-width: 860px) {
+    .nav-links { display: none; }
+    .grid-3, .steps, .tiers, .stat-row { grid-template-columns: 1fr; }
+    .grid-2, .split { grid-template-columns: 1fr; }
+    .step .arrow { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <div class="brand"><span class="logo">G</span> gecko</div>
+    <nav class="nav-links">
+      <a href="#problem">Why it matters</a>
+      <a href="#how">How it works</a>
+      <a href="#opencore">Open source</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#mssp">For agencies</a>
+    </nav>
+    <div class="nav-cta">
+      <a class="btn btn-ghost" href="#">★ GitHub</a>
+      <a class="btn btn-primary" href="#scan">Scan a domain</a>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- HERO -->
+  <section class="hero" id="scan">
+    <div class="wrap">
+      <span class="pill"><span class="dot"></span> Open-source DNS attack-surface engine + hosted monitoring</span>
+      <h1>Catch a <span class="accent">subdomain takeover</span> before an attacker does.</h1>
+      <p class="sub">Gecko continuously maps your DNS attack surface, watches every domain and subdomain for dangerous drift, and alerts you the moment something becomes exploitable.</p>
+      <div class="hero-cta">
+        <a class="btn btn-primary btn-lg" href="#">Scan a domain free →</a>
+        <a class="btn btn-ghost btn-lg" href="#opencore">★ Self-host it</a>
+      </div>
+
+      <!-- live-ish scan demo -->
+      <div class="scanbox">
+        <div class="scan-head">
+          <span class="tl" style="background:#ff5f56"></span>
+          <span class="tl" style="background:#ffbd2e"></span>
+          <span class="tl" style="background:#27c93f"></span>
+          <span class="scan-title mono">gecko scan acme.com</span>
+        </div>
+        <div class="scan-input">
+          <input value="acme.com" readonly />
+          <a class="btn btn-primary" href="#">Scan</a>
+        </div>
+        <div class="scan-body mono">
+          <div class="scan-row">
+            <span class="tag crit">CRITICAL</span>
+            <span class="what">Dangling CNAME — <b>assets.acme.com</b></span>
+            <span class="meta">→ unclaimed S3 bucket · takeover possible</span>
+          </div>
+          <div class="scan-row">
+            <span class="tag warn">WARN</span>
+            <span class="what">No DMARC enforcement</span>
+            <span class="meta">p=none · domain spoofable</span>
+          </div>
+          <div class="scan-row">
+            <span class="tag warn">WARN</span>
+            <span class="what">DNSSEC not enabled</span>
+            <span class="meta">zone vulnerable to tampering</span>
+          </div>
+          <div class="scan-row">
+            <span class="tag ok">PASS</span>
+            <span class="what">Zone transfer (AXFR) refused</span>
+            <span class="meta">all nameservers</span>
+            <span class="grade"><span class="grade-badge">C+</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PROBLEM -->
+  <section id="problem">
+    <div class="wrap">
+      <div class="eyebrow">The gap nobody's watching</div>
+      <h2>Your DNS was secure the day you set it up.<br>It isn't anymore.</h2>
+      <p class="lede">DNS risk is a moving target. A bucket gets deleted, a cert expires, a vendor is decommissioned — and a quiet record becomes a live entry point. Point-in-time scanners miss it because the danger appears <em>after</em> the scan.</p>
+      <div class="grid grid-3">
+        <div class="card">
+          <span class="ico">🪝</span>
+          <h3>Subdomain takeover</h3>
+          <p>Dangling CNAMEs pointing at de-provisioned cloud resources let anyone claim your subdomain — and serve phishing from your own brand.</p>
+        </div>
+        <div class="card">
+          <span class="ico">📨</span>
+          <h3>Spoofable email</h3>
+          <p>Missing or misconfigured SPF, DKIM and DMARC mean attackers can send mail as you. Most orgs find out from a customer, not a tool.</p>
+        </div>
+        <div class="card">
+          <span class="ico">🌀</span>
+          <h3>Silent drift</h3>
+          <p>Nameservers change, DNSSEC breaks, new subdomains appear, certs lapse. Nobody's diffing it — until something breaks in production.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section id="how" style="background:var(--bg-2); border-block:1px solid var(--line);">
+    <div class="wrap">
+      <div class="eyebrow">How Gecko works</div>
+      <h2>Scan. Assess. Alert on change.</h2>
+      <p class="lede">A clean separation: collectors gather the raw facts, assessors form the judgments, and the engine re-runs on a schedule so you catch drift the day it happens.</p>
+      <div class="steps">
+        <div class="step">
+          <h3>Scan the surface</h3>
+          <p>Every record type, full subdomain enumeration, certificates, DNSSEC, zone-transfer probes and exposed services — across your whole portfolio.</p>
+          <span class="arrow">→</span>
+        </div>
+        <div class="step">
+          <h3>Assess for risk</h3>
+          <p>Dedicated assessors grade takeover risk, email auth, DNSSEC, open ports, nameserver and CAA config — security, operational and compliance.</p>
+          <span class="arrow">→</span>
+        </div>
+        <div class="step">
+          <h3>Watch &amp; alert</h3>
+          <p>Findings are stored over time and diffed on every run. The moment a new risk appears, you get a Slack, email or webhook alert — not a quarterly PDF.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- OPEN CORE -->
+  <section id="opencore">
+    <div class="wrap center">
+      <div class="eyebrow">Open core</div>
+      <h2>The scanner is yours. We sell the watching.</h2>
+      <p class="lede">Run the full engine on your own infra, for free, forever. Upgrade only when you want someone else to keep it running, remembering, and alerting 24/7.</p>
+    </div>
+    <div class="wrap">
+      <div class="split">
+        <div class="plan">
+          <div class="kicker">Open source · self-hosted</div>
+          <h3>Gecko Core</h3>
+          <div class="price mono">$0 — Apache-2.0</div>
+          <ul>
+            <li>Full scanner + assessor engine</li>
+            <li>CLI &amp; REST API (OpenAPI)</li>
+            <li>On-demand scans, single tenant</li>
+            <li>Run it in Docker in minutes</li>
+            <li>Auditable — read every line</li>
+          </ul>
+        </div>
+        <div class="plan hosted">
+          <span class="badge-top">HOSTED</span>
+          <div class="kicker">Managed SaaS</div>
+          <h3>Gecko Cloud</h3>
+          <div class="price mono">From $0 → scales with you</div>
+          <ul>
+            <li>Continuous scheduled monitoring</li>
+            <li>Drift detection &amp; alerting (Slack / email / webhook)</li>
+            <li>History, diffing &amp; trend dashboards</li>
+            <li>Multi-tenant portfolios &amp; team seats</li>
+            <li>Integrations: Jira, PagerDuty, SIEM</li>
+            <li>We run the infra — zero ops</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRICING -->
+  <section id="pricing" style="background:var(--bg-2); border-block:1px solid var(--line);">
+    <div class="wrap center">
+      <div class="eyebrow">Pricing</div>
+      <h2>Pay for continuity, not scans.</h2>
+      <p class="lede">Priced by domains monitored and how often we check them. Self-hosting is always free.</p>
+    </div>
+    <div class="wrap">
+      <div class="tiers">
+        <div class="tier">
+          <span class="tname">Free</span>
+          <div class="tprice">$0</div>
+          <div class="tnote">Kick the tyres on a few domains.</div>
+          <ul>
+            <li>3 domains</li>
+            <li>Weekly scans</li>
+            <li>Email alerts</li>
+            <li>Community support</li>
+          </ul>
+          <a class="btn btn-ghost" href="#">Start free</a>
+        </div>
+        <div class="tier feat">
+          <span class="tname">Pro</span>
+          <div class="tprice">$39<small>/mo</small></div>
+          <div class="tnote">For engineers guarding their own estate.</div>
+          <ul>
+            <li>50 domains</li>
+            <li>Daily scans</li>
+            <li>Slack + webhook alerts</li>
+            <li>Full history &amp; diffs</li>
+          </ul>
+          <a class="btn btn-primary" href="#">Start free trial</a>
+        </div>
+        <div class="tier">
+          <span class="tname">Business</span>
+          <div class="tprice">$199<small>/mo</small></div>
+          <div class="tnote">For security teams &amp; bigger estates.</div>
+          <ul>
+            <li>500 domains</li>
+            <li>Hourly scans</li>
+            <li>SSO + team seats</li>
+            <li>Jira / PagerDuty / SIEM</li>
+          </ul>
+          <a class="btn btn-ghost" href="#">Talk to us</a>
+        </div>
+        <div class="tier">
+          <span class="tname">Agency / MSSP</span>
+          <div class="tprice">Custom</div>
+          <div class="tnote">White-label, multi-client portfolios.</div>
+          <ul>
+            <li>Unlimited tenants</li>
+            <li>White-label reports</li>
+            <li>Per-client isolation</li>
+            <li>Priority support</li>
+          </ul>
+          <a class="btn btn-ghost" href="#">Book a demo</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MSSP BANNER -->
+  <section id="mssp">
+    <div class="wrap">
+      <div class="banner">
+        <div>
+          <div class="eyebrow">For consultancies &amp; MSSPs</div>
+          <h2>Run every client's DNS through one pane.</h2>
+          <p>Gecko is multi-tenant from the ground up. Onboard client portfolios, isolate their data, and hand over branded findings — without building monitoring infrastructure yourself.</p>
+        </div>
+        <a class="btn btn-primary btn-lg" href="#">Become a partner →</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- RESEARCH / SOCIAL PROOF -->
+  <section style="background:var(--bg-2); border-block:1px solid var(--line);">
+    <div class="wrap center">
+      <div class="eyebrow">From the Gecko Labs scan of the public internet</div>
+      <h2>The problem is bigger than people think.</h2>
+      <p class="lede">Illustrative figures — replace with your own research data once you run the top-1M scan.</p>
+      <div class="stat-row">
+        <div class="stat"><div class="n">1 in 5</div><div class="l">domains have at least one risky dangling record</div></div>
+        <div class="stat"><div class="n">68%</div><div class="l">don't enforce DMARC (p=none or missing)</div></div>
+        <div class="stat"><div class="n">&lt;30%</div><div class="l">have DNSSEC enabled at all</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FINAL CTA -->
+  <section class="final">
+    <div class="wrap">
+      <h2>See your DNS the way an attacker does.</h2>
+      <p class="lede center" style="margin-bottom:32px;">Free scan in 30 seconds. No account needed.</p>
+      <div class="hero-cta">
+        <a class="btn btn-primary btn-lg" href="#">Scan a domain free →</a>
+        <a class="btn btn-ghost btn-lg" href="#">★ Star on GitHub</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot">
+      <div class="foot-col" style="max-width:280px;">
+        <div class="brand" style="margin-bottom:12px;"><span class="logo">G</span> gecko</div>
+        <p style="color:var(--muted); font-size:14px;">Continuous DNS attack-surface monitoring. Open-source engine, optional managed cloud.</p>
+      </div>
+      <div class="foot-col">
+        <h4>Product</h4>
+        <a href="#">Free scanner</a>
+        <a href="#">Cloud monitoring</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#">Changelog</a>
+      </div>
+      <div class="foot-col">
+        <h4>Open source</h4>
+        <a href="#">GitHub repo</a>
+        <a href="#">Self-host guide</a>
+        <a href="#">Docs &amp; API</a>
+        <a href="#">Contributing</a>
+      </div>
+      <div class="foot-col">
+        <h4>Company</h4>
+        <a href="#">Gecko Labs research</a>
+        <a href="#">Blog</a>
+        <a href="#">Contact</a>
+        <a href="#">Security</a>
+      </div>
+    </div>
+    <div class="note mono">
+      DRAFT — marketing concept for positioning review. Copy, stats and pricing are placeholders. Not affiliated with any real "acme.com".
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
