@@ -1,6 +1,6 @@
 module github.com/danielmichaels/gecko
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/MatusOllah/slogcolor v1.5.0
@@ -11,20 +11,21 @@ require (
 	github.com/danielgtaylor/huma/v2 v2.28.0
 	github.com/go-chi/chi/v5 v5.2.1
 	github.com/go-chi/httplog/v2 v2.1.1
-	github.com/jackc/pgx/v5 v5.7.2
+	github.com/jackc/pgx/v5 v5.9.2
 	github.com/joeshaw/envdecode v0.0.0-20200121155833-099f1fc765bd
 	github.com/miekg/dns v1.1.63
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/pressly/goose/v3 v3.24.1
 	github.com/projectdiscovery/subfinder/v2 v2.6.8
-	github.com/riverqueue/river v0.16.0
-	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.16.0
+	github.com/riverqueue/river v0.38.0
+	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.38.0
+	github.com/riverqueue/river/rivertype v0.38.0
 	github.com/rs/xid v1.5.0
 	github.com/testcontainers/testcontainers-go v0.35.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.35.0
-	golang.org/x/net v0.33.0
-	golang.org/x/sync v0.10.0
-	golang.org/x/term v0.27.0
+	golang.org/x/net v0.53.0
+	golang.org/x/sync v0.20.0
+	golang.org/x/term v0.42.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -133,22 +134,21 @@ require (
 	github.com/projectdiscovery/retryablehttp-go v1.0.95 // indirect
 	github.com/projectdiscovery/utils v0.4.6 // indirect
 	github.com/refraction-networking/utls v1.6.7 // indirect
-	github.com/riverqueue/river/riverdriver v0.16.0 // indirect
-	github.com/riverqueue/river/rivershared v0.16.0 // indirect
-	github.com/riverqueue/river/rivertype v0.16.0 // indirect
+	github.com/riverqueue/river/riverdriver v0.38.0 // indirect
+	github.com/riverqueue/river/rivershared v0.38.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d // indirect
 	github.com/sethvargo/go-retry v0.3.0 // indirect
 	github.com/shirou/gopsutil/v3 v3.23.12 // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
-	github.com/stretchr/testify v1.10.0 // indirect
+	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/syndtr/goleveldb v1.0.0 // indirect
 	github.com/tidwall/btree v1.6.0 // indirect
 	github.com/tidwall/buntdb v1.3.0 // indirect
-	github.com/tidwall/gjson v1.18.0 // indirect
+	github.com/tidwall/gjson v1.19.0 // indirect
 	github.com/tidwall/grect v0.1.4 // indirect
-	github.com/tidwall/match v1.1.1 // indirect
+	github.com/tidwall/match v1.2.0 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/rtred v0.1.2 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
@@ -173,14 +173,14 @@ require (
 	go.opentelemetry.io/otel/trace v1.26.0 // indirect
 	go.uber.org/goleak v1.3.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/crypto v0.31.0 // indirect
+	golang.org/x/crypto v0.50.0 // indirect
 	golang.org/x/exp v0.0.0-20240325151524-a685a6edb6d8 // indirect
-	golang.org/x/mod v0.22.0 // indirect
+	golang.org/x/mod v0.36.0 // indirect
 	golang.org/x/oauth2 v0.11.0 // indirect
-	golang.org/x/sys v0.30.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/sys v0.43.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
-	golang.org/x/tools v0.22.0 // indirect
+	golang.org/x/tools v0.44.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.35.1 // indirect
 	gopkg.in/djherbis/times.v1 v1.3.0 // indirect

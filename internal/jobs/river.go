@@ -10,6 +10,7 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivermigrate"
+	"github.com/riverqueue/river/rivertype"
 )
 
 const (
@@ -48,6 +49,7 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 	}
 
 	riverConfig := &river.Config{}
+	riverConfig.Hooks = []rivertype.Hook{&CorrelationInsertHook{}}
 	rw := river.NewWorkers()
 	if cfg.AddWorkers {
 		// special case: scan orchestrator
@@ -91,6 +93,10 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 			&AssessEmailSecurityWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},
 		)
 		riverConfig.Workers = rw
+		riverConfig.Middleware = []rivertype.Middleware{
+			&CorrelationMiddleware{},
+			&TimingMiddleware{Logger: cfg.Logger},
+		}
 		riverConfig.MaxAttempts = 5
 		riverConfig.Queues = map[string]river.QueueConfig{
 			river.QueueDefault: {MaxWorkers: cfg.WorkerCount},

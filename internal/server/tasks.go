@@ -6,6 +6,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielmichaels/gecko/internal/jobs"
 	"github.com/danielmichaels/gecko/internal/store"
+	"github.com/danielmichaels/gecko/internal/tracing"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -16,6 +17,7 @@ func (app *Server) scheduleDomainJobs(ctx context.Context, domain store.Domains)
 		// todo: trigger notification; inactive domains are not scanned
 		return nil
 	}
+	ctx = tracing.WithNewTraceID(ctx, false)
 	tx, err := app.PgxPool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
