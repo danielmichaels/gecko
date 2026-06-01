@@ -1,6 +1,10 @@
 package dto
 
 import (
+	"encoding/json"
+	"strconv"
+	"time"
+
 	"github.com/danielmichaels/gecko/internal/store"
 )
 
@@ -122,13 +126,34 @@ type AllRecords struct {
 	RRSIG      []RRSIGRecord  `json:"rrsig,omitempty"`
 }
 
-// RecordHistory represents a generic history entry for any DNS record
+// RecordHistory is one entry from the domain_observations change log, shaped for
+// the timeline/history API. Payload carries the type-specific snapshot.
 type RecordHistory struct {
-	Changes    any    `json:"changes"` // The specific record type data
-	ID         string `json:"id"`
-	RecordID   string `json:"record_id"`
-	ChangeType string `json:"change_type"` // created, updated, deleted
-	Timestamp  string `json:"timestamp"`
+	ID         string          `json:"id"`
+	EntityType string          `json:"entity_type"` // a_record, ...
+	EntityKey  string          `json:"entity_key"`  // natural key within the type
+	ChangeType string          `json:"change_type"` // created, updated, deleted
+	Payload    json.RawMessage `json:"payload"`
+	ScanID     string          `json:"scan_id,omitempty"`
+	ObservedAt string          `json:"observed_at"`
+}
+
+// ObservationToRecordHistory converts a stored observation row into its API shape.
+func ObservationToRecordHistory(o store.DomainObservations) RecordHistory {
+	rh := RecordHistory{
+		ID:         strconv.FormatInt(o.ID, 10),
+		EntityType: o.EntityType,
+		EntityKey:  o.EntityKey,
+		ChangeType: o.ChangeType,
+		Payload:    json.RawMessage(o.Payload),
+	}
+	if o.ScanID.Valid {
+		rh.ScanID = strconv.FormatInt(o.ScanID.Int64, 10)
+	}
+	if o.ObservedAt.Valid {
+		rh.ObservedAt = o.ObservedAt.Time.Format(time.RFC3339)
+	}
+	return rh
 }
 
 // ARecordToAPI converts store.ARecords to dto.ARecord

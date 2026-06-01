@@ -13,10 +13,12 @@ import (
 
 	"github.com/danielmichaels/gecko/internal/dnsclient"
 	"github.com/danielmichaels/gecko/internal/dnsrecords"
+	"github.com/danielmichaels/gecko/internal/observer"
 
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/miekg/dns"
 	"github.com/projectdiscovery/subfinder/v2/pkg/resolve"
 	"github.com/riverqueue/river"
 )
@@ -169,6 +171,39 @@ type ResolveDomainWorker struct {
 	PgxPool *pgxpool.Pool
 }
 
+// recordARecords syncs A records through the observation recorder inside a single
+// transaction, so the projection upsert/delete and its observations commit or
+// roll back together.
+func (w *ResolveDomainWorker) recordARecords(
+	ctx context.Context,
+	ident DomainJobArgs,
+	ips []string,
+	status dnsclient.ResolutionStatus,
+) (err error) {
+	tx, err := w.PgxPool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("begin A recorder transaction: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			if rbErr := tx.Rollback(ctx); rbErr != nil && rbErr != pgx.ErrTxClosed {
+				w.Logger.ErrorContext(ctx, "A recorder rollback", "error", rbErr)
+			}
+		}
+	}()
+	rec := observer.New(w.Store.WithTx(tx))
+	if err = rec.RecordA(ctx, observer.DomainIdentity{
+		TenantID:   ident.TenantID,
+		DomainID:   ident.DomainID,
+		DomainUID:  ident.DomainUID,
+		DomainName: ident.DomainName,
+		ScanID:     ident.ScanID,
+	}, ips, status.Authoritative()); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 // Work resolves the threaded domain's records and persists them to the live
 // projection tables. The domain identity (tenant/id/uid/name) arrives on the job
 // args, so the worker never rediscovers the domain by name and never creates it
@@ -184,11 +219,13 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 
 	result := dnsclient.SubdomainResult{Name: domainName}
 
+	// A records flow through the observation recorder below (projection + change
+	// log + authoritative-delete gating), so they are intentionally absent from
+	// this legacy upsert-only loop. Remaining types are migrated in Phase 3.
 	lookups := []struct {
 		field  *[]string
 		lookup func(string) ([]string, bool)
 	}{
-		{&result.A, dnsClient.LookupA},
 		{&result.AAAA, dnsClient.LookupAAAA},
 		{&result.CNAME, dnsClient.LookupCNAME},
 		{&result.MX, dnsClient.LookupMX},
@@ -209,12 +246,19 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 		}
 	}
 
+	// A records: resolve with a three-way status and sync through the observation
+	// recorder, which keeps the projection in step, appends the change log, and
+	// gates deletions on an authoritative result.
+	aIPs, aStatus := dnsClient.LookupWithStatus(domainName+".", dns.TypeA)
+	if err := w.recordARecords(ctx, job.Args.DomainJobArgs, aIPs, aStatus); err != nil {
+		return err
+	}
+
 	records := []struct {
 		parser  func(string, string) (interface{}, error)
 		name    string
 		entries []string
 	}{
-		{func(d, r string) (interface{}, error) { return dnsrecords.ParseA(d, r) }, "A", result.A},
 		{
 			func(d, r string) (interface{}, error) { return dnsrecords.ParseAAAA(d, r) },
 			"AAAA",
@@ -277,16 +321,6 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 			}
 			w.Logger.InfoContext(ctx, "parsed record", "parsed", parsed, "type", r.name)
 			switch r.name {
-			case "A":
-				a, err := w.Store.RecordsCreateA(ctx, store.RecordsCreateAParams{
-					DomainID:    domainID,
-					Ipv4Address: entry,
-				})
-				if err != nil {
-					return err
-				}
-				w.Logger.DebugContext(ctx, "found A record",
-					"ip", a.Ipv4Address, "uid", a.Uid, "domain", domainName)
 			case "AAAA":
 				aaaa, err := w.Store.RecordsCreateAAAA(ctx, store.RecordsCreateAAAAParams{
 					DomainID:    domainID,

@@ -168,4 +168,15 @@ func (app *Server) registerEndpoints(api huma.API) {
 		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
 		Middlewares:   huma.Middlewares{ApiKeyAuth(api)},
 	}, app.handleRecordsList)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "list_record_history",
+		Method:        http.MethodGet,
+		Path:          "/api/domains/{id}/records/history",
+		Summary:       "List a domain's DNS record change timeline",
+		Tags:          []string{"Records"},
+		DefaultStatus: http.StatusOK,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{ApiKeyAuth(api)},
+	}, app.handleRecordsHistory)
 }
