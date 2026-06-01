@@ -745,6 +745,100 @@ func TestDNSClient_LookupNonExistentRecord(t *testing.T) {
 	}
 }
 
+func TestResolutionStatus_Authoritative(t *testing.T) {
+	// Authoritative means the resolver gave a definitive answer (data or
+	// confirmed absence) and it is therefore safe to act on deletions.
+	// Indeterminate must NOT be authoritative, or the recorder would emit
+	// phantom deletions on transient SERVFAIL/timeout.
+	tests := []struct {
+		status        ResolutionStatus
+		authoritative bool
+	}{
+		{ResolutionData, true},
+		{ResolutionEmpty, true},
+		{ResolutionIndeterminate, false},
+	}
+	for _, tt := range tests {
+		if got := tt.status.Authoritative(); got != tt.authoritative {
+			t.Errorf("%v.Authoritative() = %v, want %v", tt.status, got, tt.authoritative)
+		}
+	}
+}
+
+func TestDNSClient_LookupWithStatus(t *testing.T) {
+	mockServer, err := testhelpers.NewMockDNSServer()
+	if err != nil {
+		t.Fatalf("Failed to create mock DNS server: %v", err)
+	}
+	if err := mockServer.Start(); err != nil {
+		t.Fatalf("Failed to start mock DNS server: %v", err)
+	}
+	defer func() {
+		if err := mockServer.Stop(); err != nil {
+			t.Fatalf("Failed to stop mock DNS server: %v", err)
+		}
+	}()
+
+	client := New(
+		WithServers([]string{mockServer.ListenAddr}),
+		WithLogger(testhelpers.TestLogger),
+	)
+
+	if err := mockServer.AddRecord("data.example.com", dns.TypeA, 3600, "192.0.2.1"); err != nil {
+		t.Fatalf("Failed to add record: %v", err)
+	}
+	mockServer.SetRcode("broken.example.com", dns.RcodeServerFailure)
+
+	t.Run("authoritative data", func(t *testing.T) {
+		recs, status := client.LookupWithStatus("data.example.com", dns.TypeA)
+		if status != ResolutionData {
+			t.Errorf("status = %v, want ResolutionData", status)
+		}
+		if len(recs) == 0 {
+			t.Errorf("expected records, got none")
+		}
+	})
+
+	t.Run("authoritative empty via NXDOMAIN", func(t *testing.T) {
+		recs, status := client.LookupWithStatus("absent.example.com", dns.TypeA)
+		if status != ResolutionEmpty {
+			t.Errorf("status = %v, want ResolutionEmpty", status)
+		}
+		if len(recs) != 0 {
+			t.Errorf("expected no records, got %v", recs)
+		}
+	})
+
+	t.Run("authoritative empty via NODATA", func(t *testing.T) {
+		// Name exists (has an A record) but no TXT: NOERROR with no answers.
+		recs, status := client.LookupWithStatus("data.example.com", dns.TypeTXT)
+		if status != ResolutionEmpty {
+			t.Errorf("status = %v, want ResolutionEmpty (NODATA)", status)
+		}
+		if len(recs) != 0 {
+			t.Errorf("expected no records, got %v", recs)
+		}
+	})
+
+	t.Run("indeterminate via SERVFAIL", func(t *testing.T) {
+		recs, status := client.LookupWithStatus("broken.example.com", dns.TypeA)
+		if status != ResolutionIndeterminate {
+			t.Errorf("status = %v, want ResolutionIndeterminate", status)
+		}
+		if len(recs) != 0 {
+			t.Errorf("expected no records, got %v", recs)
+		}
+	})
+
+	t.Run("backward-compatible bool: SERVFAIL is not ok", func(t *testing.T) {
+		// The legacy ([]string, bool) contract must still report failure for
+		// SERVFAIL so existing callers don't treat it as an empty set.
+		if _, ok := client.LookupA("broken.example.com"); ok {
+			t.Errorf("LookupA on SERVFAIL returned ok=true, want false")
+		}
+	})
+}
+
 func TestDNSClient_GetParentZone(t *testing.T) {
 	client := New()
 
