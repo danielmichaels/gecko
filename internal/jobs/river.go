@@ -52,13 +52,11 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 	riverConfig.Hooks = []rivertype.Hook{&CorrelationInsertHook{}}
 	rw := river.NewWorkers()
 	if cfg.AddWorkers {
-		// special case: scan orchestrator
+		// scan workers
 		river.AddWorker(
 			rw,
-			&ScanNewDomainWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},
+			&EnumerateSubdomainWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},
 		)
-		// scan workers
-		river.AddWorker(rw, &EnumerateSubdomainWorker{Logger: *cfg.Logger, PgxPool: cfg.PgxPool})
 		river.AddWorker(
 			rw,
 			&ResolveDomainWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},

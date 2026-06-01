@@ -5,7 +5,9 @@ import (
 	"errors"
 
 	"github.com/danielmichaels/gecko/internal/dnsrecords"
+	"github.com/danielmichaels/gecko/internal/jobs"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielmichaels/gecko/internal/dto"
@@ -186,30 +188,56 @@ func (app *Server) handleDomainUpdate(
 	if i.Body.DomainType != "" {
 		domainType = store.DomainType(i.Body.DomainType)
 	}
-	params := store.DomainsUpdateByIDParams{
+	tx, err := app.PgxPool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to begin transaction", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback(ctx)
+		}
+	}()
+	st := app.Db.WithTx(tx)
+
+	domain, err := st.DomainsUpdateByID(ctx, store.DomainsUpdateByIDParams{
 		Uid:        i.ID,
 		Status:     status,
 		DomainType: domainType,
 		Source:     domainSource,
-	}
-	domain, err := app.Db.DomainsUpdateByID(ctx, params)
+	})
 	if err != nil {
 		app.Log.Error("failed to update domain", "error", err)
-		return nil, huma.Error500InternalServerError("failed to create domain", err)
+		return nil, huma.Error500InternalServerError("failed to update domain", err)
 	}
+
+	// PUT is an explicit user action, like POST: Force a rescan (bypassing recency)
+	// but still honour the active-status gate inside EnqueueDomainScan.
+	if _, err := app.scheduleUserDomainScan(ctx, tx, st, jobs.DomainScanTarget{
+		TenantID:   domain.TenantID.Int32,
+		DomainID:   domain.ID,
+		DomainUID:  domain.Uid,
+		DomainName: domain.Name,
+		Status:     domain.Status,
+	}, domainSource); err != nil {
+		return nil, huma.Error500InternalServerError("failed to schedule scan", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, huma.Error500InternalServerError("failed to commit transaction", err)
+	}
+	committed = true
+
 	domainObj := store.Domains{
 		ID:         domain.ID,
 		Uid:        domain.Uid,
-		TenantID:   pgtype.Int4{Int32: 1, Valid: true},
+		TenantID:   domain.TenantID,
 		Name:       domain.Name,
 		DomainType: domain.DomainType,
 		Source:     domain.Source,
 		Status:     domain.Status,
 		CreatedAt:  domain.CreatedAt,
 		UpdatedAt:  domain.UpdatedAt,
-	}
-	if err := app.scheduleDomainJobs(ctx, domainObj); err != nil {
-		return nil, huma.Error500InternalServerError("failed to commit transaction", err)
 	}
 	return &DomainOutput{Body: dto.DomainToAPI(domainObj)}, nil
 }
@@ -275,13 +303,11 @@ func (app *Server) handleDomainCreate(
 	ctx context.Context,
 	i *DomainCreateInput,
 ) (*DomainOutput, error) {
-	_, err := app.Db.DomainsGetByName(ctx, store.DomainsGetByNameParams{
-		TenantID: pgtype.Int4{Int32: 1, Valid: true}, // todo: get from context
-		Name:     i.Body.Domain,
-	})
-	if err == nil {
-		return nil, huma.Error409Conflict("domain already exists")
-	}
+	// Canonicalize before both the insert and (implicitly) the uniqueness check
+	// so case/trailing-dot variants can't bypass the 409 or split a timeline.
+	name := dnsrecords.CanonicalizeDomain(i.Body.Domain)
+	tenantID := int32(1) // todo: get from context
+
 	status := store.DomainStatusActive
 	if i.Body.Status != "" {
 		status = store.DomainStatus(i.Body.Status)
@@ -292,32 +318,67 @@ func (app *Server) handleDomainCreate(
 	}
 	domainType := store.DomainTypeSubdomain
 	if i.Body.DomainType != "" {
-		dt, _ := dnsrecords.GetDomainType(i.Body.Domain)
+		dt, _ := dnsrecords.GetDomainType(name)
 		domainType = store.DomainType(dt)
 	}
-	domain, err := app.Db.DomainsCreate(ctx, store.DomainsCreateParams{
-		Name:       i.Body.Domain,
-		TenantID:   pgtype.Int4{Int32: int32(1), Valid: true}, // todo: get from context
+
+	// One transaction covers the domain write AND the scan enqueue: if scheduling
+	// fails, the domain insert rolls back rather than leaving a domain with no scan.
+	tx, err := app.PgxPool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to begin transaction", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback(ctx)
+		}
+	}()
+	st := app.Db.WithTx(tx)
+
+	// Insert-only (vs the enumeration upsert): a duplicate (tenant_id, name) raises
+	// a unique-violation we map to 409. This is TOCTOU-safe against two concurrent
+	// duplicate POSTs, unlike a separate GetByName check.
+	domain, err := st.DomainsInsert(ctx, store.DomainsInsertParams{
+		TenantID:   pgtype.Int4{Int32: tenantID, Valid: true},
+		Name:       name,
 		DomainType: domainType,
 		Source:     domainSource,
 		Status:     status,
 	})
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique_violation
+			return nil, huma.Error409Conflict("domain already exists")
+		}
 		return nil, huma.Error500InternalServerError("failed to create domain", err)
 	}
+
+	if _, err := app.scheduleUserDomainScan(ctx, tx, st, jobs.DomainScanTarget{
+		TenantID:   tenantID,
+		DomainID:   domain.ID,
+		DomainUID:  domain.Uid,
+		DomainName: domain.Name,
+		Status:     domain.Status,
+	}, domainSource); err != nil {
+		return nil, huma.Error500InternalServerError("failed to schedule scan", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, huma.Error500InternalServerError("failed to commit transaction", err)
+	}
+	committed = true
+
 	domainObj := store.Domains{
 		ID:         domain.ID,
 		Uid:        domain.Uid,
-		TenantID:   pgtype.Int4{Int32: 1, Valid: true},
+		TenantID:   pgtype.Int4{Int32: tenantID, Valid: true},
 		Name:       domain.Name,
 		DomainType: domain.DomainType,
 		Source:     domain.Source,
 		Status:     domain.Status,
 		CreatedAt:  domain.CreatedAt,
 		UpdatedAt:  domain.UpdatedAt,
-	}
-	if err := app.scheduleDomainJobs(ctx, domainObj); err != nil {
-		return nil, huma.Error500InternalServerError("failed to commit transaction", err)
 	}
 	return &DomainOutput{Body: dto.DomainToAPI(domainObj)}, nil
 }

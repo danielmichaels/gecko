@@ -17,7 +17,7 @@ import (
 )
 
 type ScanCertificateArgs struct {
-	Domain string `json:"domain"`
+	DomainJobArgs
 }
 
 func (ScanCertificateArgs) InsertOpts() river.InsertOpts {
@@ -42,18 +42,18 @@ func (w *ScanCertificateWorker) Work(
 	start := time.Now()
 
 	s := scanner.NewScanner(scanner.Config{Logger: &w.Logger, Store: w.Store})
-	result := s.ScanCertificate(job.Args.Domain)
+	result := s.ScanCertificate(job.Args.DomainName)
 	w.Logger.InfoContext(ctx,
 		"certificate scan complete",
-		"domain", job.Args.Domain,
+		"domain", job.Args.DomainName,
 		"duration", time.Since(start),
 	)
-	fmt.Printf("Certificate scan complete for: %q\n%+v\n", job.Args.Domain, result)
+	fmt.Printf("Certificate scan complete for: %q\n%+v\n", job.Args.DomainName, result)
 	return nil
 }
 
 type ScanCNAMEArgs struct {
-	Domain string `json:"domain"`
+	DomainJobArgs
 }
 
 func (ScanCNAMEArgs) InsertOpts() river.InsertOpts {
@@ -75,17 +75,17 @@ func (w *ScanCNAMEWorker) Work(ctx context.Context, job *river.Job[ScanCNAMEArgs
 	start := time.Now()
 
 	s := scanner.NewScanner(scanner.Config{Logger: &w.Logger, Store: w.Store})
-	result := s.ScanCNAME(job.Args.Domain)
+	result := s.ScanCNAME(job.Args.DomainName)
 
 	w.Logger.InfoContext(ctx,
 		"cname scan complete",
-		"domain", job.Args.Domain,
+		"domain", job.Args.DomainName,
 		"duration", time.Since(start),
 		"result", result, // remove, debugging only pre-alpha
 	)
 	rc := river.ClientFromContext[pgx.Tx](ctx)
 	// todo: This isn't done inside a tx so we can't InsertTx easily.
-	_, err := rc.Insert(ctx, &AssessCNAMEDanglingArgs{Domain: job.Args.Domain}, nil)
+	_, err := rc.Insert(ctx, &AssessCNAMEDanglingArgs{DomainJobArgs: job.Args.DomainJobArgs}, nil)
 	if err != nil {
 		return err
 	}
@@ -93,7 +93,7 @@ func (w *ScanCNAMEWorker) Work(ctx context.Context, job *river.Job[ScanCNAMEArgs
 }
 
 type ScanDNSSECArgs struct {
-	Domain string `json:"domain"`
+	DomainJobArgs
 }
 
 func (ScanDNSSECArgs) InsertOpts() river.InsertOpts {
@@ -115,11 +115,11 @@ func (w *ScanDNSSECWorker) Work(ctx context.Context, job *river.Job[ScanDNSSECAr
 	start := time.Now()
 
 	s := scanner.NewScanner(scanner.Config{Logger: &w.Logger, Store: w.Store})
-	result := s.ScanDNSSEC(job.Args.Domain)
+	result := s.ScanDNSSEC(job.Args.DomainName)
 
 	w.Logger.InfoContext(ctx,
 		"dnssec scan complete",
-		"domain", job.Args.Domain,
+		"domain", job.Args.DomainName,
 		"duration", time.Since(start),
 		"status", result.Status,
 		"has_rrsig", result.HasRRSIG,
@@ -131,7 +131,7 @@ func (w *ScanDNSSECWorker) Work(ctx context.Context, job *river.Job[ScanDNSSECAr
 }
 
 type ScanZoneTransferArgs struct {
-	Domain string `json:"domain"`
+	DomainJobArgs
 }
 
 func (ScanZoneTransferArgs) InsertOpts() river.InsertOpts {
@@ -156,14 +156,13 @@ func (w *ScanZoneTransferWorker) Work(
 	start := time.Now()
 
 	s := scanner.NewScanner(scanner.Config{Logger: &w.Logger, Store: w.Store})
-	dUID, err := s.ScanZoneTransfer(ctx, job.Args.Domain)
-	if err != nil {
+	if _, err := s.ScanZoneTransfer(ctx, job.Args.DomainName); err != nil {
 		return err
 	}
 
 	w.Logger.InfoContext(ctx,
 		"zone transfer scan complete",
-		"domain", job.Args.Domain,
+		"domain", job.Args.DomainName,
 		"duration", time.Since(start),
 	)
 
@@ -181,63 +180,9 @@ func (w *ScanZoneTransferWorker) Work(
 		}
 	}(tx, ctx)
 	rc := river.ClientFromContext[pgx.Tx](ctx)
-	_, err = rc.InsertTx(ctx, tx, AssessZoneTransferArgs{
-		DomainUID: dUID,
-	}, nil)
+	_, err = rc.InsertTx(ctx, tx, AssessZoneTransferArgs{DomainJobArgs: job.Args.DomainJobArgs}, nil)
 	if err != nil {
-		w.Logger.Error("failed to queue resolver job", "domain", dUID, "error", err)
+		w.Logger.Error("failed to queue resolver job", "domain", job.Args.DomainUID, "error", err)
 	}
-	err = tx.Commit(ctx)
-	return nil
-}
-
-type ScanNewDomainArgs struct {
-	Domain string `json:"domain"`
-}
-
-func (ScanNewDomainArgs) Kind() string { return "new_domain_scanner" }
-func (ScanNewDomainArgs) InsertOpts() river.InsertOpts {
-	return river.InsertOpts{
-		Queue: queueScanner,
-	}
-}
-
-type ScanNewDomainWorker struct {
-	river.WorkerDefaults[ScanNewDomainArgs]
-	Logger  slog.Logger
-	Store   *store.Queries
-	PgxPool *pgxpool.Pool
-}
-
-func (w *ScanNewDomainWorker) Work(ctx context.Context, job *river.Job[ScanNewDomainArgs]) error {
-	tx, err := w.PgxPool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return err
-	}
-	defer func(tx pgx.Tx, ctx context.Context) {
-		err := tx.Rollback(ctx)
-		if err != nil {
-			w.Logger.ErrorContext(ctx, "failed to rollback tx", "err", err)
-		}
-	}(tx, ctx)
-
-	rc := river.ClientFromContext[pgx.Tx](ctx)
-
-	if _, err := rc.InsertTx(ctx, tx, &ResolveDomainArgs{Domain: job.Args.Domain}, nil); err != nil {
-		return err
-	}
-	if _, err := rc.InsertTx(ctx, tx, &ScanCertificateArgs{Domain: job.Args.Domain}, nil); err != nil {
-		return err
-	}
-	if _, err := rc.InsertTx(ctx, tx, &ScanCNAMEArgs{Domain: job.Args.Domain}, nil); err != nil {
-		return err
-	}
-	if _, err := rc.InsertTx(ctx, tx, &ScanDNSSECArgs{Domain: job.Args.Domain}, nil); err != nil {
-		return err
-	}
-	if _, err := rc.InsertTx(ctx, tx, &ScanZoneTransferArgs{Domain: job.Args.Domain}, nil); err != nil {
-		return err
-	}
-
 	return tx.Commit(ctx)
 }

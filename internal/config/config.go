@@ -35,6 +35,11 @@ type appConf struct {
 
 	EnumerationConcurrencyLimit int `env:"ENUMERATION_CONCURRENCY_LIMIT,default=100"`
 
+	// ScanRecencyWindow bounds how recently a discovered domain must have been
+	// scanned to be skipped by the dedup guard. Explicit user actions (Force)
+	// bypass this window.
+	ScanRecencyWindow time.Duration `env:"SCAN_RECENCY_WINDOW,default=1h"`
+
 	LogLevel           slog.Level `env:"LOG_LEVEL,default=info"`
 	LogJson            bool       `env:"LOG_JSON,default=false"`
 	LogConcise         bool       `env:"LOG_CONCISE,default=false"`

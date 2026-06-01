@@ -5,6 +5,12 @@ INSERT INTO scans (tenant_id, domain_id, domain_uid, domain_name, parent_scan_id
 VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, uid, tenant_id, domain_id, domain_uid, domain_name, parent_scan_id, source, started_at;
 
+-- name: AcquireDomainScanLock :exec
+-- Transaction-scoped advisory lock keyed on domain_id. Serializes concurrent
+-- scan enqueues for the same domain so the recency-check-then-enqueue is atomic
+-- (auto-released at commit/rollback; no phantom-row gap like FOR UPDATE).
+SELECT pg_advisory_xact_lock($1::bigint);
+
 -- name: ScansGetRecentByTenantDomainName :one
 -- Most recent scan for a (tenant, domain name). Backs the recency guard that
 -- dedupes discovered scans. Keyed on (tenant_id, domain_name), not domain_id,

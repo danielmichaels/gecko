@@ -15,7 +15,7 @@ import (
 )
 
 type AssessCNAMEDanglingArgs struct {
-	Domain string `json:"domain"`
+	DomainJobArgs
 }
 
 func (AssessCNAMEDanglingArgs) InsertOpts() river.InsertOpts {
@@ -37,7 +37,7 @@ func (w *AssessCNAMEDanglingWorker) Work(
 	job *river.Job[AssessCNAMEDanglingArgs],
 ) error {
 	ctx = tracing.WithNewTraceID(ctx, true)
-	w.Logger.InfoContext(ctx, "assess CNAME started", "domain", job.Args.Domain)
+	w.Logger.InfoContext(ctx, "assess CNAME started", "domain", job.Args.DomainName)
 	_ = assessor.NewAssessor(assessor.Config{
 		Logger: &w.Logger,
 		Store:  w.Store,
@@ -53,7 +53,7 @@ func (w *AssessCNAMEDanglingWorker) Work(
 }
 
 type AssessZoneTransferArgs struct {
-	DomainUID string `json:"domain_uid"`
+	DomainJobArgs
 }
 
 func (AssessZoneTransferArgs) InsertOpts() river.InsertOpts {
@@ -98,8 +98,7 @@ func (w *AssessZoneTransferWorker) Work(
 }
 
 type AssessEmailSecurityArgs struct {
-	DomainUID string `json:"domain_uid"`
-	DomainID  int    `json:"domain_id"`
+	DomainJobArgs
 }
 
 func (AssessEmailSecurityArgs) InsertOpts() river.InsertOpts {
@@ -127,7 +126,7 @@ func (w *AssessEmailSecurityWorker) Work(
 		Logger: &w.Logger,
 		Store:  w.Store,
 	})
-	err := a.AssessEmailSecurity(ctx, job.Args.DomainID)
+	err := a.AssessEmailSecurity(ctx, int(job.Args.DomainID))
 	if err != nil {
 		return err
 	}

@@ -89,6 +89,22 @@ func runMigrations(connStr string) error {
 	}
 	defer db.Close()
 
+	// sql.Open is lazy and the container's forwarded port can briefly refuse
+	// connections after the readiness log fires (a Docker Desktop port-forward
+	// gap). Ping until it accepts so goose's first query doesn't fail the race.
+	pingCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	for {
+		if err := db.PingContext(pingCtx); err == nil {
+			break
+		}
+		select {
+		case <-pingCtx.Done():
+			return fmt.Errorf("database not ready for migrations: %w", pingCtx.Err())
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
+
 	// Set up goose with our embedded migrations
 	goose.SetBaseFS(assets.EmbeddedAssets)
 	if err := goose.SetDialect("postgres"); err != nil {

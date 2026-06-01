@@ -11,6 +11,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const acquireDomainScanLock = `-- name: AcquireDomainScanLock :exec
+SELECT pg_advisory_xact_lock($1::bigint)
+`
+
+// Transaction-scoped advisory lock keyed on domain_id. Serializes concurrent
+// scan enqueues for the same domain so the recency-check-then-enqueue is atomic
+// (auto-released at commit/rollback; no phantom-row gap like FOR UPDATE).
+func (q *Queries) AcquireDomainScanLock(ctx context.Context, dollar_1 int64) error {
+	_, err := q.db.Exec(ctx, acquireDomainScanLock, dollar_1)
+	return err
+}
+
 const observationsCreate = `-- name: ObservationsCreate :one
 INSERT INTO domain_observations (tenant_id, domain_id, domain_uid, domain_name, scan_id, entity_type, entity_key,
                                  change_type, payload)
