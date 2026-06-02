@@ -23,7 +23,6 @@ func (app *Server) scheduleUserDomainScan(
 ) (int64, error) {
 	return jobs.EnqueueDomainScan(ctx, app.RC, tx, st, target, jobs.DomainScanOptions{
 		EnumerateSubdomains: true,
-		Depth:               0,
 		Source:              source,
 		Force:               true,
 		RecencyWindow:       app.Conf.AppConf.ScanRecencyWindow,

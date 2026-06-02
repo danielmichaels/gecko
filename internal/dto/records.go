@@ -134,49 +134,48 @@ type RecordHistory struct {
 	EntityKey  string          `json:"entity_key"`  // natural key within the type
 	ChangeType string          `json:"change_type"` // created, updated, deleted
 	Payload    json.RawMessage `json:"payload"`
-	ScanID     string          `json:"scan_id,omitempty"`
+	ScanUID    string          `json:"scan_uid,omitempty"`
 	ObservedAt string          `json:"observed_at"`
 }
 
 // ScanDiff is one scan in a domain's timeline together with the changes observed
 // during it — the scan-diff view the per-table *_history model couldn't serve.
+// Scans are identified by their opaque uid; the numeric id stays internal.
 type ScanDiff struct {
-	ScanID       string          `json:"scan_id"`
-	ScanUID      string          `json:"scan_uid"`
-	Source       string          `json:"source"`
-	StartedAt    string          `json:"started_at"`
-	ParentScanID string          `json:"parent_scan_id,omitempty"`
-	Changes      []RecordHistory `json:"changes"`
+	ScanUID       string          `json:"scan_uid"`
+	Source        string          `json:"source"`
+	StartedAt     string          `json:"started_at"`
+	ParentScanUID string          `json:"parent_scan_uid,omitempty"`
+	Changes       []RecordHistory `json:"changes"`
 }
 
-// ScanToScanDiff converts a stored scan row plus its observations into API shape.
-func ScanToScanDiff(s store.Scans, changes []RecordHistory) ScanDiff {
-	sd := ScanDiff{
-		ScanID:  strconv.FormatInt(s.ID, 10),
-		ScanUID: s.Uid,
-		Source:  string(s.Source),
-		Changes: changes,
-	}
-	if s.ParentScanID.Valid {
-		sd.ParentScanID = strconv.FormatInt(s.ParentScanID.Int64, 10)
-	}
-	if s.StartedAt.Valid {
-		sd.StartedAt = s.StartedAt.Time.Format(time.RFC3339)
-	}
-	return sd
-}
-
-// ObservationToRecordHistory converts a stored observation row into its API shape.
-func ObservationToRecordHistory(o store.DomainObservations) RecordHistory {
+// TimelineRowToRecordHistory converts one joined timeline row into API shape,
+// carrying the scan uid resolved by the join.
+func TimelineRowToRecordHistory(o store.ObservationsListTimelineByTenantDomainNameRow) RecordHistory {
 	rh := RecordHistory{
 		ID:         strconv.FormatInt(o.ID, 10),
 		EntityType: o.EntityType,
 		EntityKey:  o.EntityKey,
 		ChangeType: o.ChangeType,
 		Payload:    json.RawMessage(o.Payload),
+		ScanUID:    o.ScanUid,
 	}
-	if o.ScanID.Valid {
-		rh.ScanID = strconv.FormatInt(o.ScanID.Int64, 10)
+	if o.ObservedAt.Valid {
+		rh.ObservedAt = o.ObservedAt.Time.Format(time.RFC3339)
+	}
+	return rh
+}
+
+// ObsWithScanRowToRecordHistory converts one flat history row (observation +
+// joined scan uid) into API shape.
+func ObsWithScanRowToRecordHistory(o store.ObservationsListWithScanUIDByTenantDomainNameRow) RecordHistory {
+	rh := RecordHistory{
+		ID:         strconv.FormatInt(o.ID, 10),
+		EntityType: o.EntityType,
+		EntityKey:  o.EntityKey,
+		ChangeType: o.ChangeType,
+		Payload:    json.RawMessage(o.Payload),
+		ScanUID:    o.ScanUid.String,
 	}
 	if o.ObservedAt.Valid {
 		rh.ObservedAt = o.ObservedAt.Time.Format(time.RFC3339)

@@ -85,6 +85,9 @@ func TestRecordsHistoryHandler_PreservesTimelineAcrossDeleteReadd(t *testing.T) 
 	if h := out.Body.History[0]; h.ChangeType != "created" || h.EntityKey != "1.1.1.1" {
 		t.Errorf("history[0] = %+v, want created 1.1.1.1", h)
 	}
+	if h := out.Body.History[0]; h.ScanUID == "" {
+		t.Errorf("history[0] should carry its scan uid, got empty")
+	}
 
 	// Delete the domain. Observations must survive with domain_id NULL.
 	if _, err := pc.Queries.DomainsDeleteByID(ctx, d1.Uid); err != nil {

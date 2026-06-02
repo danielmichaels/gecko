@@ -72,6 +72,71 @@ func (q *Queries) ObservationsCreate(ctx context.Context, arg ObservationsCreate
 	return i, err
 }
 
+const observationsCreateIfChanged = `-- name: ObservationsCreateIfChanged :one
+WITH latest AS (
+    SELECT payload
+    FROM domain_observations
+    WHERE tenant_id = $1
+      AND domain_name = $2
+      AND entity_type = $3
+      AND entity_key = $4
+    ORDER BY observed_at DESC, id DESC
+    LIMIT 1
+)
+INSERT INTO domain_observations (tenant_id, domain_id, domain_uid, domain_name, scan_id,
+                                 entity_type, entity_key, change_type, payload)
+SELECT $1, $5, $6, $2, $7, $3, $4,
+       CASE WHEN NOT EXISTS (SELECT 1 FROM latest) THEN 'created' ELSE 'updated' END,
+       $8::jsonb
+WHERE NOT EXISTS (SELECT 1 FROM latest WHERE latest.payload = $8::jsonb)
+RETURNING id, tenant_id, domain_id, domain_uid, domain_name, scan_id, entity_type, entity_key, change_type, payload, observed_at
+`
+
+type ObservationsCreateIfChangedParams struct {
+	TenantID   int32       `json:"tenant_id"`
+	DomainName string      `json:"domain_name"`
+	EntityType string      `json:"entity_type"`
+	EntityKey  string      `json:"entity_key"`
+	DomainID   pgtype.Int4 `json:"domain_id"`
+	DomainUid  string      `json:"domain_uid"`
+	ScanID     pgtype.Int8 `json:"scan_id"`
+	Payload    []byte      `json:"payload"`
+}
+
+// Append one change to the observation log, but only when the payload differs
+// from the most-recent prior observation for the same entity. Unchanged
+// re-observations insert nothing (the query returns no rows -> pgx.ErrNoRows,
+// which the caller treats as "suppressed"). change_type is 'created' on first
+// sighting, 'updated' otherwise. JSONB equality is value-level, so it is robust
+// to key ordering between the stored payload and the new one.
+func (q *Queries) ObservationsCreateIfChanged(ctx context.Context, arg ObservationsCreateIfChangedParams) (DomainObservations, error) {
+	row := q.db.QueryRow(ctx, observationsCreateIfChanged,
+		arg.TenantID,
+		arg.DomainName,
+		arg.EntityType,
+		arg.EntityKey,
+		arg.DomainID,
+		arg.DomainUid,
+		arg.ScanID,
+		arg.Payload,
+	)
+	var i DomainObservations
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.DomainID,
+		&i.DomainUid,
+		&i.DomainName,
+		&i.ScanID,
+		&i.EntityType,
+		&i.EntityKey,
+		&i.ChangeType,
+		&i.Payload,
+		&i.ObservedAt,
+	)
+	return i, err
+}
+
 const observationsListByScan = `-- name: ObservationsListByScan :many
 SELECT id, tenant_id, domain_id, domain_uid, domain_name, scan_id, entity_type, entity_key, change_type, payload, observed_at
 FROM domain_observations
@@ -148,6 +213,151 @@ func (q *Queries) ObservationsListByTenantDomainName(ctx context.Context, arg Ob
 			&i.ChangeType,
 			&i.Payload,
 			&i.ObservedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const observationsListTimelineByTenantDomainName = `-- name: ObservationsListTimelineByTenantDomainName :many
+SELECT o.id, o.tenant_id, o.domain_id, o.domain_uid, o.domain_name, o.scan_id,
+       o.entity_type, o.entity_key, o.change_type, o.payload, o.observed_at,
+       s.uid        AS scan_uid,
+       s.source     AS scan_source,
+       s.started_at AS scan_started_at,
+       p.uid        AS parent_scan_uid
+FROM domain_observations o
+         JOIN scans s ON s.id = o.scan_id
+         LEFT JOIN scans p ON p.id = s.parent_scan_id
+WHERE o.tenant_id = $1
+  AND o.domain_name = $2
+ORDER BY s.started_at DESC, s.id DESC, o.id ASC
+`
+
+type ObservationsListTimelineByTenantDomainNameParams struct {
+	TenantID   int32  `json:"tenant_id"`
+	DomainName string `json:"domain_name"`
+}
+
+type ObservationsListTimelineByTenantDomainNameRow struct {
+	ID            int64              `json:"id"`
+	TenantID      int32              `json:"tenant_id"`
+	DomainID      pgtype.Int4        `json:"domain_id"`
+	DomainUid     string             `json:"domain_uid"`
+	DomainName    string             `json:"domain_name"`
+	ScanID        pgtype.Int8        `json:"scan_id"`
+	EntityType    string             `json:"entity_type"`
+	EntityKey     string             `json:"entity_key"`
+	ChangeType    string             `json:"change_type"`
+	Payload       []byte             `json:"payload"`
+	ObservedAt    pgtype.Timestamptz `json:"observed_at"`
+	ScanUid       string             `json:"scan_uid"`
+	ScanSource    DomainSource       `json:"scan_source"`
+	ScanStartedAt pgtype.Timestamptz `json:"scan_started_at"`
+	ParentScanUid pgtype.Text        `json:"parent_scan_uid"`
+}
+
+// One-shot timeline: every observation for a (tenant, domain name) joined to its
+// scan (uid, source, started_at) and the scan's parent uid. The INNER JOIN to
+// scans means scans that recorded no changes never appear — the timeline is a
+// pure change history. Ordered newest-scan-first; callers group rows by scan uid.
+func (q *Queries) ObservationsListTimelineByTenantDomainName(ctx context.Context, arg ObservationsListTimelineByTenantDomainNameParams) ([]ObservationsListTimelineByTenantDomainNameRow, error) {
+	rows, err := q.db.Query(ctx, observationsListTimelineByTenantDomainName, arg.TenantID, arg.DomainName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ObservationsListTimelineByTenantDomainNameRow{}
+	for rows.Next() {
+		var i ObservationsListTimelineByTenantDomainNameRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.DomainID,
+			&i.DomainUid,
+			&i.DomainName,
+			&i.ScanID,
+			&i.EntityType,
+			&i.EntityKey,
+			&i.ChangeType,
+			&i.Payload,
+			&i.ObservedAt,
+			&i.ScanUid,
+			&i.ScanSource,
+			&i.ScanStartedAt,
+			&i.ParentScanUid,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const observationsListWithScanUIDByTenantDomainName = `-- name: ObservationsListWithScanUIDByTenantDomainName :many
+SELECT o.id, o.tenant_id, o.domain_id, o.domain_uid, o.domain_name, o.scan_id,
+       o.entity_type, o.entity_key, o.change_type, o.payload, o.observed_at,
+       s.uid AS scan_uid
+FROM domain_observations o
+         LEFT JOIN scans s ON s.id = o.scan_id
+WHERE o.tenant_id = $1
+  AND o.domain_name = $2
+ORDER BY o.observed_at DESC
+`
+
+type ObservationsListWithScanUIDByTenantDomainNameParams struct {
+	TenantID   int32  `json:"tenant_id"`
+	DomainName string `json:"domain_name"`
+}
+
+type ObservationsListWithScanUIDByTenantDomainNameRow struct {
+	ID         int64              `json:"id"`
+	TenantID   int32              `json:"tenant_id"`
+	DomainID   pgtype.Int4        `json:"domain_id"`
+	DomainUid  string             `json:"domain_uid"`
+	DomainName string             `json:"domain_name"`
+	ScanID     pgtype.Int8        `json:"scan_id"`
+	EntityType string             `json:"entity_type"`
+	EntityKey  string             `json:"entity_key"`
+	ChangeType string             `json:"change_type"`
+	Payload    []byte             `json:"payload"`
+	ObservedAt pgtype.Timestamptz `json:"observed_at"`
+	ScanUid    pgtype.Text        `json:"scan_uid"`
+}
+
+// Flat timeline for a (tenant, domain name) with each observation's scan uid
+// joined in, so the records-history API exposes scan_uid (never the numeric id)
+// without an N+1. LEFT JOIN keeps observations whose scan was detached (NULL).
+func (q *Queries) ObservationsListWithScanUIDByTenantDomainName(ctx context.Context, arg ObservationsListWithScanUIDByTenantDomainNameParams) ([]ObservationsListWithScanUIDByTenantDomainNameRow, error) {
+	rows, err := q.db.Query(ctx, observationsListWithScanUIDByTenantDomainName, arg.TenantID, arg.DomainName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ObservationsListWithScanUIDByTenantDomainNameRow{}
+	for rows.Next() {
+		var i ObservationsListWithScanUIDByTenantDomainNameRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.DomainID,
+			&i.DomainUid,
+			&i.DomainName,
+			&i.ScanID,
+			&i.EntityType,
+			&i.EntityKey,
+			&i.ChangeType,
+			&i.Payload,
+			&i.ObservedAt,
+			&i.ScanUid,
 		); err != nil {
 			return nil, err
 		}

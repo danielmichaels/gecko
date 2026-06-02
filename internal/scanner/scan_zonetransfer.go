@@ -49,7 +49,7 @@ func (s *Scan) ScanZoneTransfer(ctx context.Context, domainName string) (string,
 			continue
 		}
 
-		inserted, sErr := s.store.ScannersStoreZoneTransferAttempt(
+		_, sErr := s.store.ScannersStoreZoneTransferAttempt(
 			ctx,
 			store.ScannersStoreZoneTransferAttemptParams{
 				DomainID:      pgtype.Int4{Int32: domain.ID, Valid: true},
@@ -63,14 +63,14 @@ func (s *Scan) ScanZoneTransfer(ctx context.Context, domainName string) (string,
 			s.logger.Error("Failed to store successful zone transfer attempt", "error", sErr)
 			continue
 		}
-		s.emitAttemptObservation(ctx, nameserver, string(transferType), true, "", inserted)
+		s.emitAttemptObservation(ctx, nameserver, string(transferType), true, "")
 	}
 
 	// Store failed zone transfer attempts
 	for _, ns := range result.NS {
 		nsAddr := ns + ":53"
 		if _, found := result.SuccessfulTransfers[nsAddr]; !found {
-			inserted, sErr := s.store.ScannersStoreZoneTransferAttempt(
+			_, sErr := s.store.ScannersStoreZoneTransferAttempt(
 				ctx,
 				store.ScannersStoreZoneTransferAttemptParams{
 					DomainID:      pgtype.Int4{Int32: domain.ID, Valid: true},
@@ -91,7 +91,7 @@ func (s *Scan) ScanZoneTransfer(ctx context.Context, domainName string) (string,
 				continue
 			}
 			s.emitAttemptObservation(
-				ctx, nsAddr, string(store.TransferTypeAXFRIXFR), false, "Transfer refused or failed", inserted,
+				ctx, nsAddr, string(store.TransferTypeAXFRIXFR), false, "Transfer refused or failed",
 			)
 		}
 	}
@@ -106,19 +106,15 @@ func (s *Scan) emitAttemptObservation(
 	nameserver, transferType string,
 	wasSuccessful bool,
 	errorMessage string,
-	inserted bool,
 ) {
-	if !s.identity.Recordable() {
-		return
-	}
-	payload, _ := json.Marshal(map[string]any{
+	payload := observer.PayloadJSON(map[string]any{
 		"nameserver":     nameserver,
 		"transfer_type":  transferType,
 		"was_successful": wasSuccessful,
 		"error_message":  errorMessage,
 	})
 	if err := observer.New(s.store).RecordFindingChange(
-		ctx, s.identity, observer.EntityZoneTransferAttempt, nameserver, inserted, payload,
+		ctx, s.identity, observer.EntityZoneTransferAttempt, nameserver, payload,
 	); err != nil {
 		s.logger.Error("failed to emit zone transfer attempt observation",
 			"nameserver", nameserver, "error", err)

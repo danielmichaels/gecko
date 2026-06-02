@@ -289,3 +289,102 @@ func TestRecorderRecordSRV(t *testing.T) {
 		t.Errorf("deleted = %d, want 1", c)
 	}
 }
+
+// TestRecordFindingChange_SuppressesNoOpObservations proves the finding/attempt
+// path matches the DNS-record path: re-observing an unchanged payload emits NO
+// observation, only a genuine change does. This is what keeps the append-only
+// log free of per-scan noise.
+func TestRecordFindingChange_SuppressesNoOpObservations(t *testing.T) {
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("failed to create postgres container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	const tenantID = int32(1)
+	d, err := pc.Queries.DomainsInsert(ctx, store.DomainsInsertParams{
+		TenantID:   pgtype.Int4{Int32: tenantID, Valid: true},
+		Name:       "find.example.com",
+		DomainType: store.DomainTypeSubdomain,
+		Source:     store.DomainSourceUserSupplied,
+		Status:     store.DomainStatusActive,
+	})
+	if err != nil {
+		t.Fatalf("create domain: %v", err)
+	}
+	scan, err := pc.Queries.ScansCreate(ctx, store.ScansCreateParams{
+		TenantID:   tenantID,
+		DomainID:   pgtype.Int4{Int32: d.ID, Valid: true},
+		DomainUid:  d.Uid,
+		DomainName: d.Name,
+		Source:     store.DomainSourceUserSupplied,
+	})
+	if err != nil {
+		t.Fatalf("create scan: %v", err)
+	}
+	ident := observer.DomainIdentity{
+		TenantID: tenantID, DomainID: d.ID, DomainUID: d.Uid, DomainName: d.Name, ScanID: scan.ID,
+	}
+
+	const entityKey = "soft_fail_spf_policy"
+	record := func(payload []byte) {
+		t.Helper()
+		tx, err := pc.Pool.BeginTx(ctx, pgx.TxOptions{})
+		if err != nil {
+			t.Fatalf("begin tx: %v", err)
+		}
+		rec := observer.New(pc.Queries.WithTx(tx))
+		if err := rec.RecordFindingChange(ctx, ident, observer.EntitySPFFinding, entityKey, payload); err != nil {
+			_ = tx.Rollback(ctx)
+			t.Fatalf("RecordFindingChange: %v", err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			t.Fatalf("commit: %v", err)
+		}
+	}
+	obsCount := func(changeType string) int {
+		var n int
+		if err := pc.Pool.QueryRow(ctx,
+			`SELECT count(*) FROM domain_observations
+			 WHERE tenant_id=$1 AND domain_name=$2 AND entity_type=$3 AND entity_key=$4 AND change_type=$5`,
+			tenantID, d.Name, observer.EntitySPFFinding, entityKey, changeType,
+		).Scan(&n); err != nil {
+			t.Fatalf("count observations: %v", err)
+		}
+		return n
+	}
+
+	open := observer.PayloadJSON(map[string]any{
+		"issue_type": entityKey, "severity": "medium", "status": "open",
+		"value": "v=spf1 ~all", "details": "soft fail",
+	})
+
+	// First sighting -> created.
+	record(open)
+	if c := obsCount(observer.ChangeCreated); c != 1 {
+		t.Errorf("after first sighting, created = %d, want 1", c)
+	}
+
+	// Re-observed unchanged -> NO new observation.
+	record(open)
+	if c := obsCount(observer.ChangeCreated); c != 1 {
+		t.Errorf("identical re-observation must not emit; created = %d, want 1", c)
+	}
+	if c := obsCount(observer.ChangeUpdated); c != 0 {
+		t.Errorf("identical re-observation must not emit updated; updated = %d, want 0", c)
+	}
+
+	// Genuine change -> updated.
+	changed := observer.PayloadJSON(map[string]any{
+		"issue_type": entityKey, "severity": "high", "status": "open",
+		"value": "v=spf1 -all", "details": "hard fail now",
+	})
+	record(changed)
+	if c := obsCount(observer.ChangeUpdated); c != 1 {
+		t.Errorf("genuine change must emit updated; updated = %d, want 1", c)
+	}
+	if c := obsCount(observer.ChangeCreated); c != 1 {
+		t.Errorf("created should stay 1, got %d", c)
+	}
+}

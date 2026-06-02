@@ -24,12 +24,12 @@ tasks:
   serve:
     desc: Run webserver
     cmds:
-      - air -c .air.toml -build.bin="./tmp/main serve {{.CLI_ARGS}}"
+      - air -c .air.toml -- serve {{.CLI_ARGS}}
 
   worker:
     desc: Run jobs
     cmds:
-      - air -c .air.toml -build.bin="./tmp/main worker {{.CLI_ARGS}}"
+      - air -c .air.toml -- worker {{.CLI_ARGS}}
 
   tidy:
     desc: go mod tidy

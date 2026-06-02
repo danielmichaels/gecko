@@ -784,23 +784,6 @@ func (c *DNSClient) compareDS(ds1, ds2 *dns.DS) bool {
 	return result
 }
 
-type SubdomainResult struct {
-	Name   string
-	A      []string
-	AAAA   []string
-	CNAME  []string
-	MX     []string
-	TXT    []string
-	NS     []string
-	PTR    []string
-	SRV    []string
-	CAA    []string
-	SOA    []string
-	DNSKEY []string
-	DS     []string
-	RRSIG  []string
-}
-
 // EnumerateWithSubfinderCallback enumerates subdomains for the given domain using the Subfinder tool,
 // and calls the provided callback function for each resolved host entry.
 // The concurrency parameter specifies the number of concurrent requests to make.

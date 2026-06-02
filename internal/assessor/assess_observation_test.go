@@ -56,6 +56,10 @@ func TestAssessZoneTransfer_EmitsObservation(t *testing.T) {
 	if err := a.AssessZoneTransfer(ctx, domain.Uid); err != nil {
 		t.Fatalf("AssessZoneTransfer: %v", err)
 	}
+	// Re-assessing the unchanged finding must NOT append a noise observation.
+	if err := a.AssessZoneTransfer(ctx, domain.Uid); err != nil {
+		t.Fatalf("AssessZoneTransfer (rerun): %v", err)
+	}
 
 	var count int
 	var changeType string
@@ -67,7 +71,7 @@ func TestAssessZoneTransfer_EmitsObservation(t *testing.T) {
 		t.Fatalf("count observations: %v", err)
 	}
 	if count != 1 {
-		t.Errorf("zone-transfer finding observations = %d, want 1", count)
+		t.Errorf("zone-transfer finding observations = %d, want 1 (no noise on unchanged rerun)", count)
 	}
 	if changeType != "created" {
 		t.Errorf("change_type = %q, want created", changeType)

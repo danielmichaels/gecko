@@ -8,10 +8,12 @@ package observer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 
 	"github.com/danielmichaels/gecko/internal/store"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -142,24 +144,43 @@ func (r *Recorder) sync(
 	return nil
 }
 
-// RecordFindingChange emits one observation for a finding/attempt that the
-// caller has already upserted into its projection. `inserted` (from the upsert's
-// xmax=0 flag) decides created vs updated. Unlike the DNS-record recorders this
-// does not sync deletions — findings and attempts are upsert-only (never deleted
-// by the assessor/scanner), matching the behavior the dropped *_history triggers
-// captured.
+// RecordFindingChange appends one observation for a finding/attempt that the
+// caller has already upserted into its projection — but only when the payload
+// differs from the most-recent prior observation for the same entity. An
+// unchanged re-observation emits nothing, matching the DNS-record path's
+// suppress-unchanged behavior and keeping the append-only log free of per-scan
+// noise. change_type is 'created' on first sighting, 'updated' on a real change.
+// Unlike the DNS-record recorders this does not sync deletions — findings and
+// attempts are upsert-only (never deleted by the assessor/scanner).
+//
+// It is a no-op when the identity is not Recordable (the assessor/scanner run
+// without a scan in unit tests), so callers need not guard the call themselves.
 func (r *Recorder) RecordFindingChange(
 	ctx context.Context,
 	ident DomainIdentity,
 	entityType, entityKey string,
-	inserted bool,
 	payload []byte,
 ) error {
-	changeType := ChangeUpdated
-	if inserted {
-		changeType = ChangeCreated
+	if !ident.Recordable() {
+		return nil
 	}
-	return r.emit(ctx, ident, entityType, entityKey, changeType, payload)
+	_, err := r.q.ObservationsCreateIfChanged(ctx, store.ObservationsCreateIfChangedParams{
+		TenantID:   ident.TenantID,
+		DomainName: ident.DomainName,
+		EntityType: entityType,
+		EntityKey:  entityKey,
+		DomainID:   pgtype.Int4{Int32: ident.DomainID, Valid: true},
+		DomainUid:  ident.DomainUID,
+		ScanID:     pgtype.Int8{Int64: ident.ScanID, Valid: ident.ScanID != 0},
+		Payload:    payload,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil // payload unchanged; suppressed
+	}
+	if err != nil {
+		return fmt.Errorf("emit %s observation for %q: %w", entityType, entityKey, err)
+	}
+	return nil
 }
 
 // emit appends one row to the observation log, stamping the denormalized domain
@@ -187,10 +208,11 @@ func (r *Recorder) emit(
 	return nil
 }
 
-// payloadJSON marshals a payload map deterministically (encoding/json sorts map
-// keys), so observed and current payloads built from the same fields compare
-// byte-for-byte and updated detection is stable.
-func payloadJSON(m map[string]any) []byte {
+// PayloadJSON marshals an observation payload map deterministically (encoding/json
+// sorts map keys), so observed and current payloads built from the same fields
+// compare byte-for-byte and updated detection is stable. It is the single marshal
+// boundary shared by the DNS-record recorders and the finding/attempt emitters.
+func PayloadJSON(m map[string]any) []byte {
 	b, _ := json.Marshal(m)
 	return b
 }

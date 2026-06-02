@@ -101,14 +101,14 @@ func (r *Recorder) recordValueKeyed(
 	obs := make(map[string]observedEntity, len(observedValues))
 	for _, v := range observedValues {
 		obs[v] = observedEntity{
-			payload: payloadJSON(map[string]any{field: v}),
+			payload: PayloadJSON(map[string]any{field: v}),
 			upsert:  func(ctx context.Context) error { return upsert(ctx, v) },
 		}
 	}
 	cur := make(map[string]currentEntity, len(currentValues))
 	for _, v := range currentValues {
 		cur[v] = currentEntity{
-			payload: payloadJSON(map[string]any{field: v}),
+			payload: PayloadJSON(map[string]any{field: v}),
 			delete:  func(ctx context.Context) error { return del(ctx, v) },
 		}
 	}
@@ -280,7 +280,7 @@ func (r *Recorder) RecordMX(
 		}
 		key := fmt.Sprintf("%d|%s", v.Preference, v.Target)
 		obs[key] = observedEntity{
-			payload: payloadJSON(map[string]any{"preference": v.Preference, "target": v.Target}),
+			payload: PayloadJSON(map[string]any{"preference": v.Preference, "target": v.Target}),
 			upsert: func(ctx context.Context) error {
 				_, e := r.q.RecordsCreateMX(ctx, store.RecordsCreateMXParams{
 					DomainID: domainID, Preference: int32(v.Preference), Target: v.Target,
@@ -297,7 +297,7 @@ func (r *Recorder) RecordMX(
 	for _, row := range rows {
 		key := fmt.Sprintf("%d|%s", row.Preference, row.Target)
 		cur[key] = currentEntity{
-			payload: payloadJSON(map[string]any{"preference": int(row.Preference), "target": row.Target}),
+			payload: PayloadJSON(map[string]any{"preference": int(row.Preference), "target": row.Target}),
 			delete: func(ctx context.Context) error {
 				return r.q.RecordsDeleteMX(ctx, store.RecordsDeleteMXParams{
 					DomainID: domainID, Preference: row.Preference, Target: row.Target,
@@ -324,7 +324,7 @@ func (r *Recorder) RecordSRV(
 		// Key excludes weight (it is the mutable field -> "updated", not a new key).
 		key := fmt.Sprintf("%s|%d|%d", v.Target, v.Port, v.Priority)
 		obs[key] = observedEntity{
-			payload: payloadJSON(map[string]any{
+			payload: PayloadJSON(map[string]any{
 				"target": v.Target, "port": v.Port, "weight": v.Weight, "priority": v.Priority,
 			}),
 			upsert: func(ctx context.Context) error {
@@ -344,7 +344,7 @@ func (r *Recorder) RecordSRV(
 	for _, row := range rows {
 		key := fmt.Sprintf("%s|%d|%d", row.Target, row.Port, row.Priority)
 		cur[key] = currentEntity{
-			payload: payloadJSON(map[string]any{
+			payload: PayloadJSON(map[string]any{
 				"target": row.Target, "port": int(row.Port),
 				"weight": int(row.Weight), "priority": int(row.Priority),
 			}),
@@ -373,7 +373,7 @@ func (r *Recorder) RecordSOA(
 			continue
 		}
 		obs[soaKey] = observedEntity{
-			payload: payloadJSON(map[string]any{
+			payload: PayloadJSON(map[string]any{
 				"nameserver": v.NameServer, "email": v.AdminEmail, "serial": int64(v.Serial),
 				"refresh": v.Refresh, "retry": v.Retry, "expire": v.Expire, "minimum_ttl": v.MinimumTTL,
 			}),
@@ -395,7 +395,7 @@ func (r *Recorder) RecordSOA(
 	cur := make(map[string]currentEntity, len(rows))
 	for _, row := range rows {
 		cur[soaKey] = currentEntity{
-			payload: payloadJSON(map[string]any{
+			payload: PayloadJSON(map[string]any{
 				"nameserver": row.Nameserver, "email": row.Email, "serial": row.Serial,
 				"refresh": int(row.Refresh), "retry": int(row.Retry),
 				"expire": int(row.Expire), "minimum_ttl": int(row.MinimumTtl),
@@ -423,7 +423,7 @@ func (r *Recorder) RecordCAA(
 		}
 		key := fmt.Sprintf("%s|%s", v.Tag, v.Value)
 		obs[key] = observedEntity{
-			payload: payloadJSON(map[string]any{"flags": v.Flag, "tag": v.Tag, "value": v.Value}),
+			payload: PayloadJSON(map[string]any{"flags": v.Flag, "tag": v.Tag, "value": v.Value}),
 			upsert: func(ctx context.Context) error {
 				_, e := r.q.RecordsCreateCAA(ctx, store.RecordsCreateCAAParams{
 					DomainID: domainID, Flags: int32(v.Flag), Tag: v.Tag, Value: v.Value,
@@ -440,7 +440,7 @@ func (r *Recorder) RecordCAA(
 	for _, row := range rows {
 		key := fmt.Sprintf("%s|%s", row.Tag, row.Value)
 		cur[key] = currentEntity{
-			payload: payloadJSON(map[string]any{"flags": int(row.Flags), "tag": row.Tag, "value": row.Value}),
+			payload: PayloadJSON(map[string]any{"flags": int(row.Flags), "tag": row.Tag, "value": row.Value}),
 			delete: func(ctx context.Context) error {
 				return r.q.RecordsDeleteCAA(ctx, store.RecordsDeleteCAAParams{
 					DomainID: domainID, Tag: row.Tag, Value: row.Value,
@@ -466,7 +466,7 @@ func (r *Recorder) RecordDNSKEY(
 		}
 		key := v.PublicKey
 		obs[key] = observedEntity{
-			payload: payloadJSON(map[string]any{
+			payload: PayloadJSON(map[string]any{
 				"public_key": v.PublicKey, "flags": v.Flags, "protocol": v.Protocol, "algorithm": v.Algorithm,
 			}),
 			upsert: func(ctx context.Context) error {
@@ -485,7 +485,7 @@ func (r *Recorder) RecordDNSKEY(
 	cur := make(map[string]currentEntity, len(rows))
 	for _, row := range rows {
 		cur[row.PublicKey] = currentEntity{
-			payload: payloadJSON(map[string]any{
+			payload: PayloadJSON(map[string]any{
 				"public_key": row.PublicKey, "flags": int(row.Flags),
 				"protocol": int(row.Protocol), "algorithm": int(row.Algorithm),
 			}),
@@ -514,7 +514,7 @@ func (r *Recorder) RecordDS(
 		}
 		key := v.Digest
 		obs[key] = observedEntity{
-			payload: payloadJSON(map[string]any{
+			payload: PayloadJSON(map[string]any{
 				"key_tag": v.KeyTag, "algorithm": v.Algorithm, "digest_type": v.DigestType, "digest": v.Digest,
 			}),
 			upsert: func(ctx context.Context) error {
@@ -533,7 +533,7 @@ func (r *Recorder) RecordDS(
 	cur := make(map[string]currentEntity, len(rows))
 	for _, row := range rows {
 		cur[row.Digest] = currentEntity{
-			payload: payloadJSON(map[string]any{
+			payload: PayloadJSON(map[string]any{
 				"key_tag": int(row.KeyTag), "algorithm": int(row.Algorithm),
 				"digest_type": int(row.DigestType), "digest": row.Digest,
 			}),
@@ -562,7 +562,7 @@ func (r *Recorder) RecordRRSIG(
 		}
 		key := fmt.Sprintf("%d|%s", v.TypeCovered, v.SignerName)
 		obs[key] = observedEntity{
-			payload: payloadJSON(map[string]any{
+			payload: PayloadJSON(map[string]any{
 				"type_covered": v.TypeCovered, "algorithm": v.Algorithm, "labels": v.Labels,
 				"original_ttl": v.OriginalTTL, "expiration": v.Expiration, "inception": v.Inception,
 				"key_tag": v.KeyTag, "signer_name": v.SignerName, "signature": v.Signature,
@@ -586,7 +586,7 @@ func (r *Recorder) RecordRRSIG(
 	for _, row := range rows {
 		key := fmt.Sprintf("%d|%s", row.TypeCovered, row.SignerName)
 		cur[key] = currentEntity{
-			payload: payloadJSON(map[string]any{
+			payload: PayloadJSON(map[string]any{
 				"type_covered": int(row.TypeCovered), "algorithm": int(row.Algorithm), "labels": int(row.Labels),
 				"original_ttl": int(row.OriginalTtl), "expiration": int(row.Expiration), "inception": int(row.Inception),
 				"key_tag": int(row.KeyTag), "signer_name": row.SignerName, "signature": row.Signature,

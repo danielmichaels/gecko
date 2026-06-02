@@ -2,7 +2,6 @@ package assessor
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -58,7 +57,6 @@ func (a *Assessor) createFinding(
 	issueType string,
 ) error {
 	var (
-		inserted   bool
 		err        error
 		entityType string
 		entityKey  string
@@ -66,31 +64,31 @@ func (a *Assessor) createFinding(
 	)
 	switch p := params.(type) {
 	case store.AssessCreateSPFFindingParams:
-		inserted, err = a.store.AssessCreateSPFFinding(ctx, p)
+		_, err = a.store.AssessCreateSPFFinding(ctx, p)
 		entityType, entityKey = observer.EntitySPFFinding, p.IssueType
-		payload = findingPayload(map[string]any{
+		payload = observer.PayloadJSON(map[string]any{
 			"issue_type": p.IssueType, "severity": string(p.Severity),
 			"status": string(p.Status), "value": p.SpfValue.String, "details": p.Details.String,
 		})
 	case store.AssessCreateDKIMFindingParams:
-		inserted, err = a.store.AssessCreateDKIMFinding(ctx, p)
+		_, err = a.store.AssessCreateDKIMFinding(ctx, p)
 		entityType = observer.EntityDKIMFinding
 		entityKey = p.IssueType + "|" + p.Selector.String
-		payload = findingPayload(map[string]any{
+		payload = observer.PayloadJSON(map[string]any{
 			"issue_type": p.IssueType, "selector": p.Selector.String, "severity": string(p.Severity),
 			"status": string(p.Status), "value": p.DkimValue.String, "details": p.Details.String,
 		})
 	case store.AssessCreateDKIMFindingNoSelectorParams:
-		inserted, err = a.store.AssessCreateDKIMFindingNoSelector(ctx, p)
+		_, err = a.store.AssessCreateDKIMFindingNoSelector(ctx, p)
 		entityType, entityKey = observer.EntityDKIMFinding, p.IssueType
-		payload = findingPayload(map[string]any{
+		payload = observer.PayloadJSON(map[string]any{
 			"issue_type": p.IssueType, "severity": string(p.Severity),
 			"status": string(p.Status), "value": p.DkimValue.String, "details": p.Details.String,
 		})
 	case store.AssessCreateDMARCFindingParams:
-		inserted, err = a.store.AssessCreateDMARCFinding(ctx, p)
+		_, err = a.store.AssessCreateDMARCFinding(ctx, p)
 		entityType, entityKey = observer.EntityDMARCFinding, p.IssueType
-		payload = findingPayload(map[string]any{
+		payload = observer.PayloadJSON(map[string]any{
 			"issue_type": p.IssueType, "severity": string(p.Severity), "status": string(p.Status),
 			"policy": p.Policy.String, "value": p.DmarcValue.String, "details": p.Details.String,
 		})
@@ -102,17 +100,9 @@ func (a *Assessor) createFinding(
 		return fmt.Errorf("create finding: %s %w", issueType, err)
 	}
 
-	if a.identity.Recordable() {
-		rec := observer.New(a.store)
-		if oErr := rec.RecordFindingChange(ctx, a.identity, entityType, entityKey, inserted, payload); oErr != nil {
-			a.logger.WarnContext(ctx, "failed to emit finding observation",
-				"entity_type", entityType, "entity_key", entityKey, "error", oErr)
-		}
+	if oErr := observer.New(a.store).RecordFindingChange(ctx, a.identity, entityType, entityKey, payload); oErr != nil {
+		a.logger.WarnContext(ctx, "failed to emit finding observation",
+			"entity_type", entityType, "entity_key", entityKey, "error", oErr)
 	}
 	return nil
-}
-
-func findingPayload(m map[string]any) []byte {
-	b, _ := json.Marshal(m)
-	return b
 }

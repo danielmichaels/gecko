@@ -192,12 +192,7 @@ func (app *Server) handleDomainUpdate(
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to begin transaction", err)
 	}
-	committed := false
-	defer func() {
-		if !committed {
-			_ = tx.Rollback(ctx)
-		}
-	}()
+	defer func() { _ = tx.Rollback(ctx) }()
 	st := app.Db.WithTx(tx)
 
 	domain, err := st.DomainsUpdateByID(ctx, store.DomainsUpdateByIDParams{
@@ -226,7 +221,6 @@ func (app *Server) handleDomainUpdate(
 	if err := tx.Commit(ctx); err != nil {
 		return nil, huma.Error500InternalServerError("failed to commit transaction", err)
 	}
-	committed = true
 
 	domainObj := store.Domains{
 		ID:         domain.ID,
@@ -328,12 +322,7 @@ func (app *Server) handleDomainCreate(
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to begin transaction", err)
 	}
-	committed := false
-	defer func() {
-		if !committed {
-			_ = tx.Rollback(ctx)
-		}
-	}()
+	defer func() { _ = tx.Rollback(ctx) }()
 	st := app.Db.WithTx(tx)
 
 	// Insert-only (vs the enumeration upsert): a duplicate (tenant_id, name) raises
@@ -367,7 +356,6 @@ func (app *Server) handleDomainCreate(
 	if err := tx.Commit(ctx); err != nil {
 		return nil, huma.Error500InternalServerError("failed to commit transaction", err)
 	}
-	committed = true
 
 	domainObj := store.Domains{
 		ID:         domain.ID,

@@ -6,26 +6,28 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielmichaels/gecko/internal/dto"
+	"github.com/danielmichaels/gecko/internal/observer"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// qtypeToEntityType maps the API's record qtype filter onto the entity_type
-// stored in the observation log.
+// qtypeToEntityType maps the API's record qtype filter onto the entity_type the
+// recorder writes into the observation log. Values reference the observer
+// constants so a rename can't silently desync the filter from what is stored.
 var qtypeToEntityType = map[string]string{
-	"a":      "a_record",
-	"aaaa":   "aaaa_record",
-	"cname":  "cname_record",
-	"mx":     "mx_record",
-	"txt":    "txt_record",
-	"ns":     "ns_record",
-	"soa":    "soa_record",
-	"ptr":    "ptr_record",
-	"caa":    "caa_record",
-	"srv":    "srv_record",
-	"dnskey": "dnskey_record",
-	"ds":     "ds_record",
-	"rrsig":  "rrsig_record",
+	"a":      observer.EntityARecord,
+	"aaaa":   observer.EntityAAAARecord,
+	"cname":  observer.EntityCNAMERecord,
+	"mx":     observer.EntityMXRecord,
+	"txt":    observer.EntityTXTRecord,
+	"ns":     observer.EntityNSRecord,
+	"soa":    observer.EntitySOARecord,
+	"ptr":    observer.EntityPTRRecord,
+	"caa":    observer.EntityCAARecord,
+	"srv":    observer.EntitySRVRecord,
+	"dnskey": observer.EntityDNSKEYRecord,
+	"ds":     observer.EntityDSRecord,
+	"rrsig":  observer.EntityRRSIGRecord,
 }
 
 type RecordHistoryOutput struct {
@@ -65,9 +67,9 @@ func (app *Server) handleRecordsHistory(
 		}
 	}
 
-	obs, err := app.Db.ObservationsListByTenantDomainName(
+	obs, err := app.Db.ObservationsListWithScanUIDByTenantDomainName(
 		ctx,
-		store.ObservationsListByTenantDomainNameParams{
+		store.ObservationsListWithScanUIDByTenantDomainNameParams{
 			TenantID:   domain.TenantID.Int32,
 			DomainName: domain.Name,
 		},
@@ -81,7 +83,7 @@ func (app *Server) handleRecordsHistory(
 		if wanted != nil && !wanted[o.EntityType] {
 			continue
 		}
-		history = append(history, dto.ObservationToRecordHistory(o))
+		history = append(history, dto.ObsWithScanRowToRecordHistory(o))
 	}
 
 	resp := &RecordHistoryOutput{}

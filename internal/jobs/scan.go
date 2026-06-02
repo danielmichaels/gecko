@@ -57,8 +57,6 @@ type DomainScanOptions struct {
 	RecencyWindow time.Duration
 	// Concurrency is passed through to subdomain enumeration.
 	Concurrency int
-	// Depth bounds recursion. Root scans use 0; enumeration increments it.
-	Depth int
 	// EnumerateSubdomains additionally enqueues a subdomain-enumeration job.
 	EnumerateSubdomains bool
 	// Force bypasses the recency guard for explicit user actions (POST/PUT/manual

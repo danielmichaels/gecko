@@ -144,7 +144,7 @@ func (a *Assessor) AssessZoneTransfer(ctx context.Context, domainUID string) err
 				continue
 			}
 
-			inserted, sErr := a.store.StoreZoneTransferFinding(ctx, store.StoreZoneTransferFindingParams{
+			_, sErr := a.store.StoreZoneTransferFinding(ctx, store.StoreZoneTransferFindingParams{
 				DomainID:             pgtype.Int4{Int32: domain.ID, Valid: true},
 				Severity:             store.FindingSeverityCritical,
 				Status:               store.FindingStatusOpen,
@@ -157,19 +157,17 @@ func (a *Assessor) AssessZoneTransfer(ctx context.Context, domainUID string) err
 				a.logger.ErrorContext(ctx, "Failed to store zone transfer finding", "error", sErr)
 				continue
 			}
-			if a.identity.Recordable() {
-				payload := findingPayload(map[string]any{
-					"nameserver":             attempt.Nameserver,
-					"transfer_type":          string(attempt.TransferType),
-					"severity":               string(store.FindingSeverityCritical),
-					"zone_transfer_possible": true,
-				})
-				if oErr := observer.New(a.store).RecordFindingChange(
-					ctx, a.identity, observer.EntityZoneTransferFinding, attempt.Nameserver, inserted, payload,
-				); oErr != nil {
-					a.logger.WarnContext(ctx, "failed to emit zone transfer finding observation",
-						"nameserver", attempt.Nameserver, "error", oErr)
-				}
+			payload := observer.PayloadJSON(map[string]any{
+				"nameserver":             attempt.Nameserver,
+				"transfer_type":          string(attempt.TransferType),
+				"severity":               string(store.FindingSeverityCritical),
+				"zone_transfer_possible": true,
+			})
+			if oErr := observer.New(a.store).RecordFindingChange(
+				ctx, a.identity, observer.EntityZoneTransferFinding, attempt.Nameserver, payload,
+			); oErr != nil {
+				a.logger.WarnContext(ctx, "failed to emit zone transfer finding observation",
+					"nameserver", attempt.Nameserver, "error", oErr)
 			}
 			successfulAssessments++
 		}
