@@ -91,7 +91,11 @@ func (s *Scan) ScanZoneTransfer(ctx context.Context, domainName string) (string,
 				continue
 			}
 			s.emitAttemptObservation(
-				ctx, nsAddr, string(store.TransferTypeAXFRIXFR), false, "Transfer refused or failed",
+				ctx,
+				nsAddr,
+				string(store.TransferTypeAXFRIXFR),
+				false,
+				"Transfer refused or failed",
 			)
 		}
 	}

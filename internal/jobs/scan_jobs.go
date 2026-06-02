@@ -184,7 +184,12 @@ func (w *ScanZoneTransferWorker) Work(
 		}
 	}(tx, ctx)
 	rc := river.ClientFromContext[pgx.Tx](ctx)
-	_, err = rc.InsertTx(ctx, tx, AssessZoneTransferArgs{DomainJobArgs: job.Args.DomainJobArgs}, nil)
+	_, err = rc.InsertTx(
+		ctx,
+		tx,
+		AssessZoneTransferArgs{DomainJobArgs: job.Args.DomainJobArgs},
+		nil,
+	)
 	if err != nil {
 		w.Logger.Error("failed to queue resolver job", "domain", job.Args.DomainUID, "error", err)
 	}

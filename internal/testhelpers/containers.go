@@ -166,7 +166,7 @@ func (pc *PostgresContainer) Close(ctx context.Context) {
 	}
 
 	if pc.PostgresContainer != nil {
-		if err := pc.PostgresContainer.Terminate(ctx); err != nil {
+		if err := pc.Terminate(ctx); err != nil {
 			slog.Error("failed to terminate container", "err", err)
 		}
 	}

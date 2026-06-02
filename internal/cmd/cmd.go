@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -90,8 +89,7 @@ func WithRiver(workerCount int, addWorkers bool) SetupOption {
 // logs will be output on CLI invocation.
 func WithSilentLogging() SetupOption {
 	return func(s *Setup) {
-		handler := slog.NewJSONHandler(io.Discard, &slog.HandlerOptions{})
-		s.Logger = slog.New(handler)
+		s.Logger = slog.New(slog.DiscardHandler)
 	}
 }
 

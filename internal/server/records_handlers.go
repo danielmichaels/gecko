@@ -138,7 +138,7 @@ func (app *Server) handleRecordsList(ctx context.Context, i *struct {
 	}
 	recordTypes := parseRecordTypes(i.QType)
 
-	pageSize, pageNumber, _ := i.PaginationQuery.GetPaginationParams()
+	pageSize, pageNumber, _ := i.GetPaginationParams()
 	pagination := NewPaginationMetadata(0, pageSize, pageNumber, 0)
 
 	resp := &RecordsListOutput{

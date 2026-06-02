@@ -251,7 +251,12 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 			}
 		}(tx, ctx)
 		rc := river.ClientFromContext[pgx.Tx](ctx)
-		_, err = rc.InsertTx(ctx, tx, AssessEmailSecurityArgs{DomainJobArgs: job.Args.DomainJobArgs}, nil)
+		_, err = rc.InsertTx(
+			ctx,
+			tx,
+			AssessEmailSecurityArgs{DomainJobArgs: job.Args.DomainJobArgs},
+			nil,
+		)
 		if err != nil {
 			w.Logger.WarnContext(ctx, "failed to queue email security assessment",
 				"domain", job.Args.DomainUID, "error", err)

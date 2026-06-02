@@ -130,14 +130,28 @@ func (r *Recorder) RecordA(
 	for i, row := range rows {
 		current[i] = row.Ipv4Address
 	}
-	return r.recordValueKeyed(ctx, ident, EntityARecord, "ipv4_address", ips, current, authoritative,
+	return r.recordValueKeyed(
+		ctx,
+		ident,
+		EntityARecord,
+		"ipv4_address",
+		ips,
+		current,
+		authoritative,
 		func(ctx context.Context, v string) error {
-			_, e := r.q.RecordsCreateA(ctx, store.RecordsCreateAParams{DomainID: domainID, Ipv4Address: v})
+			_, e := r.q.RecordsCreateA(
+				ctx,
+				store.RecordsCreateAParams{DomainID: domainID, Ipv4Address: v},
+			)
 			return e
 		},
 		func(ctx context.Context, v string) error {
-			return r.q.RecordsDeleteA(ctx, store.RecordsDeleteAParams{DomainID: domainID, Ipv4Address: v})
-		})
+			return r.q.RecordsDeleteA(
+				ctx,
+				store.RecordsDeleteAParams{DomainID: domainID, Ipv4Address: v},
+			)
+		},
+	)
 }
 
 func (r *Recorder) RecordAAAA(
@@ -155,14 +169,28 @@ func (r *Recorder) RecordAAAA(
 	for i, row := range rows {
 		current[i] = row.Ipv6Address
 	}
-	return r.recordValueKeyed(ctx, ident, EntityAAAARecord, "ipv6_address", ips, current, authoritative,
+	return r.recordValueKeyed(
+		ctx,
+		ident,
+		EntityAAAARecord,
+		"ipv6_address",
+		ips,
+		current,
+		authoritative,
 		func(ctx context.Context, v string) error {
-			_, e := r.q.RecordsCreateAAAA(ctx, store.RecordsCreateAAAAParams{DomainID: domainID, Ipv6Address: v})
+			_, e := r.q.RecordsCreateAAAA(
+				ctx,
+				store.RecordsCreateAAAAParams{DomainID: domainID, Ipv6Address: v},
+			)
 			return e
 		},
 		func(ctx context.Context, v string) error {
-			return r.q.RecordsDeleteAAAA(ctx, store.RecordsDeleteAAAAParams{DomainID: domainID, Ipv6Address: v})
-		})
+			return r.q.RecordsDeleteAAAA(
+				ctx,
+				store.RecordsDeleteAAAAParams{DomainID: domainID, Ipv6Address: v},
+			)
+		},
+	)
 }
 
 func (r *Recorder) RecordCNAME(
@@ -180,14 +208,28 @@ func (r *Recorder) RecordCNAME(
 	for i, row := range rows {
 		current[i] = row.Target
 	}
-	return r.recordValueKeyed(ctx, ident, EntityCNAMERecord, "target", targets, current, authoritative,
+	return r.recordValueKeyed(
+		ctx,
+		ident,
+		EntityCNAMERecord,
+		"target",
+		targets,
+		current,
+		authoritative,
 		func(ctx context.Context, v string) error {
-			_, e := r.q.RecordsCreateCNAME(ctx, store.RecordsCreateCNAMEParams{DomainID: domainID, Target: v})
+			_, e := r.q.RecordsCreateCNAME(
+				ctx,
+				store.RecordsCreateCNAMEParams{DomainID: domainID, Target: v},
+			)
 			return e
 		},
 		func(ctx context.Context, v string) error {
-			return r.q.RecordsDeleteCNAME(ctx, store.RecordsDeleteCNAMEParams{DomainID: domainID, Target: v})
-		})
+			return r.q.RecordsDeleteCNAME(
+				ctx,
+				store.RecordsDeleteCNAMEParams{DomainID: domainID, Target: v},
+			)
+		},
+	)
 }
 
 func (r *Recorder) RecordTXT(
@@ -207,11 +249,17 @@ func (r *Recorder) RecordTXT(
 	}
 	return r.recordValueKeyed(ctx, ident, EntityTXTRecord, "value", values, current, authoritative,
 		func(ctx context.Context, v string) error {
-			_, e := r.q.RecordsCreateTXT(ctx, store.RecordsCreateTXTParams{DomainID: domainID, Value: v})
+			_, e := r.q.RecordsCreateTXT(
+				ctx,
+				store.RecordsCreateTXTParams{DomainID: domainID, Value: v},
+			)
 			return e
 		},
 		func(ctx context.Context, v string) error {
-			return r.q.RecordsDeleteTXT(ctx, store.RecordsDeleteTXTParams{DomainID: domainID, Value: v})
+			return r.q.RecordsDeleteTXT(
+				ctx,
+				store.RecordsDeleteTXTParams{DomainID: domainID, Value: v},
+			)
 		})
 }
 
@@ -230,14 +278,28 @@ func (r *Recorder) RecordNS(
 	for i, row := range rows {
 		current[i] = row.Nameserver
 	}
-	return r.recordValueKeyed(ctx, ident, EntityNSRecord, "nameserver", nameservers, current, authoritative,
+	return r.recordValueKeyed(
+		ctx,
+		ident,
+		EntityNSRecord,
+		"nameserver",
+		nameservers,
+		current,
+		authoritative,
 		func(ctx context.Context, v string) error {
-			_, e := r.q.RecordsCreateNS(ctx, store.RecordsCreateNSParams{DomainID: domainID, Nameserver: v})
+			_, e := r.q.RecordsCreateNS(
+				ctx,
+				store.RecordsCreateNSParams{DomainID: domainID, Nameserver: v},
+			)
 			return e
 		},
 		func(ctx context.Context, v string) error {
-			return r.q.RecordsDeleteNS(ctx, store.RecordsDeleteNSParams{DomainID: domainID, Nameserver: v})
-		})
+			return r.q.RecordsDeleteNS(
+				ctx,
+				store.RecordsDeleteNSParams{DomainID: domainID, Nameserver: v},
+			)
+		},
+	)
 }
 
 func (r *Recorder) RecordPTR(
@@ -255,14 +317,28 @@ func (r *Recorder) RecordPTR(
 	for i, row := range rows {
 		current[i] = row.Target
 	}
-	return r.recordValueKeyed(ctx, ident, EntityPTRRecord, "target", targets, current, authoritative,
+	return r.recordValueKeyed(
+		ctx,
+		ident,
+		EntityPTRRecord,
+		"target",
+		targets,
+		current,
+		authoritative,
 		func(ctx context.Context, v string) error {
-			_, e := r.q.RecordsCreatePTR(ctx, store.RecordsCreatePTRParams{DomainID: domainID, Target: v})
+			_, e := r.q.RecordsCreatePTR(
+				ctx,
+				store.RecordsCreatePTRParams{DomainID: domainID, Target: v},
+			)
 			return e
 		},
 		func(ctx context.Context, v string) error {
-			return r.q.RecordsDeletePTR(ctx, store.RecordsDeletePTRParams{DomainID: domainID, Target: v})
-		})
+			return r.q.RecordsDeletePTR(
+				ctx,
+				store.RecordsDeletePTRParams{DomainID: domainID, Target: v},
+			)
+		},
+	)
 }
 
 func (r *Recorder) RecordMX(
@@ -297,7 +373,9 @@ func (r *Recorder) RecordMX(
 	for _, row := range rows {
 		key := fmt.Sprintf("%d|%s", row.Preference, row.Target)
 		cur[key] = currentEntity{
-			payload: PayloadJSON(map[string]any{"preference": int(row.Preference), "target": row.Target}),
+			payload: PayloadJSON(
+				map[string]any{"preference": int(row.Preference), "target": row.Target},
+			),
 			delete: func(ctx context.Context) error {
 				return r.q.RecordsDeleteMX(ctx, store.RecordsDeleteMXParams{
 					DomainID: domainID, Preference: row.Preference, Target: row.Target,
@@ -440,7 +518,9 @@ func (r *Recorder) RecordCAA(
 	for _, row := range rows {
 		key := fmt.Sprintf("%s|%s", row.Tag, row.Value)
 		cur[key] = currentEntity{
-			payload: PayloadJSON(map[string]any{"flags": int(row.Flags), "tag": row.Tag, "value": row.Value}),
+			payload: PayloadJSON(
+				map[string]any{"flags": int(row.Flags), "tag": row.Tag, "value": row.Value},
+			),
 			delete: func(ctx context.Context) error {
 				return r.q.RecordsDeleteCAA(ctx, store.RecordsDeleteCAAParams{
 					DomainID: domainID, Tag: row.Tag, Value: row.Value,
@@ -472,7 +552,9 @@ func (r *Recorder) RecordDNSKEY(
 			upsert: func(ctx context.Context) error {
 				_, e := r.q.RecordsCreateDNSKEY(ctx, store.RecordsCreateDNSKEYParams{
 					DomainID: domainID, PublicKey: v.PublicKey,
-					Flags: int32(v.Flags), Protocol: int32(v.Protocol), Algorithm: int32(v.Algorithm),
+					Flags: int32(
+						v.Flags,
+					), Protocol: int32(v.Protocol), Algorithm: int32(v.Algorithm),
 				})
 				return e
 			},
@@ -570,7 +652,9 @@ func (r *Recorder) RecordRRSIG(
 			upsert: func(ctx context.Context) error {
 				_, e := r.q.RecordsCreateRRSIG(ctx, store.RecordsCreateRRSIGParams{
 					DomainID: domainID, TypeCovered: int32(v.TypeCovered), Algorithm: int32(v.Algorithm),
-					Labels: int32(v.Labels), OriginalTtl: int32(v.OriginalTTL), Expiration: int32(v.Expiration),
+					Labels: int32(
+						v.Labels,
+					), OriginalTtl: int32(v.OriginalTTL), Expiration: int32(v.Expiration),
 					Inception: int32(v.Inception), KeyTag: int32(v.KeyTag),
 					SignerName: v.SignerName, Signature: v.Signature,
 				})
@@ -587,9 +671,15 @@ func (r *Recorder) RecordRRSIG(
 		key := fmt.Sprintf("%d|%s", row.TypeCovered, row.SignerName)
 		cur[key] = currentEntity{
 			payload: PayloadJSON(map[string]any{
-				"type_covered": int(row.TypeCovered), "algorithm": int(row.Algorithm), "labels": int(row.Labels),
-				"original_ttl": int(row.OriginalTtl), "expiration": int(row.Expiration), "inception": int(row.Inception),
-				"key_tag": int(row.KeyTag), "signer_name": row.SignerName, "signature": row.Signature,
+				"type_covered": int(
+					row.TypeCovered,
+				), "algorithm": int(row.Algorithm), "labels": int(row.Labels),
+				"original_ttl": int(
+					row.OriginalTtl,
+				), "expiration": int(row.Expiration), "inception": int(row.Inception),
+				"key_tag": int(
+					row.KeyTag,
+				), "signer_name": row.SignerName, "signature": row.Signature,
 			}),
 			delete: func(ctx context.Context) error {
 				return r.q.RecordsDeleteRRSIG(ctx, store.RecordsDeleteRRSIGParams{

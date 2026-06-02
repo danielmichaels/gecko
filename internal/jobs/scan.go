@@ -17,11 +17,11 @@ import (
 // Workers never rediscover the domain by name (no DomainsGetByName); the recorder
 // stamps tenant_id/domain_* onto observations directly from these fields.
 type DomainJobArgs struct {
-	TenantID   int32  `json:"tenant_id"`
-	DomainID   int32  `json:"domain_id"`
 	DomainUID  string `json:"domain_uid"`
 	DomainName string `json:"domain_name"`
 	ScanID     int64  `json:"scan_id"`
+	TenantID   int32  `json:"tenant_id"`
+	DomainID   int32  `json:"domain_id"`
 }
 
 // Identity maps the job's domain args onto the observer's identity, used to

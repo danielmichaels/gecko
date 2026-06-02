@@ -129,7 +129,10 @@ func TestRecorderRecordA(t *testing.T) {
 	// deletes on a transient SERVFAIL).
 	record(nil, false)
 	if got := currentIPs(); !eq(got, []string{"1.1.1.1"}) {
-		t.Errorf("after indeterminate scan, projection = %v, want [1.1.1.1] (no phantom delete)", got)
+		t.Errorf(
+			"after indeterminate scan, projection = %v, want [1.1.1.1] (no phantom delete)",
+			got,
+		)
 	}
 	if c := obsCount(observer.ChangeDeleted); c != 1 {
 		t.Errorf("deleted observations after indeterminate = %d, want still 1", c)

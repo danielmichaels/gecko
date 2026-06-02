@@ -45,7 +45,7 @@ func (app *Server) handleDomainList(ctx context.Context, i *struct {
 },
 ) (*DomainListOutput, error) {
 	tenantID := pgtype.Int4{Int32: 1, Valid: true} // fixme: Replace with actual tenant ID
-	pageSize, pageNumber, offset := i.PaginationQuery.GetPaginationParams()
+	pageSize, pageNumber, offset := i.GetPaginationParams()
 	var result domainsSearchQueryResult
 	var err error
 	if i.FilterName != "" {

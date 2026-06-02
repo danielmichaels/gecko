@@ -133,9 +133,9 @@ type RecordHistory struct {
 	EntityType string          `json:"entity_type"` // a_record, ...
 	EntityKey  string          `json:"entity_key"`  // natural key within the type
 	ChangeType string          `json:"change_type"` // created, updated, deleted
-	Payload    json.RawMessage `json:"payload"`
 	ScanUID    string          `json:"scan_uid,omitempty"`
 	ObservedAt string          `json:"observed_at"`
+	Payload    json.RawMessage `json:"payload"`
 }
 
 // ScanDiff is one scan in a domain's timeline together with the changes observed
@@ -151,7 +151,9 @@ type ScanDiff struct {
 
 // TimelineRowToRecordHistory converts one joined timeline row into API shape,
 // carrying the scan uid resolved by the join.
-func TimelineRowToRecordHistory(o store.ObservationsListTimelineByTenantDomainNameRow) RecordHistory {
+func TimelineRowToRecordHistory(
+	o store.ObservationsListTimelineByTenantDomainNameRow,
+) RecordHistory {
 	rh := RecordHistory{
 		ID:         strconv.FormatInt(o.ID, 10),
 		EntityType: o.EntityType,
@@ -168,7 +170,9 @@ func TimelineRowToRecordHistory(o store.ObservationsListTimelineByTenantDomainNa
 
 // ObsWithScanRowToRecordHistory converts one flat history row (observation +
 // joined scan uid) into API shape.
-func ObsWithScanRowToRecordHistory(o store.ObservationsListWithScanUIDByTenantDomainNameRow) RecordHistory {
+func ObsWithScanRowToRecordHistory(
+	o store.ObservationsListWithScanUIDByTenantDomainNameRow,
+) RecordHistory {
 	rh := RecordHistory{
 		ID:         strconv.FormatInt(o.ID, 10),
 		EntityType: o.EntityType,

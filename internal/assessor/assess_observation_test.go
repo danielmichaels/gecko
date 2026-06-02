@@ -71,7 +71,10 @@ func TestAssessZoneTransfer_EmitsObservation(t *testing.T) {
 		t.Fatalf("count observations: %v", err)
 	}
 	if count != 1 {
-		t.Errorf("zone-transfer finding observations = %d, want 1 (no noise on unchanged rerun)", count)
+		t.Errorf(
+			"zone-transfer finding observations = %d, want 1 (no noise on unchanged rerun)",
+			count,
+		)
 	}
 	if changeType != "created" {
 		t.Errorf("change_type = %q, want created", changeType)
