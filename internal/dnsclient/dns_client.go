@@ -772,7 +772,8 @@ func (c *DNSClient) compareDS(ds1, ds2 *dns.DS) bool {
 		ds1.DigestType == ds2.DigestType &&
 		digest1 == digest2
 
-	c.logger.Debug("compareDS",
+	c.logger.Debug(
+		"compareDS",
 		"domain", ds1.Hdr.Name,
 		"result", result,
 		"digest1", digest1,
@@ -883,7 +884,8 @@ func (c *DNSClient) performTransfer(domain, nameserver string, m *dns.Msg) []dns
 	if m.Question[0].Qtype == dns.TypeIXFR {
 		transferType = "IXFR"
 	}
-	c.logger.Debug("attempting zone transfer",
+	c.logger.Debug(
+		"attempting zone transfer",
 		"domain", domain,
 		"nameserver", nameserver,
 		"type", transferType,

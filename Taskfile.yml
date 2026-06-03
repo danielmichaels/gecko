@@ -157,6 +157,10 @@ tasks:
     cmds:
       - go test -race -v -cover ./...
 
+  dagger:
+    desc: 'Run dagger locally (unsets SSH_AUTH_SOCK to avoid agent forwarding). e.g. task dagger -- call lint --src .'
+    cmds:
+      - env -u SSH_AUTH_SOCK DAGGER_NO_NAG=1 dagger {{.CLI_ARGS}}
   ci:lint:
     cmds:
       - dagger call lint --src . {{.CLI_ARGS}}

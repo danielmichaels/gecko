@@ -43,7 +43,8 @@ func (w *ScanCertificateWorker) Work(
 
 	s := scanner.NewScanner(scanner.Config{Logger: &w.Logger, Store: w.Store})
 	result := s.ScanCertificate(job.Args.DomainName)
-	w.Logger.InfoContext(ctx,
+	w.Logger.InfoContext(
+		ctx,
 		"certificate scan complete",
 		"domain", job.Args.DomainName,
 		"duration", time.Since(start),
@@ -77,7 +78,8 @@ func (w *ScanCNAMEWorker) Work(ctx context.Context, job *river.Job[ScanCNAMEArgs
 	s := scanner.NewScanner(scanner.Config{Logger: &w.Logger, Store: w.Store})
 	result := s.ScanCNAME(job.Args.DomainName)
 
-	w.Logger.InfoContext(ctx,
+	w.Logger.InfoContext(
+		ctx,
 		"cname scan complete",
 		"domain", job.Args.DomainName,
 		"duration", time.Since(start),
@@ -117,7 +119,8 @@ func (w *ScanDNSSECWorker) Work(ctx context.Context, job *river.Job[ScanDNSSECAr
 	s := scanner.NewScanner(scanner.Config{Logger: &w.Logger, Store: w.Store})
 	result := s.ScanDNSSEC(job.Args.DomainName)
 
-	w.Logger.InfoContext(ctx,
+	w.Logger.InfoContext(
+		ctx,
 		"dnssec scan complete",
 		"domain", job.Args.DomainName,
 		"duration", time.Since(start),
@@ -164,7 +167,8 @@ func (w *ScanZoneTransferWorker) Work(
 		return err
 	}
 
-	w.Logger.InfoContext(ctx,
+	w.Logger.InfoContext(
+		ctx,
 		"zone transfer scan complete",
 		"domain", job.Args.DomainName,
 		"duration", time.Since(start),

@@ -63,7 +63,8 @@ func TestAssessZoneTransfer_EmitsObservation(t *testing.T) {
 
 	var count int
 	var changeType string
-	if err := pc.Pool.QueryRow(ctx,
+	if err := pc.Pool.QueryRow(
+		ctx,
 		`SELECT count(*), coalesce(max(change_type), '') FROM domain_observations
 		 WHERE tenant_id=$1 AND domain_name=$2 AND entity_type=$3`,
 		domain.TenantID.Int32, domain.Name, observer.EntityZoneTransferFinding,

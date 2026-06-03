@@ -94,7 +94,8 @@ func TestRecordsHistoryHandler_PreservesTimelineAcrossDeleteReadd(t *testing.T) 
 		t.Fatalf("delete domain: %v", err)
 	}
 	var surviving, nullDomainID int
-	if err := pc.Pool.QueryRow(ctx,
+	if err := pc.Pool.QueryRow(
+		ctx,
 		`SELECT count(*), count(*) FILTER (WHERE domain_id IS NULL)
 		 FROM domain_observations WHERE tenant_id=$1 AND domain_name=$2`,
 		tenantID, name,

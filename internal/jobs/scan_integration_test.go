@@ -35,7 +35,8 @@ func TestEnqueueDomainScan(t *testing.T) {
 
 	countJobs := func(name string) int {
 		var n int
-		if err := pc.Pool.QueryRow(ctx,
+		if err := pc.Pool.QueryRow(
+			ctx,
 			`SELECT count(*) FROM river_job WHERE args->>'domain_name' = $1`, name,
 		).Scan(&n); err != nil {
 			t.Fatalf("count jobs: %v", err)
@@ -44,7 +45,8 @@ func TestEnqueueDomainScan(t *testing.T) {
 	}
 	countScans := func(name string) int {
 		var n int
-		if err := pc.Pool.QueryRow(ctx,
+		if err := pc.Pool.QueryRow(
+			ctx,
 			`SELECT count(*) FROM scans WHERE tenant_id=$1 AND domain_name=$2`, tenantID, name,
 		).Scan(&n); err != nil {
 			t.Fatalf("count scans: %v", err)

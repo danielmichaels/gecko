@@ -85,7 +85,8 @@ func TestRecorderRecordA(t *testing.T) {
 	}
 	obsCount := func(changeType string) int {
 		var n int
-		if err := pc.Pool.QueryRow(ctx,
+		if err := pc.Pool.QueryRow(
+			ctx,
 			`SELECT count(*) FROM domain_observations
 			 WHERE tenant_id=$1 AND domain_name=$2 AND entity_type=$3 AND change_type=$4`,
 			tenantID, d.Name, observer.EntityARecord, changeType,
@@ -163,7 +164,8 @@ func TestNoLegacyHistoryTablesRemain(t *testing.T) {
 	defer pc.Close(ctx)
 
 	var historyTables int
-	if err := pc.Pool.QueryRow(ctx,
+	if err := pc.Pool.QueryRow(
+		ctx,
 		`SELECT count(*) FROM information_schema.tables
 		 WHERE table_schema='public' AND table_name LIKE '%\_history'`,
 	).Scan(&historyTables); err != nil {
@@ -175,7 +177,8 @@ func TestNoLegacyHistoryTablesRemain(t *testing.T) {
 
 	// Sanity: a live projection table and the kept updated_at_trigger remain.
 	var liveTables, updatedAtFn int
-	if err := pc.Pool.QueryRow(ctx,
+	if err := pc.Pool.QueryRow(
+		ctx,
 		`SELECT count(*) FROM information_schema.tables
 		 WHERE table_schema='public' AND table_name='a_records'`,
 	).Scan(&liveTables); err != nil {
@@ -184,7 +187,8 @@ func TestNoLegacyHistoryTablesRemain(t *testing.T) {
 	if liveTables != 1 {
 		t.Errorf("expected live a_records table to remain, got %d", liveTables)
 	}
-	if err := pc.Pool.QueryRow(ctx,
+	if err := pc.Pool.QueryRow(
+		ctx,
 		`SELECT count(*) FROM pg_proc WHERE proname='updated_at_trigger'`,
 	).Scan(&updatedAtFn); err != nil {
 		t.Fatalf("count updated_at_trigger: %v", err)
@@ -246,7 +250,8 @@ func TestRecorderRecordSRV(t *testing.T) {
 	}
 	obsCount := func(changeType string) int {
 		var n int
-		if err := pc.Pool.QueryRow(ctx,
+		if err := pc.Pool.QueryRow(
+			ctx,
 			`SELECT count(*) FROM domain_observations
 			 WHERE domain_name=$1 AND entity_type=$2 AND change_type=$3`,
 			d.Name, observer.EntitySRVRecord, changeType,
@@ -257,7 +262,8 @@ func TestRecorderRecordSRV(t *testing.T) {
 	}
 	currentWeight := func() int {
 		var w int
-		if err := pc.Pool.QueryRow(ctx,
+		if err := pc.Pool.QueryRow(
+			ctx,
 			`SELECT weight FROM srv_records WHERE domain_id=$1`, d.ID,
 		).Scan(&w); err != nil {
 			t.Fatalf("query srv weight: %v", err)
@@ -348,7 +354,8 @@ func TestRecordFindingChange_SuppressesNoOpObservations(t *testing.T) {
 	}
 	obsCount := func(changeType string) int {
 		var n int
-		if err := pc.Pool.QueryRow(ctx,
+		if err := pc.Pool.QueryRow(
+			ctx,
 			`SELECT count(*) FROM domain_observations
 			 WHERE tenant_id=$1 AND domain_name=$2 AND entity_type=$3 AND entity_key=$4 AND change_type=$5`,
 			tenantID, d.Name, observer.EntitySPFFinding, entityKey, changeType,
