@@ -63,9 +63,10 @@ func (s *Scan) ScanDNSSEC(domain string) *dnsrecords.DNSSECResult {
 		for _, key := range dnskeys {
 			parsedKey, _ := dnsrecords.ParseDNSKEY(domain, key)
 			if parsedKey != nil {
-				if parsedKey.Flags == 257 {
+				switch parsedKey.Flags {
+				case 257:
 					ds.Result.KSKs = append(ds.Result.KSKs, *parsedKey)
-				} else if parsedKey.Flags == 256 {
+				case 256:
 					ds.Result.ZSKs = append(ds.Result.ZSKs, *parsedKey)
 				}
 			}

@@ -1,4 +1,4 @@
--- name: ScannersStoreZoneTransferAttempt :exec
+-- name: ScannersStoreZoneTransferAttempt :one
 INSERT INTO zone_transfer_attempts (domain_id,
                                     nameserver,
                                     transfer_type,
@@ -11,7 +11,8 @@ ON CONFLICT (domain_id, nameserver)
                   was_successful = $4,
                   response_data  = $5,
                   error_message  = $6,
-                  updated_at     = NOW();
+                  updated_at     = NOW()
+RETURNING (xmax = 0)::boolean AS inserted;
 -- name: ScannersGetZoneTransferAttempts :many
 SELECT id,
        uid,

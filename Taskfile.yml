@@ -24,12 +24,12 @@ tasks:
   serve:
     desc: Run webserver
     cmds:
-      - air -c .air.toml -build.bin="./tmp/main serve {{.CLI_ARGS}}"
+      - air -c .air.toml -- serve {{.CLI_ARGS}}
 
   worker:
     desc: Run jobs
     cmds:
-      - air -c .air.toml -build.bin="./tmp/main worker {{.CLI_ARGS}}"
+      - air -c .air.toml -- worker {{.CLI_ARGS}}
 
   tidy:
     desc: go mod tidy
@@ -157,6 +157,10 @@ tasks:
     cmds:
       - go test -race -v -cover ./...
 
+  dagger:
+    desc: 'Run dagger locally (unsets SSH_AUTH_SOCK to avoid agent forwarding). e.g. task dagger -- call lint --src .'
+    cmds:
+      - env -u SSH_AUTH_SOCK DAGGER_NO_NAG=1 dagger {{.CLI_ARGS}}
   ci:lint:
     cmds:
       - dagger call lint --src . {{.CLI_ARGS}}

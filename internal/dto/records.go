@@ -1,6 +1,10 @@
 package dto
 
 import (
+	"encoding/json"
+	"strconv"
+	"time"
+
 	"github.com/danielmichaels/gecko/internal/store"
 )
 
@@ -122,13 +126,65 @@ type AllRecords struct {
 	RRSIG      []RRSIGRecord  `json:"rrsig,omitempty"`
 }
 
-// RecordHistory represents a generic history entry for any DNS record
+// RecordHistory is one entry from the domain_observations change log, shaped for
+// the timeline/history API. Payload carries the type-specific snapshot.
 type RecordHistory struct {
-	Changes    any    `json:"changes"` // The specific record type data
-	ID         string `json:"id"`
-	RecordID   string `json:"record_id"`
-	ChangeType string `json:"change_type"` // created, updated, deleted
-	Timestamp  string `json:"timestamp"`
+	ID         string          `json:"id"`
+	EntityType string          `json:"entity_type"` // a_record, ...
+	EntityKey  string          `json:"entity_key"`  // natural key within the type
+	ChangeType string          `json:"change_type"` // created, updated, deleted
+	ScanUID    string          `json:"scan_uid,omitempty"`
+	ObservedAt string          `json:"observed_at"`
+	Payload    json.RawMessage `json:"payload"`
+}
+
+// ScanDiff is one scan in a domain's timeline together with the changes observed
+// during it — the scan-diff view the per-table *_history model couldn't serve.
+// Scans are identified by their opaque uid; the numeric id stays internal.
+type ScanDiff struct {
+	ScanUID       string          `json:"scan_uid"`
+	Source        string          `json:"source"`
+	StartedAt     string          `json:"started_at"`
+	ParentScanUID string          `json:"parent_scan_uid,omitempty"`
+	Changes       []RecordHistory `json:"changes"`
+}
+
+// TimelineRowToRecordHistory converts one joined timeline row into API shape,
+// carrying the scan uid resolved by the join.
+func TimelineRowToRecordHistory(
+	o store.ObservationsListTimelineByTenantDomainNameRow,
+) RecordHistory {
+	rh := RecordHistory{
+		ID:         strconv.FormatInt(o.ID, 10),
+		EntityType: o.EntityType,
+		EntityKey:  o.EntityKey,
+		ChangeType: o.ChangeType,
+		Payload:    json.RawMessage(o.Payload),
+		ScanUID:    o.ScanUid,
+	}
+	if o.ObservedAt.Valid {
+		rh.ObservedAt = o.ObservedAt.Time.Format(time.RFC3339)
+	}
+	return rh
+}
+
+// ObsWithScanRowToRecordHistory converts one flat history row (observation +
+// joined scan uid) into API shape.
+func ObsWithScanRowToRecordHistory(
+	o store.ObservationsListWithScanUIDByTenantDomainNameRow,
+) RecordHistory {
+	rh := RecordHistory{
+		ID:         strconv.FormatInt(o.ID, 10),
+		EntityType: o.EntityType,
+		EntityKey:  o.EntityKey,
+		ChangeType: o.ChangeType,
+		Payload:    json.RawMessage(o.Payload),
+		ScanUID:    o.ScanUid.String,
+	}
+	if o.ObservedAt.Valid {
+		rh.ObservedAt = o.ObservedAt.Time.Format(time.RFC3339)
+	}
+	return rh
 }
 
 // ARecordToAPI converts store.ARecords to dto.ARecord

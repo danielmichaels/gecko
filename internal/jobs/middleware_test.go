@@ -19,7 +19,7 @@ func (h *captureHandler) Handle(_ context.Context, r slog.Record) error {
 	return nil
 }
 func (h *captureHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
-func (h *captureHandler) WithGroup(string) slog.Handler       { return h }
+func (h *captureHandler) WithGroup(string) slog.Handler      { return h }
 
 func attrsOf(r slog.Record) map[string]slog.Value {
 	m := make(map[string]slog.Value, r.NumAttrs())

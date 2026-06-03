@@ -54,6 +54,40 @@ var (
 	ErrDNSSECFailedChainOfTrust       = errors.New("DNSSEC failed chain of trust validation")
 )
 
+// ResolutionStatus distinguishes the three outcomes of a DNS lookup that the
+// observation recorder must tell apart to avoid phantom deletions. The zero
+// value is ResolutionIndeterminate so an unset status defaults to "don't act".
+type ResolutionStatus int
+
+const (
+	// ResolutionIndeterminate: SERVFAIL, timeout, or retries exhausted — the
+	// resolver couldn't tell whether the record exists. Never delete on this.
+	ResolutionIndeterminate ResolutionStatus = iota
+	// ResolutionData: authoritative NOERROR response carrying answers.
+	ResolutionData
+	// ResolutionEmpty: authoritative absence — NXDOMAIN or NODATA (NOERROR with
+	// no matching answers). Safe to treat the record as genuinely gone.
+	ResolutionEmpty
+)
+
+func (s ResolutionStatus) String() string {
+	switch s {
+	case ResolutionData:
+		return "data"
+	case ResolutionEmpty:
+		return "empty"
+	default:
+		return "indeterminate"
+	}
+}
+
+// Authoritative reports whether the resolver returned a definitive answer
+// (data or confirmed absence). The recorder applies deletions only when this is
+// true; an Indeterminate result skips the delete pass entirely.
+func (s ResolutionStatus) Authoritative() bool {
+	return s == ResolutionData || s == ResolutionEmpty
+}
+
 // DNSClient is a struct that holds the DNS client, logger, and a list of DNS servers to use for lookups.
 // It provides methods to perform various DNS record lookups, such as CNAME, A, and AAAA.
 type DNSClient struct {
@@ -233,9 +267,39 @@ func (c *DNSClient) LookupDS(target string) ([]string, bool) {
 	return c.lookupRecord(target, dns.TypeDS)
 }
 
-// lookupRecord performs a DNS lookup for the given target and query type, using the specified DNS server.
-// It returns the results as a slice of strings, and a boolean indicating whether the lookup was successful.
+// lookupRecord performs a DNS lookup for the given target and query type. It
+// returns the results and a boolean indicating whether authoritative data was
+// found. It is a thin wrapper over lookupRecordWithStatus, preserving the legacy
+// ([]string, bool) contract for existing callers (ok == data found). NXDOMAIN,
+// NODATA, SERVFAIL and timeouts all report ok=false; callers that need to tell
+// authoritative absence from "couldn't tell" must use LookupWithStatus.
 func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
+	records, status := c.lookupRecordWithStatus(target, qtype)
+	return records, status == ResolutionData
+}
+
+// LookupWithStatus performs a DNS lookup and returns the results together with a
+// three-way ResolutionStatus (data / authoritative-empty / indeterminate). The
+// observation recorder uses the status to gate deletions: it removes projection
+// rows only on an authoritative result, never on Indeterminate.
+func (c *DNSClient) LookupWithStatus(target string, qtype uint16) ([]string, ResolutionStatus) {
+	return c.lookupRecordWithStatus(target, qtype)
+}
+
+// lookupRecordWithStatus performs a DNS lookup for the given target and query
+// type and classifies the outcome:
+//   - NOERROR with answers      -> ResolutionData
+//   - NOERROR/NODATA, NXDOMAIN  -> ResolutionEmpty (authoritative absence)
+//   - SERVFAIL                  -> ResolutionIndeterminate (resolver failure)
+//   - timeout / retries spent   -> ResolutionIndeterminate
+//
+// SERVFAIL and NXDOMAIN are deliberately kept distinct here — collapsing them
+// (as the legacy bool did) would let a transient SERVFAIL masquerade as
+// authoritative absence and trigger phantom deletions in the recorder.
+func (c *DNSClient) lookupRecordWithStatus(
+	target string,
+	qtype uint16,
+) ([]string, ResolutionStatus) {
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(target), qtype)
 	m.RecursionDesired = true
@@ -277,18 +341,33 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 			c.backoffSleep(attempt, target)
 			continue
 		}
-		// exit early on NXDOMAIN
-		if r.Rcode == dns.RcodeNameError || r.Rcode == dns.RcodeServerFailure {
+		switch r.Rcode {
+		case dns.RcodeSuccess:
+			records := processResponse(r, qtype)
+			if len(records) > 0 {
+				return records, ResolutionData
+			}
+			// NOERROR with no matching answers is NODATA: authoritative absence.
+			return nil, ResolutionEmpty
+		case dns.RcodeNameError:
 			c.logger.Debug(
-				"rcode acceptable failure",
+				"authoritative absence",
 				"target", target,
 				"qtype", QTypeToString[qtype],
 				"server", server,
 				"rcode", RCodeToString[r.Rcode],
 			)
-			return nil, false // Return immediately
-		}
-		if r.Rcode != dns.RcodeSuccess {
+			return nil, ResolutionEmpty
+		case dns.RcodeServerFailure:
+			c.logger.Debug(
+				"indeterminate resolution (servfail)",
+				"target", target,
+				"qtype", QTypeToString[qtype],
+				"server", server,
+				"rcode", RCodeToString[r.Rcode],
+			)
+			return nil, ResolutionIndeterminate
+		default:
 			c.logger.Debug(
 				"rcode error",
 				"target",
@@ -303,9 +382,9 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 			c.backoffSleep(attempt, target)
 			continue
 		}
-		return processResponse(r, qtype), true
 	}
-	return nil, false
+	// Exhausted retries without an authoritative answer: couldn't tell.
+	return nil, ResolutionIndeterminate
 }
 
 func processResponse(r *dns.Msg, qtype uint16) []string {
@@ -693,7 +772,8 @@ func (c *DNSClient) compareDS(ds1, ds2 *dns.DS) bool {
 		ds1.DigestType == ds2.DigestType &&
 		digest1 == digest2
 
-	c.logger.Debug("compareDS",
+	c.logger.Debug(
+		"compareDS",
 		"domain", ds1.Hdr.Name,
 		"result", result,
 		"digest1", digest1,
@@ -703,23 +783,6 @@ func (c *DNSClient) compareDS(ds1, ds2 *dns.DS) bool {
 	)
 
 	return result
-}
-
-type SubdomainResult struct {
-	Name   string
-	A      []string
-	AAAA   []string
-	CNAME  []string
-	MX     []string
-	TXT    []string
-	NS     []string
-	PTR    []string
-	SRV    []string
-	CAA    []string
-	SOA    []string
-	DNSKEY []string
-	DS     []string
-	RRSIG  []string
 }
 
 // EnumerateWithSubfinderCallback enumerates subdomains for the given domain using the Subfinder tool,
@@ -821,7 +884,8 @@ func (c *DNSClient) performTransfer(domain, nameserver string, m *dns.Msg) []dns
 	if m.Question[0].Qtype == dns.TypeIXFR {
 		transferType = "IXFR"
 	}
-	c.logger.Debug("attempting zone transfer",
+	c.logger.Debug(
+		"attempting zone transfer",
 		"domain", domain,
 		"nameserver", nameserver,
 		"type", transferType,

@@ -6,8 +6,91 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielmichaels/gecko/internal/dto"
+	"github.com/danielmichaels/gecko/internal/observer"
+	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+// qtypeToEntityType maps the API's record qtype filter onto the entity_type the
+// recorder writes into the observation log. Values reference the observer
+// constants so a rename can't silently desync the filter from what is stored.
+var qtypeToEntityType = map[string]string{
+	"a":      observer.EntityARecord,
+	"aaaa":   observer.EntityAAAARecord,
+	"cname":  observer.EntityCNAMERecord,
+	"mx":     observer.EntityMXRecord,
+	"txt":    observer.EntityTXTRecord,
+	"ns":     observer.EntityNSRecord,
+	"soa":    observer.EntitySOARecord,
+	"ptr":    observer.EntityPTRRecord,
+	"caa":    observer.EntityCAARecord,
+	"srv":    observer.EntitySRVRecord,
+	"dnskey": observer.EntityDNSKEYRecord,
+	"ds":     observer.EntityDSRecord,
+	"rrsig":  observer.EntityRRSIGRecord,
+}
+
+type RecordHistoryOutput struct {
+	Body struct {
+		DomainName string              `json:"domain_name"`
+		History    []dto.RecordHistory `json:"history"`
+	}
+}
+
+type RecordHistoryInput struct {
+	DomainID string `path:"id"     example:"domain_00000001" doc:"Domain UID"`
+	QType    string `query:"qtype" example:"a,cname"         doc:"Comma-separated record types to filter. Omit for all."`
+}
+
+// handleRecordsHistory returns a domain's observation timeline. It resolves the
+// {id} to its (tenant_id, name) and queries observations by that key — never the
+// live domain_id, which goes NULL on delete — so a re-added domain shows its
+// prior timeline and a deleted domain's history stays reachable.
+func (app *Server) handleRecordsHistory(
+	ctx context.Context,
+	i *RecordHistoryInput,
+) (*RecordHistoryOutput, error) {
+	domain, err := app.Db.DomainsGetByID(ctx, i.DomainID)
+	if err != nil {
+		return nil, huma.Error404NotFound("domain not found")
+	}
+
+	var wanted map[string]bool
+	if i.QType != "" {
+		wanted = map[string]bool{}
+		for _, q := range strings.Split(strings.ToLower(i.QType), ",") {
+			et, ok := qtypeToEntityType[q]
+			if !ok {
+				return nil, huma.Error400BadRequest("invalid record type: " + q)
+			}
+			wanted[et] = true
+		}
+	}
+
+	obs, err := app.Db.ObservationsListWithScanUIDByTenantDomainName(
+		ctx,
+		store.ObservationsListWithScanUIDByTenantDomainNameParams{
+			TenantID:   domain.TenantID.Int32,
+			DomainName: domain.Name,
+		},
+	)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to load record history", err)
+	}
+
+	history := []dto.RecordHistory{}
+	for _, o := range obs {
+		if wanted != nil && !wanted[o.EntityType] {
+			continue
+		}
+		history = append(history, dto.ObsWithScanRowToRecordHistory(o))
+	}
+
+	resp := &RecordHistoryOutput{}
+	resp.Body.DomainName = domain.Name
+	resp.Body.History = history
+	return resp, nil
+}
 
 // /records?qtype=a,aaaa,cname             // List all records with optional type filtering
 // /records/:domainID?qtype=a,aaaa         // Get records for specific domain with optional type filtering
@@ -55,7 +138,7 @@ func (app *Server) handleRecordsList(ctx context.Context, i *struct {
 	}
 	recordTypes := parseRecordTypes(i.QType)
 
-	pageSize, pageNumber, _ := i.PaginationQuery.GetPaginationParams()
+	pageSize, pageNumber, _ := i.GetPaginationParams()
 	pagination := NewPaginationMetadata(0, pageSize, pageNumber, 0)
 
 	resp := &RecordsListOutput{

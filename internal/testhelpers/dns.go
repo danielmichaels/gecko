@@ -13,12 +13,13 @@ import (
 
 // MockDNSServer represents a mock DNS server for testing
 type MockDNSServer struct {
-	Server     *dns.Server
-	Records    map[string]map[uint16][]dns.RR
-	Logger     *slog.Logger
-	ListenAddr string
-	Port       int
-	mu         sync.RWMutex
+	Server      *dns.Server
+	Records     map[string]map[uint16][]dns.RR
+	ForcedRcode map[string]int
+	Logger      *slog.Logger
+	ListenAddr  string
+	Port        int
+	mu          sync.RWMutex
 }
 
 // NewMockDNSServer creates a new mock DNS server
@@ -35,10 +36,11 @@ func NewMockDNSServer() (*MockDNSServer, error) {
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 
 	server := &MockDNSServer{
-		Port:       port,
-		Records:    make(map[string]map[uint16][]dns.RR),
-		ListenAddr: addr,
-		Logger:     slog.Default(), // fixme use this, or custom?
+		Port:        port,
+		Records:     make(map[string]map[uint16][]dns.RR),
+		ForcedRcode: make(map[string]int),
+		ListenAddr:  addr,
+		Logger:      slog.Default(), // fixme use this, or custom?
 	}
 	// clear any existing handlers and register new one
 	dns.DefaultServeMux = dns.NewServeMux()
@@ -205,6 +207,15 @@ func (s *MockDNSServer) AddRecord(name string, rrtype uint16, ttl uint32, rdata 
 	return err
 }
 
+// SetRcode forces the mock to answer the given name with a specific DNS rcode
+// (e.g. dns.RcodeServerFailure) regardless of records, so tests can exercise
+// SERVFAIL/REFUSED handling.
+func (s *MockDNSServer) SetRcode(name string, rcode int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ForcedRcode[dns.Fqdn(name)] = rcode
+}
+
 // handleRequest handles DNS requests to the mock server
 func (s *MockDNSServer) handleRequest(w dns.ResponseWriter, r *dns.Msg) {
 	m := new(dns.Msg)
@@ -231,9 +242,18 @@ func (s *MockDNSServer) handleRequest(w dns.ResponseWriter, r *dns.Msg) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	if rcode, ok := s.ForcedRcode[q.Name]; ok {
+		m.Rcode = rcode
+		if err := w.WriteMsg(m); err != nil {
+			s.Logger.Error("Failed to write DNS response", "error", err)
+		}
+		return
+	}
+
 	// Check if we have records for this name and type
-	if records, ok := s.Records[q.Name]; ok {
-		if rrs, ok := records[q.Qtype]; ok {
+	nameRecords, nameExists := s.Records[q.Name]
+	if nameExists {
+		if rrs, ok := nameRecords[q.Qtype]; ok {
 			m.Answer = append(m.Answer, rrs...)
 			s.Logger.Debug(
 				"Returning records",
@@ -247,8 +267,9 @@ func (s *MockDNSServer) handleRequest(w dns.ResponseWriter, r *dns.Msg) {
 		}
 	}
 
-	// If no records found, return NXDOMAIN
-	if len(m.Answer) == 0 {
+	// NODATA vs NXDOMAIN: a name that exists for some other type returns NOERROR
+	// with an empty answer (NODATA); only an entirely-unknown name is NXDOMAIN.
+	if len(m.Answer) == 0 && !nameExists {
 		m.Rcode = dns.RcodeNameError
 		s.Logger.Debug("No records found, returning NXDOMAIN", "name", q.Name, "type", q.Qtype)
 	}

@@ -35,7 +35,7 @@ func (p *PaginationQuery) GetPaginationParams() (pageSize, pageNumber, offset in
 	pageSize = p.GetPageSize()
 	pageNumber = p.GetPageNumber()
 	offset = p.GetOffset()
-	return
+	return pageSize, pageNumber, offset
 }
 
 type PaginationMetadata struct {
