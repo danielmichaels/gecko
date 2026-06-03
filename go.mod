@@ -1,6 +1,6 @@
 module github.com/danielmichaels/gecko
 
-go 1.25.0
+go 1.26.4
 
 require (
 	github.com/MatusOllah/slogcolor v1.5.0
