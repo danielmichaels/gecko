@@ -6,6 +6,8 @@ require (
 	github.com/MatusOllah/slogcolor v1.5.0
 	github.com/alecthomas/kong v1.8.1
 	github.com/alecthomas/kong-yaml v0.2.0
+	github.com/alexedwards/scs/pgxstore v0.0.0-20251002162104-209de6e426de
+	github.com/alexedwards/scs/v2 v2.9.0
 	github.com/briandowns/spinner v1.23.2
 	github.com/carlmjohnson/requests v0.24.3
 	github.com/danielgtaylor/huma/v2 v2.28.0
@@ -23,6 +25,7 @@ require (
 	github.com/rs/xid v1.5.0
 	github.com/testcontainers/testcontainers-go v0.35.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.35.0
+	golang.org/x/crypto v0.50.0
 	golang.org/x/net v0.53.0
 	golang.org/x/sync v0.20.0
 	golang.org/x/term v0.42.0
@@ -173,7 +176,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.26.0 // indirect
 	go.uber.org/goleak v1.3.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/crypto v0.50.0 // indirect
 	golang.org/x/exp v0.0.0-20240325151524-a685a6edb6d8 // indirect
 	golang.org/x/mod v0.36.0 // indirect
 	golang.org/x/oauth2 v0.11.0 // indirect
