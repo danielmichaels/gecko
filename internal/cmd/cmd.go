@@ -24,26 +24,24 @@ import (
 
 type Globals struct {
 	ServerURL  string          `help:"Server URL"`
-	Username   string          `help:"Username for authentication"`
-	Password   string          `help:"Password for authentication"`
+	Username   string          `help:"Email/username for 'auth login'"`
+	Password   string          `help:"Password for 'auth login'"`
+	APIKey     string          `name:"api-key" env:"GECKO_API_KEY" help:"API key for authenticated requests (or run 'gecko auth login')"`
 	ConfigFile kong.ConfigFlag `short:"c" help:"Location of client config files" type:"yamlfile" default:"${config_path}"`
 	Format     string          `short:"f" help:"Output format - use 'json' for parsing output consistently" default:"text" enum:"text,json"`
 }
 
-func ValidateStartup(g *Globals) error {
+// validateAPIAccess guards commands that call the authenticated API: they need a
+// server URL and an API key (from --api-key, GECKO_API_KEY, or a prior 'auth login').
+func validateAPIAccess(g *Globals) error {
 	if g.ServerURL == "" {
 		return fmt.Errorf(
 			"server-url is required - set via config, GECKO_SERVER_URL or --server-url flag",
 		)
 	}
-	if g.Username == "" {
+	if g.APIKey == "" {
 		return fmt.Errorf(
-			"username is required - set via config, GECKO_USERNAME or --username flag",
-		)
-	}
-	if g.Password == "" {
-		return fmt.Errorf(
-			"password is required - set via config, GECKO_PASSWORD or --password flag",
+			"api-key is required - set via config, GECKO_API_KEY or --api-key flag, or run 'gecko auth login'",
 		)
 	}
 	return nil
