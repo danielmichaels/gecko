@@ -36,7 +36,10 @@ func (s *ServeCmd) Run() error {
 	defer setup.Close()
 
 	dbtx := store.New(setup.PgxPool)
-	app := server.New(setup.Config, setup.Logger, dbtx, setup.PgxPool, setup.RC)
+	app, err := server.New(setup.Config, setup.Logger, dbtx, setup.PgxPool, setup.RC)
+	if err != nil {
+		return err
+	}
 
 	if !s.DisableWorker {
 		if err := app.RC.Start(setup.Ctx); err != nil {
