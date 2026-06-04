@@ -50,7 +50,14 @@ func (app *Server) handleRecordsHistory(
 	ctx context.Context,
 	i *RecordHistoryInput,
 ) (*RecordHistoryOutput, error) {
-	domain, err := app.Db.DomainsGetByID(ctx, i.DomainID)
+	p, err := principalOrErr(ctx)
+	if err != nil {
+		return nil, err
+	}
+	domain, err := app.Db.DomainsGetByID(ctx, store.DomainsGetByIDParams{
+		Uid:      i.DomainID,
+		TenantID: pgtype.Int4{Int32: p.TenantID, Valid: true},
+	})
 	if err != nil {
 		return nil, huma.Error404NotFound("domain not found")
 	}
@@ -132,7 +139,14 @@ func (app *Server) handleRecordsList(ctx context.Context, i *struct {
 	PaginationQuery
 },
 ) (*RecordsListOutput, error) {
-	domain, err := app.Db.DomainsGetByID(ctx, i.DomainID)
+	p, err := principalOrErr(ctx)
+	if err != nil {
+		return nil, err
+	}
+	domain, err := app.Db.DomainsGetByID(ctx, store.DomainsGetByIDParams{
+		Uid:      i.DomainID,
+		TenantID: pgtype.Int4{Int32: p.TenantID, Valid: true},
+	})
 	if err != nil {
 		return nil, huma.Error404NotFound("domain not found")
 	}

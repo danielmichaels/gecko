@@ -75,7 +75,7 @@ func TestRecordsHistoryHandler_PreservesTimelineAcrossDeleteReadd(t *testing.T) 
 	d1 := createDomain()
 	recordA(d1, []string{"1.1.1.1"})
 
-	out, err := app.handleRecordsHistory(ctx, &RecordHistoryInput{DomainID: d1.Uid})
+	out, err := app.handleRecordsHistory(ctxWithPrincipal(ctx, tenantID), &RecordHistoryInput{DomainID: d1.Uid})
 	if err != nil {
 		t.Fatalf("handleRecordsHistory: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestRecordsHistoryHandler_PreservesTimelineAcrossDeleteReadd(t *testing.T) 
 	}
 
 	// Delete the domain. Observations must survive with domain_id NULL.
-	if _, err := pc.Queries.DomainsDeleteByID(ctx, d1.Uid); err != nil {
+	if _, err := pc.Queries.DomainsDeleteByID(ctx, store.DomainsDeleteByIDParams{Uid: d1.Uid, TenantID: pgtype.Int4{Int32: tenantID, Valid: true}}); err != nil {
 		t.Fatalf("delete domain: %v", err)
 	}
 	var surviving, nullDomainID int
@@ -113,7 +113,7 @@ func TestRecordsHistoryHandler_PreservesTimelineAcrossDeleteReadd(t *testing.T) 
 	if d2.ID == d1.ID {
 		t.Fatalf("re-added domain reused id %d; expected a new incarnation", d2.ID)
 	}
-	out2, err := app.handleRecordsHistory(ctx, &RecordHistoryInput{DomainID: d2.Uid})
+	out2, err := app.handleRecordsHistory(ctxWithPrincipal(ctx, tenantID), &RecordHistoryInput{DomainID: d2.Uid})
 	if err != nil {
 		t.Fatalf("handleRecordsHistory after re-add: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestRecordsHistoryHandler_PreservesTimelineAcrossDeleteReadd(t *testing.T) 
 
 	// qtype filter: a non-matching type yields an empty timeline.
 	outFiltered, err := app.handleRecordsHistory(
-		ctx,
+		ctxWithPrincipal(ctx, tenantID),
 		&RecordHistoryInput{DomainID: d2.Uid, QType: "cname"},
 	)
 	if err != nil {

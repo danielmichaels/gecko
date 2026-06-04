@@ -7,6 +7,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielmichaels/gecko/internal/dto"
 	"github.com/danielmichaels/gecko/internal/store"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type DomainTimelineOutput struct {
@@ -27,7 +28,14 @@ func (app *Server) handleDomainTimeline(
 	ctx context.Context,
 	i *DomainGetInput,
 ) (*DomainTimelineOutput, error) {
-	domain, err := app.Db.DomainsGetByID(ctx, i.ID)
+	p, err := principalOrErr(ctx)
+	if err != nil {
+		return nil, err
+	}
+	domain, err := app.Db.DomainsGetByID(ctx, store.DomainsGetByIDParams{
+		Uid:      i.ID,
+		TenantID: pgtype.Int4{Int32: p.TenantID, Valid: true},
+	})
 	if err != nil {
 		return nil, huma.Error404NotFound("domain not found")
 	}

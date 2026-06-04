@@ -44,10 +44,13 @@ func (app *Server) handleDomainList(ctx context.Context, i *struct {
 	PaginationQuery
 },
 ) (*DomainListOutput, error) {
-	tenantID := pgtype.Int4{Int32: 1, Valid: true} // fixme: Replace with actual tenant ID
+	p, err := principalOrErr(ctx)
+	if err != nil {
+		return nil, err
+	}
+	tenantID := pgtype.Int4{Int32: p.TenantID, Valid: true}
 	pageSize, pageNumber, offset := i.GetPaginationParams()
 	var result domainsSearchQueryResult
-	var err error
 	if i.FilterName != "" {
 		result, err = app.executeSearchQuery(ctx, tenantID, i.FilterName, pageSize, offset)
 	} else {
@@ -139,7 +142,14 @@ type DomainGetInput struct {
 }
 
 func (app *Server) handleDomainGet(ctx context.Context, i *DomainGetInput) (*DomainOutput, error) {
-	domain, err := app.Db.DomainsGetByID(ctx, i.ID)
+	p, err := principalOrErr(ctx)
+	if err != nil {
+		return nil, err
+	}
+	domain, err := app.Db.DomainsGetByID(ctx, store.DomainsGetByIDParams{
+		Uid:      i.ID,
+		TenantID: pgtype.Int4{Int32: p.TenantID, Valid: true},
+	})
 	if err != nil {
 		return nil, huma.Error404NotFound("domain not found")
 	}
@@ -171,7 +181,14 @@ func (app *Server) handleDomainUpdate(
 	ctx context.Context,
 	i *DomainUpdateInput,
 ) (*DomainOutput, error) {
-	patchDomain, err := app.Db.DomainsGetByID(ctx, i.ID)
+	p, err := principalOrErr(ctx)
+	if err != nil {
+		return nil, err
+	}
+	patchDomain, err := app.Db.DomainsGetByID(ctx, store.DomainsGetByIDParams{
+		Uid:      i.ID,
+		TenantID: pgtype.Int4{Int32: p.TenantID, Valid: true},
+	})
 	if err != nil {
 		app.Log.Error("failed to get domain", "error", err)
 		return nil, huma.Error404NotFound("domain not found")
@@ -200,6 +217,7 @@ func (app *Server) handleDomainUpdate(
 		Status:     status,
 		DomainType: domainType,
 		Source:     domainSource,
+		TenantID:   pgtype.Int4{Int32: p.TenantID, Valid: true},
 	})
 	if err != nil {
 		app.Log.Error("failed to update domain", "error", err)
@@ -253,10 +271,22 @@ func (app *Server) handleDomainDeletionImpact(
 	ctx context.Context,
 	i *DomainDeletionImpactInput,
 ) (*DomainDeletionImpactOutput, error) {
-	count, err := app.Db.DomainsDeleteCount(ctx, i.ID)
+	p, err := principalOrErr(ctx)
+	if err != nil {
+		return nil, err
+	}
+	count, err := app.Db.DomainsDeleteCount(ctx, store.DomainsDeleteCountParams{
+		Uid:      i.ID,
+		TenantID: pgtype.Int4{Int32: p.TenantID, Valid: true},
+	})
 	if err != nil {
 		app.Log.Error("failed to count domains for deletion", "error", err, "id", i.ID)
 		return nil, huma.Error500InternalServerError("failed to count domains for deletion")
+	}
+	// The recursive CTE always counts the domain itself, so 0 means the domain does
+	// not exist in the caller's tenant — 404, consistent with the other by-uid paths.
+	if count == 0 {
+		return nil, huma.Error404NotFound("domain not found")
 	}
 
 	resp := &DomainDeletionImpactOutput{}
@@ -273,7 +303,14 @@ func (app *Server) handleDomainDelete(
 	ctx context.Context,
 	i *DomainDeleteInput,
 ) (*struct{}, error) {
-	_, err := app.Db.DomainsDeleteByID(ctx, i.ID)
+	p, err := principalOrErr(ctx)
+	if err != nil {
+		return nil, err
+	}
+	_, err = app.Db.DomainsDeleteByID(ctx, store.DomainsDeleteByIDParams{
+		Uid:      i.ID,
+		TenantID: pgtype.Int4{Int32: p.TenantID, Valid: true},
+	})
 	if err != nil {
 		app.Log.Error("failed to delete domain", "error", err, "id", i.ID)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -300,7 +337,11 @@ func (app *Server) handleDomainCreate(
 	// Canonicalize before both the insert and (implicitly) the uniqueness check
 	// so case/trailing-dot variants can't bypass the 409 or split a timeline.
 	name := dnsrecords.CanonicalizeDomain(i.Body.Domain)
-	tenantID := int32(1) // todo: get from context
+	p, err := principalOrErr(ctx)
+	if err != nil {
+		return nil, err
+	}
+	tenantID := p.TenantID
 
 	status := store.DomainStatusActive
 	if i.Body.Status != "" {
