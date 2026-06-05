@@ -26,7 +26,13 @@ func TestAssessZoneTransfer(t *testing.T) {
 	defer pgContainer.Close(ctx)
 
 	// Get a test domain
-	domain, err := pgContainer.Queries.DomainsGetByID(ctx, "domain_00000001")
+	domain, err := pgContainer.Queries.DomainsGetByID(
+		ctx,
+		store.DomainsGetByIDParams{
+			Uid:      "domain_00000001",
+			TenantID: pgtype.Int4{Int32: 1, Valid: true},
+		},
+	)
 	if err != nil {
 		t.Fatalf("Failed to get domain: %v", err)
 	}

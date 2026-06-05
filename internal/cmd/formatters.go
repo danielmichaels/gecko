@@ -489,10 +489,14 @@ func printRRSIGRecordsTable(records []dto.RRSIGRecord) {
 // standard input is connected to a terminal (TTY).
 func requestWithSpinner(
 	ctx context.Context,
+	g *Globals,
 	message string,
 	requestFn func() *requests.Builder,
 ) error {
 	builder := requestFn()
+	if g != nil && g.APIKey != "" {
+		builder = builder.Header("X-API-Key", g.APIKey)
+	}
 	isTTY := term.IsTerminal(int(os.Stdin.Fd()))
 	if isTTY {
 		s := spinner.New(spinner.CharSets[11], 100*time.Millisecond)

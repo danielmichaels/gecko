@@ -15,6 +15,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/alexedwards/scs/v2"
+	"github.com/danielmichaels/gecko/internal/auth"
 	"github.com/danielmichaels/gecko/internal/config"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/danielmichaels/gecko/internal/version"
@@ -25,11 +27,13 @@ import (
 )
 
 type Server struct {
-	Conf    *config.Conf
-	Log     *slog.Logger
-	Db      *store.Queries
-	PgxPool *pgxpool.Pool
-	RC      *river.Client[pgx.Tx]
+	Conf         *config.Conf
+	Log          *slog.Logger
+	Db           *store.Queries
+	PgxPool      *pgxpool.Pool
+	RC           *river.Client[pgx.Tx]
+	AuthProvider auth.Provider
+	Sessions     *scs.SessionManager
 }
 
 func New(
@@ -38,8 +42,29 @@ func New(
 	db *store.Queries,
 	pgxPool *pgxpool.Pool,
 	RC *river.Client[pgx.Tx],
-) *Server {
-	return &Server{Conf: c, Log: l, Db: db, RC: RC, PgxPool: pgxPool}
+) (*Server, error) {
+	provider, err := auth.NewProvider(auth.Config{
+		Provider:   c.Auth.Provider,
+		BcryptCost: c.Auth.BcryptCost,
+	}, db)
+	if err != nil {
+		return nil, fmt.Errorf("auth provider: %w", err)
+	}
+	sessions := auth.NewSessionManager(pgxPool, auth.SessionConfig{
+		TTL:            c.Auth.SessionTTL,
+		CookieName:     c.Auth.SessionCookieName,
+		CookieSecure:   c.Auth.SessionCookieSecure,
+		CookieSameSite: c.Auth.SessionCookieSameSite,
+	})
+	return &Server{
+		Conf:         c,
+		Log:          l,
+		Db:           db,
+		RC:           RC,
+		PgxPool:      pgxPool,
+		AuthProvider: provider,
+		Sessions:     sessions,
+	}, nil
 }
 
 func httpLogger(cfg *config.Conf) *httplog.Logger {

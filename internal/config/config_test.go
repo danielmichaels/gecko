@@ -22,6 +22,22 @@ func TestConfig(t *testing.T) {
 	}
 }
 
+func TestAuthDefaults(t *testing.T) {
+	cfg := AppConfig()
+	if cfg.Auth.Provider != "local" {
+		t.Errorf("Auth.Provider default = %q, want local", cfg.Auth.Provider)
+	}
+	if !cfg.Auth.SignupEnabled {
+		t.Errorf("Auth.SignupEnabled default = false, want true")
+	}
+	if cfg.Auth.BcryptCost != 12 {
+		t.Errorf("Auth.BcryptCost default = %d, want 12", cfg.Auth.BcryptCost)
+	}
+	if cfg.Auth.OIDCIssuer != "" {
+		t.Errorf("Auth.OIDCIssuer default = %q, want empty", cfg.Auth.OIDCIssuer)
+	}
+}
+
 func ExampleAppConfig() {
 	type exampleStruct struct {
 		String string `env:"STRING"`

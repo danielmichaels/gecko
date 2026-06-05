@@ -32,7 +32,7 @@ type AddDomainCmd struct {
 }
 
 func (d *AddDomainCmd) Run(g *Globals, dc *DomainCmd) error {
-	if err := ValidateStartup(g); err != nil {
+	if err := validateAPIAccess(g); err != nil {
 		return err
 	}
 	ctx, cancel := createCancellableContext()
@@ -48,7 +48,7 @@ func (d *AddDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 	var apiErr huma.ErrorModel
 	var domain dto.Domain
 
-	err := requestWithSpinner(ctx, "Adding domain...", func() *requests.Builder {
+	err := requestWithSpinner(ctx, g, "Adding domain...", func() *requests.Builder {
 		return requests.
 			URL(g.ServerURL + "/api/domains").
 			BodyJSON(body).
@@ -70,7 +70,7 @@ type DomainGetCmd struct {
 }
 
 func (d *DomainGetCmd) Run(g *Globals, dc *DomainCmd) error {
-	if err := ValidateStartup(g); err != nil {
+	if err := validateAPIAccess(g); err != nil {
 		return err
 	}
 	ctx, cancel := createCancellableContext()
@@ -79,7 +79,7 @@ func (d *DomainGetCmd) Run(g *Globals, dc *DomainCmd) error {
 	var apiErr huma.ErrorModel
 	var domain dto.Domain
 
-	err := requestWithSpinner(ctx, "Fetching domain...", func() *requests.Builder {
+	err := requestWithSpinner(ctx, g, "Fetching domain...", func() *requests.Builder {
 		return requests.
 			URL(g.ServerURL + "/api/domains/" + d.ID).
 			ToJSON(&domain).
@@ -103,7 +103,7 @@ type UpdateDomainCmd struct {
 }
 
 func (d *UpdateDomainCmd) Run(g *Globals, dc *DomainCmd) error {
-	if err := ValidateStartup(g); err != nil {
+	if err := validateAPIAccess(g); err != nil {
 		return err
 	}
 	ctx, cancel := createCancellableContext()
@@ -120,7 +120,7 @@ func (d *UpdateDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 	}
 	var apiErr huma.ErrorModel
 	var domain dto.Domain
-	err := requestWithSpinner(ctx, "Updating domain...", func() *requests.Builder {
+	err := requestWithSpinner(ctx, g, "Updating domain...", func() *requests.Builder {
 		return requests.
 			URL(g.ServerURL + "/api/domains/" + d.ID).
 			Method(http.MethodPut).
@@ -149,7 +149,7 @@ type CountResponse struct {
 }
 
 func (d *RemoveDomainCmd) Run(g *Globals, dc *DomainCmd) error {
-	if err := ValidateStartup(g); err != nil {
+	if err := validateAPIAccess(g); err != nil {
 		return err
 	}
 	if d.Force && d.DryRun {
@@ -162,6 +162,7 @@ func (d *RemoveDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 
 	err := requestWithSpinner(
 		ctx,
+		g,
 		"Calculating number of associated domains...",
 		func() *requests.Builder {
 			return requests.
@@ -196,7 +197,7 @@ func (d *RemoveDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 		}
 	}
 
-	err = requestWithSpinner(ctx, "Removing domains...", func() *requests.Builder {
+	err = requestWithSpinner(ctx, g, "Removing domains...", func() *requests.Builder {
 		return requests.
 			URL(g.ServerURL + "/api/domains/" + d.DomainID).
 			Method(http.MethodDelete).
@@ -231,7 +232,7 @@ type ListDomainCmd struct {
 }
 
 func (d *ListDomainCmd) Run(g *Globals, dc *DomainCmd) error {
-	if err := ValidateStartup(g); err != nil {
+	if err := validateAPIAccess(g); err != nil {
 		return err
 	}
 	ctx, cancel := createCancellableContext()
@@ -242,7 +243,7 @@ func (d *ListDomainCmd) Run(g *Globals, dc *DomainCmd) error {
 		Domains    []dto.Domain              `json:"domains"`
 		Pagination server.PaginationMetadata `json:"pagination"`
 	}
-	err := requestWithSpinner(ctx, "Listing domains...", func() *requests.Builder {
+	err := requestWithSpinner(ctx, g, "Listing domains...", func() *requests.Builder {
 		return requests.
 			URL(g.ServerURL+"/api/domains").
 			Param("page", fmt.Sprintf("%d", d.Page)).
@@ -289,7 +290,7 @@ type DomainRecordsCmd struct {
 }
 
 func (d *DomainRecordsCmd) Run(g *Globals, dc *DomainCmd) error {
-	if err := ValidateStartup(g); err != nil {
+	if err := validateAPIAccess(g); err != nil {
 		return err
 	}
 	ctx, cancel := createCancellableContext()
@@ -303,6 +304,7 @@ func (d *DomainRecordsCmd) Run(g *Globals, dc *DomainCmd) error {
 
 	err := requestWithSpinner(
 		ctx,
+		g,
 		"Fetching domain records...",
 		func() *requests.Builder {
 			return requests.

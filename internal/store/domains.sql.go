@@ -65,8 +65,14 @@ const domainsDeleteByID = `-- name: DomainsDeleteByID :one
 DELETE
 FROM domains
 WHERE uid = $1
+  AND tenant_id = $2
 RETURNING id, uid, tenant_id, name, domain_type, source, status, created_at, updated_at
 `
+
+type DomainsDeleteByIDParams struct {
+	Uid      string      `json:"uid"`
+	TenantID pgtype.Int4 `json:"tenant_id"`
+}
 
 type DomainsDeleteByIDRow struct {
 	ID         int32              `json:"id"`
@@ -81,8 +87,8 @@ type DomainsDeleteByIDRow struct {
 }
 
 // Delete a domain (no auth)
-func (q *Queries) DomainsDeleteByID(ctx context.Context, uid string) (DomainsDeleteByIDRow, error) {
-	row := q.db.QueryRow(ctx, domainsDeleteByID, uid)
+func (q *Queries) DomainsDeleteByID(ctx context.Context, arg DomainsDeleteByIDParams) (DomainsDeleteByIDRow, error) {
+	row := q.db.QueryRow(ctx, domainsDeleteByID, arg.Uid, arg.TenantID)
 	var i DomainsDeleteByIDRow
 	err := row.Scan(
 		&i.ID,
@@ -104,6 +110,7 @@ WITH RECURSIVE domain_tree AS (
     SELECT d.id, d.uid, d.name
     FROM domains d
     WHERE d.uid = $1
+      AND d.tenant_id = $2
 
     UNION ALL
 
@@ -115,8 +122,13 @@ SELECT COUNT(*)
 FROM domain_tree
 `
 
-func (q *Queries) DomainsDeleteCount(ctx context.Context, uid string) (int64, error) {
-	row := q.db.QueryRow(ctx, domainsDeleteCount, uid)
+type DomainsDeleteCountParams struct {
+	Uid      string      `json:"uid"`
+	TenantID pgtype.Int4 `json:"tenant_id"`
+}
+
+func (q *Queries) DomainsDeleteCount(ctx context.Context, arg DomainsDeleteCountParams) (int64, error) {
+	row := q.db.QueryRow(ctx, domainsDeleteCount, arg.Uid, arg.TenantID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -306,7 +318,13 @@ SELECT id,
        updated_at
 FROM domains
 WHERE uid = $1
+  AND tenant_id = $2
 `
+
+type DomainsGetByIDParams struct {
+	Uid      string      `json:"uid"`
+	TenantID pgtype.Int4 `json:"tenant_id"`
+}
 
 type DomainsGetByIDRow struct {
 	ID         int32              `json:"id"`
@@ -320,8 +338,8 @@ type DomainsGetByIDRow struct {
 	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
 }
 
-func (q *Queries) DomainsGetByID(ctx context.Context, uid string) (DomainsGetByIDRow, error) {
-	row := q.db.QueryRow(ctx, domainsGetByID, uid)
+func (q *Queries) DomainsGetByID(ctx context.Context, arg DomainsGetByIDParams) (DomainsGetByIDRow, error) {
+	row := q.db.QueryRow(ctx, domainsGetByID, arg.Uid, arg.TenantID)
 	var i DomainsGetByIDRow
 	err := row.Scan(
 		&i.ID,
@@ -700,6 +718,7 @@ SET status      = $2,
     domain_type = $3,
     source      = $4
 WHERE uid = $1
+  AND tenant_id = $5
 RETURNING id, uid, tenant_id, name, domain_type, source, status, created_at, updated_at
 `
 
@@ -708,6 +727,7 @@ type DomainsUpdateByIDParams struct {
 	Status     DomainStatus `json:"status"`
 	DomainType DomainType   `json:"domain_type"`
 	Source     DomainSource `json:"source"`
+	TenantID   pgtype.Int4  `json:"tenant_id"`
 }
 
 type DomainsUpdateByIDRow struct {
@@ -729,6 +749,7 @@ func (q *Queries) DomainsUpdateByID(ctx context.Context, arg DomainsUpdateByIDPa
 		arg.Status,
 		arg.DomainType,
 		arg.Source,
+		arg.TenantID,
 	)
 	var i DomainsUpdateByIDRow
 	err := row.Scan(
@@ -750,6 +771,7 @@ UPDATE domains
 SET domain_type = $2,
     source      = $3
 WHERE uid = $1
+  AND tenant_id = $4
 RETURNING id, uid, tenant_id, name, domain_type, source, status, created_at, updated_at
 `
 
@@ -757,6 +779,7 @@ type DomainsUpdateByIDTypeSourceParams struct {
 	Uid        string       `json:"uid"`
 	DomainType DomainType   `json:"domain_type"`
 	Source     DomainSource `json:"source"`
+	TenantID   pgtype.Int4  `json:"tenant_id"`
 }
 
 type DomainsUpdateByIDTypeSourceRow struct {
@@ -773,7 +796,12 @@ type DomainsUpdateByIDTypeSourceRow struct {
 
 // Update a domain's type and source (no auth)
 func (q *Queries) DomainsUpdateByIDTypeSource(ctx context.Context, arg DomainsUpdateByIDTypeSourceParams) (DomainsUpdateByIDTypeSourceRow, error) {
-	row := q.db.QueryRow(ctx, domainsUpdateByIDTypeSource, arg.Uid, arg.DomainType, arg.Source)
+	row := q.db.QueryRow(ctx, domainsUpdateByIDTypeSource,
+		arg.Uid,
+		arg.DomainType,
+		arg.Source,
+		arg.TenantID,
+	)
 	var i DomainsUpdateByIDTypeSourceRow
 	err := row.Scan(
 		&i.ID,

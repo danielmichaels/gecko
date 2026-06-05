@@ -87,7 +87,8 @@ SELECT id,
        created_at,
        updated_at
 FROM domains
-WHERE uid = $1;
+WHERE uid = $1
+  AND tenant_id = $2;
 
 -- name: DomainsGetByName :one
 -- Read a domain by name and tenant ID (no auth)
@@ -126,6 +127,7 @@ SET status      = $2,
     domain_type = $3,
     source      = $4
 WHERE uid = $1
+  AND tenant_id = $5
 RETURNING id, uid, tenant_id, name, domain_type, source, status, created_at, updated_at;
 
 -- name: DomainsUpdateByIDTypeSource :one
@@ -134,6 +136,7 @@ UPDATE domains
 SET domain_type = $2,
     source      = $3
 WHERE uid = $1
+  AND tenant_id = $4
 RETURNING id, uid, tenant_id, name, domain_type, source, status, created_at, updated_at;
 
 -- name: DomainsDeleteByID :one
@@ -141,6 +144,7 @@ RETURNING id, uid, tenant_id, name, domain_type, source, status, created_at, upd
 DELETE
 FROM domains
 WHERE uid = $1
+  AND tenant_id = $2
 RETURNING id, uid, tenant_id, name, domain_type, source, status, created_at, updated_at;
 
 -- name: DomainsListByTenantID :many
@@ -197,6 +201,7 @@ WITH RECURSIVE domain_tree AS (
     SELECT d.id, d.uid, d.name
     FROM domains d
     WHERE d.uid = $1
+      AND d.tenant_id = $2
 
     UNION ALL
 

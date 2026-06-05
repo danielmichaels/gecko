@@ -101,7 +101,7 @@ func (app *Server) registerEndpoints(api huma.API) {
 		Tags:          []string{"Domains"},
 		DefaultStatus: http.StatusCreated,
 		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
-		Middlewares:   huma.Middlewares{ApiKeyAuth(api)},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
 	}, app.handleDomainCreate)
 
 	huma.Register(api, huma.Operation{
@@ -112,7 +112,7 @@ func (app *Server) registerEndpoints(api huma.API) {
 		Tags:          []string{"Domains"},
 		DefaultStatus: http.StatusOK,
 		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
-		Middlewares:   huma.Middlewares{ApiKeyAuth(api)},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
 	}, app.handleDomainList)
 
 	huma.Register(api, huma.Operation{
@@ -123,7 +123,7 @@ func (app *Server) registerEndpoints(api huma.API) {
 		Tags:          []string{"Domains"},
 		DefaultStatus: http.StatusOK,
 		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
-		Middlewares:   huma.Middlewares{ApiKeyAuth(api)},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
 	}, app.handleDomainGet)
 
 	huma.Register(api, huma.Operation{
@@ -134,7 +134,7 @@ func (app *Server) registerEndpoints(api huma.API) {
 		Tags:          []string{"Domains"},
 		DefaultStatus: http.StatusOK,
 		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
-		Middlewares:   huma.Middlewares{ApiKeyAuth(api)},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
 	}, app.handleDomainUpdate)
 
 	huma.Register(api, huma.Operation{
@@ -145,7 +145,7 @@ func (app *Server) registerEndpoints(api huma.API) {
 		Tags:          []string{"Domains"},
 		DefaultStatus: http.StatusNoContent,
 		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
-		Middlewares:   huma.Middlewares{ApiKeyAuth(api)},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
 	}, app.handleDomainDelete)
 	huma.Register(api, huma.Operation{
 		OperationID:   "delete_domain_impact",
@@ -155,7 +155,7 @@ func (app *Server) registerEndpoints(api huma.API) {
 		Tags:          []string{"Domains"},
 		DefaultStatus: http.StatusOK,
 		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
-		Middlewares:   huma.Middlewares{ApiKeyAuth(api)},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
 	}, app.handleDomainDeletionImpact)
 
 	huma.Register(api, huma.Operation{
@@ -166,7 +166,7 @@ func (app *Server) registerEndpoints(api huma.API) {
 		Tags:          []string{"Records"},
 		DefaultStatus: http.StatusOK,
 		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
-		Middlewares:   huma.Middlewares{ApiKeyAuth(api)},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
 	}, app.handleRecordsList)
 
 	huma.Register(api, huma.Operation{
@@ -177,7 +177,7 @@ func (app *Server) registerEndpoints(api huma.API) {
 		Tags:          []string{"Records"},
 		DefaultStatus: http.StatusOK,
 		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
-		Middlewares:   huma.Middlewares{ApiKeyAuth(api)},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
 	}, app.handleRecordsHistory)
 
 	huma.Register(api, huma.Operation{
@@ -188,6 +188,163 @@ func (app *Server) registerEndpoints(api huma.API) {
 		Tags:          []string{"Records"},
 		DefaultStatus: http.StatusOK,
 		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
-		Middlewares:   huma.Middlewares{ApiKeyAuth(api)},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
 	}, app.handleDomainTimeline)
+
+	// Auth handlers (public: signup, login, accept-invite)
+	huma.Register(api, huma.Operation{
+		OperationID:   "signup",
+		Method:        http.MethodPost,
+		Path:          "/api/auth/signup",
+		Summary:       "Sign up a new team",
+		Description:   "Create a tenant and its first owner, returning an API key.",
+		Tags:          []string{"Auth"},
+		DefaultStatus: http.StatusCreated,
+	}, app.handleSignup)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "login",
+		Method:        http.MethodPost,
+		Path:          "/api/auth/login",
+		Summary:       "Log in",
+		Description:   "Verify email/password and return an API key for CLI use.",
+		Tags:          []string{"Auth"},
+		DefaultStatus: http.StatusOK,
+	}, app.handleLogin)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "accept_invitation",
+		Method:        http.MethodPost,
+		Path:          "/api/invitations/accept",
+		Summary:       "Accept an invitation",
+		Description:   "Consume an invitation token, set a password, and return an API key.",
+		Tags:          []string{"Auth"},
+		DefaultStatus: http.StatusCreated,
+	}, app.handleAcceptInvite)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "logout",
+		Method:        http.MethodPost,
+		Path:          "/api/auth/logout",
+		Summary:       "Log out",
+		Description:   "Revoke the API key used for this request.",
+		Tags:          []string{"Auth"},
+		DefaultStatus: http.StatusNoContent,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
+	}, app.handleLogout)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "me",
+		Method:        http.MethodGet,
+		Path:          "/api/auth/me",
+		Summary:       "Current identity",
+		Description:   "Return the authenticated caller's identity.",
+		Tags:          []string{"Auth"},
+		DefaultStatus: http.StatusOK,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
+	}, app.handleMe)
+
+	// API key handlers
+	huma.Register(api, huma.Operation{
+		OperationID:   "create_api_key",
+		Method:        http.MethodPost,
+		Path:          "/api/apikeys",
+		Summary:       "Create an API key",
+		Tags:          []string{"API Keys"},
+		DefaultStatus: http.StatusCreated,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
+	}, app.handleAPIKeyCreate)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "list_api_keys",
+		Method:        http.MethodGet,
+		Path:          "/api/apikeys",
+		Summary:       "List API keys",
+		Tags:          []string{"API Keys"},
+		DefaultStatus: http.StatusOK,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
+	}, app.handleAPIKeyList)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "revoke_api_key",
+		Method:        http.MethodDelete,
+		Path:          "/api/apikeys/{uid}",
+		Summary:       "Revoke an API key",
+		Tags:          []string{"API Keys"},
+		DefaultStatus: http.StatusNoContent,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
+	}, app.handleAPIKeyRevoke)
+
+	// Invitation handlers
+	huma.Register(api, huma.Operation{
+		OperationID:   "create_invitation",
+		Method:        http.MethodPost,
+		Path:          "/api/invitations",
+		Summary:       "Invite a teammate",
+		Tags:          []string{"Invitations"},
+		DefaultStatus: http.StatusCreated,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
+	}, app.handleInviteCreate)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "list_invitations",
+		Method:        http.MethodGet,
+		Path:          "/api/invitations",
+		Summary:       "List invitations",
+		Tags:          []string{"Invitations"},
+		DefaultStatus: http.StatusOK,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
+	}, app.handleInviteList)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "revoke_invitation",
+		Method:        http.MethodDelete,
+		Path:          "/api/invitations/{uid}",
+		Summary:       "Revoke an invitation",
+		Tags:          []string{"Invitations"},
+		DefaultStatus: http.StatusNoContent,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
+	}, app.handleInviteRevoke)
+
+	// User management handlers
+	huma.Register(api, huma.Operation{
+		OperationID:   "list_users",
+		Method:        http.MethodGet,
+		Path:          "/api/users",
+		Summary:       "List tenant users",
+		Tags:          []string{"Users"},
+		DefaultStatus: http.StatusOK,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
+	}, app.handleUserList)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "update_user",
+		Method:        http.MethodPut,
+		Path:          "/api/users/{uid}",
+		Summary:       "Update a user",
+		Tags:          []string{"Users"},
+		DefaultStatus: http.StatusOK,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
+	}, app.handleUserUpdate)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "delete_user",
+		Method:        http.MethodDelete,
+		Path:          "/api/users/{uid}",
+		Summary:       "Remove a user",
+		Tags:          []string{"Users"},
+		DefaultStatus: http.StatusNoContent,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
+	}, app.handleUserDelete)
 }

@@ -381,6 +381,20 @@ type AaaaRecords struct {
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
+type ApiKeys struct {
+	ID         int32              `json:"id"`
+	Uid        string             `json:"uid"`
+	TenantID   int32              `json:"tenant_id"`
+	UserID     int32              `json:"user_id"`
+	Name       string             `json:"name"`
+	Prefix     string             `json:"prefix"`
+	KeyHash    string             `json:"key_hash"`
+	LastUsedAt pgtype.Timestamptz `json:"last_used_at"`
+	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
+	RevokedAt  pgtype.Timestamptz `json:"revoked_at"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+}
+
 type CaaComplianceFindings struct {
 	ID           int32              `json:"id"`
 	Uid          string             `json:"uid"`
@@ -632,6 +646,19 @@ type EmailAuthComplianceFindings struct {
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
+type Invitations struct {
+	ID         int32              `json:"id"`
+	Uid        string             `json:"uid"`
+	TenantID   int32              `json:"tenant_id"`
+	Email      string             `json:"email"`
+	Role       UserRole           `json:"role"`
+	TokenHash  string             `json:"token_hash"`
+	InvitedBy  pgtype.Int4        `json:"invited_by"`
+	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
+	AcceptedAt pgtype.Timestamptz `json:"accepted_at"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+}
+
 type MinimumRecordSetFindings struct {
 	ID                int32              `json:"id"`
 	Uid               string             `json:"uid"`
@@ -762,6 +789,12 @@ type Scans struct {
 	StartedAt    pgtype.Timestamptz `json:"started_at"`
 }
 
+type Sessions struct {
+	Token  string             `json:"token"`
+	Data   []byte             `json:"data"`
+	Expiry pgtype.Timestamptz `json:"expiry"`
+}
+
 type SoaRecords struct {
 	ID         int32              `json:"id"`
 	Uid        string             `json:"uid"`
@@ -820,6 +853,14 @@ type TxtRecords struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
+type UserCredentials struct {
+	ID           int32              `json:"id"`
+	UserID       int32              `json:"user_id"`
+	PasswordHash string             `json:"password_hash"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Users struct {
 	ID        int32              `json:"id"`
 	Uid       string             `json:"uid"`
@@ -827,7 +868,7 @@ type Users struct {
 	Email     string             `json:"email"`
 	Name      pgtype.Text        `json:"name"`
 	Role      UserRole           `json:"role"`
-	Status    string             `json:"status"`
+	Status    UserStatus         `json:"status"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }

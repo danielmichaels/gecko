@@ -157,6 +157,14 @@ tasks:
     cmds:
       - go test -race -v -cover ./...
 
+  verify:auth:
+    desc: 'End-to-end check of the auth/role guards: boots DB, migrates, runs the server, executes scripts/verify-auth.sh, tears down.'
+    cmds:
+      - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} up --wait -d {{.DATABASE_CONTAINER_NAME}}
+      - task: db:migration:up
+      - task: river:migration:up
+      - ./scripts/verify-auth-e2e.sh
+
   dagger:
     desc: 'Run dagger locally (unsets SSH_AUTH_SOCK to avoid agent forwarding). e.g. task dagger -- call lint --src .'
     cmds:
