@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/danielmichaels/gecko/internal/dnsclient"
 	"github.com/danielmichaels/gecko/internal/scanner"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/danielmichaels/gecko/internal/tracing"
@@ -29,9 +30,10 @@ func (ScanCertificateArgs) Kind() string { return "scan_certificate" }
 
 type ScanCertificateWorker struct {
 	river.WorkerDefaults[ScanCertificateArgs]
-	Logger  slog.Logger
-	Store   *store.Queries
-	PgxPool *pgxpool.Pool
+	Logger   slog.Logger
+	Store    *store.Queries
+	PgxPool  *pgxpool.Pool
+	Resolver dnsclient.Resolver
 }
 
 func (w *ScanCertificateWorker) Work(
@@ -41,7 +43,7 @@ func (w *ScanCertificateWorker) Work(
 	ctx = tracing.WithNewTraceID(ctx, true)
 	start := time.Now()
 
-	s := scanner.NewScanner(scanner.Config{Logger: &w.Logger, Store: w.Store})
+	s := scanner.NewScanner(scanner.Config{Logger: &w.Logger, Store: w.Store, Resolver: w.Resolver})
 	result := s.ScanCertificate(job.Args.DomainName)
 	w.Logger.InfoContext(
 		ctx,
@@ -66,16 +68,17 @@ func (ScanCNAMEArgs) Kind() string { return "scan_cname" }
 
 type ScanCNAMEWorker struct {
 	river.WorkerDefaults[ScanCNAMEArgs]
-	Logger  slog.Logger
-	Store   *store.Queries
-	PgxPool *pgxpool.Pool
+	Logger   slog.Logger
+	Store    *store.Queries
+	PgxPool  *pgxpool.Pool
+	Resolver dnsclient.Resolver
 }
 
 func (w *ScanCNAMEWorker) Work(ctx context.Context, job *river.Job[ScanCNAMEArgs]) error {
 	ctx = tracing.WithNewTraceID(ctx, true)
 	start := time.Now()
 
-	s := scanner.NewScanner(scanner.Config{Logger: &w.Logger, Store: w.Store})
+	s := scanner.NewScanner(scanner.Config{Logger: &w.Logger, Store: w.Store, Resolver: w.Resolver})
 	result := s.ScanCNAME(job.Args.DomainName)
 
 	w.Logger.InfoContext(
@@ -107,16 +110,17 @@ func (ScanDNSSECArgs) Kind() string { return "scan_dnssec" }
 
 type ScanDNSSECWorker struct {
 	river.WorkerDefaults[ScanDNSSECArgs]
-	Logger  slog.Logger
-	Store   *store.Queries
-	PgxPool *pgxpool.Pool
+	Logger   slog.Logger
+	Store    *store.Queries
+	PgxPool  *pgxpool.Pool
+	Resolver dnsclient.Resolver
 }
 
 func (w *ScanDNSSECWorker) Work(ctx context.Context, job *river.Job[ScanDNSSECArgs]) error {
 	ctx = tracing.WithNewTraceID(ctx, true)
 	start := time.Now()
 
-	s := scanner.NewScanner(scanner.Config{Logger: &w.Logger, Store: w.Store})
+	s := scanner.NewScanner(scanner.Config{Logger: &w.Logger, Store: w.Store, Resolver: w.Resolver})
 	result := s.ScanDNSSEC(job.Args.DomainName)
 
 	w.Logger.InfoContext(
@@ -146,9 +150,10 @@ func (ScanZoneTransferArgs) Kind() string { return "scan_zone_transfer" }
 
 type ScanZoneTransferWorker struct {
 	river.WorkerDefaults[ScanZoneTransferArgs]
-	Logger  slog.Logger
-	Store   *store.Queries
-	PgxPool *pgxpool.Pool
+	Logger   slog.Logger
+	Store    *store.Queries
+	PgxPool  *pgxpool.Pool
+	Resolver dnsclient.Resolver
 }
 
 func (w *ScanZoneTransferWorker) Work(
@@ -161,6 +166,7 @@ func (w *ScanZoneTransferWorker) Work(
 	s := scanner.NewScanner(scanner.Config{
 		Logger:   &w.Logger,
 		Store:    w.Store,
+		Resolver: w.Resolver,
 		Identity: job.Args.Identity(),
 	})
 	if _, err := s.ScanZoneTransfer(ctx, job.Args.DomainName); err != nil {
