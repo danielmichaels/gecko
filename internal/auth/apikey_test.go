@@ -43,7 +43,10 @@ func TestVerifyKeyRow_Rejections(t *testing.T) {
 	future := pgtype.Timestamptz{Time: now.Add(time.Hour), Valid: true}
 
 	t.Run("wrong secret", func(t *testing.T) {
-		if _, err := verifyKeyRow(validRow("right"), "wrong", now); !errors.Is(err, ErrInvalidAPIKey) {
+		if _, err := verifyKeyRow(validRow("right"), "wrong", now); !errors.Is(
+			err,
+			ErrInvalidAPIKey,
+		) {
 			t.Fatalf("err = %v, want ErrInvalidAPIKey", err)
 		}
 	})

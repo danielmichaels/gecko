@@ -31,15 +31,18 @@ type CreateAPIKeyInput struct {
 
 type CreateAPIKeyOutput struct {
 	Body struct {
+		ExpiresAt *time.Time `json:"expires_at,omitempty"`
 		UID       string     `json:"uid" doc:"Identifier used to revoke this key."`
 		APIKey    string     `json:"api_key" doc:"The full key — shown once. Store it; it cannot be retrieved again."`
 		Prefix    string     `json:"prefix"`
-		ExpiresAt *time.Time `json:"expires_at,omitempty"`
 	}
 }
 
 // handleAPIKeyCreate mints a new API key for the caller's tenant. Owner/manager only.
-func (app *Server) handleAPIKeyCreate(ctx context.Context, i *CreateAPIKeyInput) (*CreateAPIKeyOutput, error) {
+func (app *Server) handleAPIKeyCreate(
+	ctx context.Context,
+	i *CreateAPIKeyInput,
+) (*CreateAPIKeyOutput, error) {
 	p, err := principalOrErr(ctx)
 	if err != nil {
 		return nil, err
@@ -60,13 +63,13 @@ func (app *Server) handleAPIKeyCreate(ctx context.Context, i *CreateAPIKeyInput)
 }
 
 type apiKeyView struct {
-	UID        string     `json:"uid"`
-	Name       string     `json:"name"`
-	Prefix     string     `json:"prefix"`
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
 	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
 	CreatedAt  *time.Time `json:"created_at,omitempty"`
+	UID        string     `json:"uid"`
+	Name       string     `json:"name"`
+	Prefix     string     `json:"prefix"`
 }
 
 type ListAPIKeysOutput struct {
@@ -106,7 +109,10 @@ type APIKeyRevokeInput struct {
 }
 
 // handleAPIKeyRevoke revokes a key in the caller's tenant. Owner/manager only.
-func (app *Server) handleAPIKeyRevoke(ctx context.Context, i *APIKeyRevokeInput) (*struct{}, error) {
+func (app *Server) handleAPIKeyRevoke(
+	ctx context.Context,
+	i *APIKeyRevokeInput,
+) (*struct{}, error) {
 	p, err := principalOrErr(ctx)
 	if err != nil {
 		return nil, err

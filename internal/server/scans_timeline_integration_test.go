@@ -68,7 +68,10 @@ func TestDomainTimelineHandler(t *testing.T) {
 	recordScan([]string{"1.1.1.1", "2.2.2.2"}) // scan 2: created 2.2.2.2 (1.1.1.1 unchanged)
 	recordScan([]string{"1.1.1.1", "2.2.2.2"}) // scan 3: nothing changed -> no observations
 
-	out, err := app.handleDomainTimeline(ctxWithPrincipal(ctx, tenantID), &DomainGetInput{ID: d.Uid})
+	out, err := app.handleDomainTimeline(
+		ctxWithPrincipal(ctx, tenantID),
+		&DomainGetInput{ID: d.Uid},
+	)
 	if err != nil {
 		t.Fatalf("handleDomainTimeline: %v", err)
 	}
@@ -158,7 +161,10 @@ func TestDomainTimeline_ParentScanUID(t *testing.T) {
 		t.Fatalf("commit: %v", err)
 	}
 
-	out, err := app.handleDomainTimeline(ctxWithPrincipal(ctx, tenantID), &DomainGetInput{ID: d.Uid})
+	out, err := app.handleDomainTimeline(
+		ctxWithPrincipal(ctx, tenantID),
+		&DomainGetInput{ID: d.Uid},
+	)
 	if err != nil {
 		t.Fatalf("handleDomainTimeline: %v", err)
 	}

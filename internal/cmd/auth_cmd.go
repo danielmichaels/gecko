@@ -52,7 +52,7 @@ func (l *LoginCmd) Run(g *Globals, ac *AuthCmd) error {
 	var out authTokenResponse
 	var apiErr huma.ErrorModel
 	err := requests.
-		URL(g.ServerURL+"/api/auth/login").
+		URL(g.ServerURL + "/api/auth/login").
 		BodyJSON(map[string]string{"email": g.Username, "password": g.Password}).
 		ToJSON(&out).
 		ErrorJSON(&apiErr).

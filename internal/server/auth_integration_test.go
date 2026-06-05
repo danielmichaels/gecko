@@ -31,7 +31,7 @@ func newAuthAPI(t *testing.T, pc *testhelpers.PostgresContainer) (*Server, strin
 	}
 	app := &Server{
 		Conf:         cfg,
-		Log:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Log:          slog.New(slog.DiscardHandler),
 		Db:           pc.Queries,
 		PgxPool:      pc.Pool,
 		AuthProvider: provider,
@@ -97,7 +97,12 @@ func signup(t *testing.T, base, email, password string) tokenResp {
 	return out
 }
 
-func tenantIDByEmail(t *testing.T, ctx context.Context, pc *testhelpers.PostgresContainer, email string) int32 {
+func tenantIDByEmail(
+	t *testing.T,
+	ctx context.Context,
+	pc *testhelpers.PostgresContainer,
+	email string,
+) int32 {
 	t.Helper()
 	u, err := pc.Queries.UserGetByEmail(ctx, email)
 	if err != nil {
@@ -106,7 +111,13 @@ func tenantIDByEmail(t *testing.T, ctx context.Context, pc *testhelpers.Postgres
 	return u.TenantID.Int32
 }
 
-func seedDomain(t *testing.T, ctx context.Context, pc *testhelpers.PostgresContainer, tenantID int32, name string) store.DomainsInsertRow {
+func seedDomain(
+	t *testing.T,
+	ctx context.Context,
+	pc *testhelpers.PostgresContainer,
+	tenantID int32,
+	name string,
+) store.DomainsInsertRow {
 	t.Helper()
 	d, err := pc.Queries.DomainsInsert(ctx, store.DomainsInsertParams{
 		TenantID:   pgtype.Int4{Int32: tenantID, Valid: true},

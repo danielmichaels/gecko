@@ -14,10 +14,10 @@ import (
 // SessionConfig configures the scs cookie-session manager used by the server-rendered
 // web UI.
 type SessionConfig struct {
-	TTL            time.Duration
 	CookieName     string
-	CookieSecure   bool
 	CookieSameSite string
+	TTL            time.Duration
+	CookieSecure   bool
 }
 
 const (

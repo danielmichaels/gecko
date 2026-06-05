@@ -75,7 +75,10 @@ func TestRecordsHistoryHandler_PreservesTimelineAcrossDeleteReadd(t *testing.T) 
 	d1 := createDomain()
 	recordA(d1, []string{"1.1.1.1"})
 
-	out, err := app.handleRecordsHistory(ctxWithPrincipal(ctx, tenantID), &RecordHistoryInput{DomainID: d1.Uid})
+	out, err := app.handleRecordsHistory(
+		ctxWithPrincipal(ctx, tenantID),
+		&RecordHistoryInput{DomainID: d1.Uid},
+	)
 	if err != nil {
 		t.Fatalf("handleRecordsHistory: %v", err)
 	}
@@ -113,7 +116,10 @@ func TestRecordsHistoryHandler_PreservesTimelineAcrossDeleteReadd(t *testing.T) 
 	if d2.ID == d1.ID {
 		t.Fatalf("re-added domain reused id %d; expected a new incarnation", d2.ID)
 	}
-	out2, err := app.handleRecordsHistory(ctxWithPrincipal(ctx, tenantID), &RecordHistoryInput{DomainID: d2.Uid})
+	out2, err := app.handleRecordsHistory(
+		ctxWithPrincipal(ctx, tenantID),
+		&RecordHistoryInput{DomainID: d2.Uid},
+	)
 	if err != nil {
 		t.Fatalf("handleRecordsHistory after re-add: %v", err)
 	}

@@ -51,7 +51,11 @@ func VerifyAPIKey(ctx context.Context, db APIKeyStore, raw string) (*Principal, 
 // is compared in constant time (timing must not reveal the stored hash); a NULL
 // ExpiresAt means the key never expires; every rejection returns the same opaque
 // error so callers cannot tell which check failed.
-func verifyKeyRow(row store.ApiKeyGetByPrefixRow, secret string, now time.Time) (*Principal, error) {
+func verifyKeyRow(
+	row store.ApiKeyGetByPrefixRow,
+	secret string,
+	now time.Time,
+) (*Principal, error) {
 	if subtle.ConstantTimeCompare([]byte(HashToken(secret)), []byte(row.KeyHash)) != 1 {
 		return nil, ErrInvalidAPIKey
 	}

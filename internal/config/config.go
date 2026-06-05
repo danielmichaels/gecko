@@ -9,10 +9,10 @@ import (
 )
 
 type Conf struct {
+	Auth    authConf
 	Db      dbConf
 	AppConf appConf
 	Server  serverConf
-	Auth    authConf
 }
 
 type dbConf struct {
@@ -28,8 +28,14 @@ type dbConf struct {
 type authConf struct {
 	// Provider selects the auth backend: "local" (email/password) or "oidc" (stub).
 	Provider string `env:"AUTH_PROVIDER,default=local"`
-	// SignupEnabled toggles self-service tenant signup.
-	SignupEnabled bool `env:"SIGNUP_ENABLED,default=true"`
+	// Session cookie settings (scs scaffolding for the future web UI).
+	SessionCookieName     string `env:"AUTH_SESSION_COOKIE_NAME,default=gecko_session"`
+	SessionCookieSameSite string `env:"AUTH_SESSION_COOKIE_SAMESITE,default=lax"`
+	// OIDC placeholders — reserved for the OIDC provider; empty until implemented.
+	OIDCIssuer       string `env:"OIDC_ISSUER,default="`
+	OIDCClientID     string `env:"OIDC_CLIENT_ID,default="`
+	OIDCClientSecret string `env:"OIDC_CLIENT_SECRET,default="`
+	OIDCRedirectURL  string `env:"OIDC_REDIRECT_URL,default="`
 	// BcryptCost is the bcrypt work factor for password hashing.
 	BcryptCost int `env:"AUTH_BCRYPT_COST,default=12"`
 	// APIKeyTTL bounds API key lifetime; 0 means keys never expire.
@@ -38,15 +44,9 @@ type authConf struct {
 	InviteTTL time.Duration `env:"AUTH_INVITE_TTL,default=168h"`
 	// SessionTTL bounds browser (scs) session lifetime.
 	SessionTTL time.Duration `env:"AUTH_SESSION_TTL,default=720h"`
-	// Session cookie settings (scs scaffolding for the future web UI).
-	SessionCookieName     string `env:"AUTH_SESSION_COOKIE_NAME,default=gecko_session"`
-	SessionCookieSecure   bool   `env:"AUTH_SESSION_COOKIE_SECURE,default=true"`
-	SessionCookieSameSite string `env:"AUTH_SESSION_COOKIE_SAMESITE,default=lax"`
-	// OIDC placeholders — reserved for the OIDC provider; empty until implemented.
-	OIDCIssuer       string `env:"OIDC_ISSUER,default="`
-	OIDCClientID     string `env:"OIDC_CLIENT_ID,default="`
-	OIDCClientSecret string `env:"OIDC_CLIENT_SECRET,default="`
-	OIDCRedirectURL  string `env:"OIDC_REDIRECT_URL,default="`
+	// SignupEnabled toggles self-service tenant signup.
+	SignupEnabled       bool `env:"SIGNUP_ENABLED,default=true"`
+	SessionCookieSecure bool `env:"AUTH_SESSION_COOKIE_SECURE,default=true"`
 }
 
 type appConf struct {

@@ -23,7 +23,13 @@ func TestAssessZoneTransfer_EmitsObservation(t *testing.T) {
 	}
 	defer pc.Close(ctx)
 
-	domain, err := pc.Queries.DomainsGetByID(ctx, store.DomainsGetByIDParams{Uid: "domain_00000001", TenantID: pgtype.Int4{Int32: 1, Valid: true}})
+	domain, err := pc.Queries.DomainsGetByID(
+		ctx,
+		store.DomainsGetByIDParams{
+			Uid:      "domain_00000001",
+			TenantID: pgtype.Int4{Int32: 1, Valid: true},
+		},
+	)
 	if err != nil {
 		t.Fatalf("get domain: %v", err)
 	}

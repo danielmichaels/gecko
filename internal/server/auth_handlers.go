@@ -214,7 +214,10 @@ type AcceptInviteInput struct {
 
 // handleAcceptInvite consumes an invitation token, creating the user (with the
 // invited role, in the inviting tenant) and minting a key.
-func (app *Server) handleAcceptInvite(ctx context.Context, i *AcceptInviteInput) (*authOutput, error) {
+func (app *Server) handleAcceptInvite(
+	ctx context.Context,
+	i *AcceptInviteInput,
+) (*authOutput, error) {
 	inv, err := app.Db.InvitationGetByTokenHash(ctx, auth.HashToken(i.Body.Token))
 	if err != nil {
 		return nil, huma.Error400BadRequest("invalid or expired invitation")

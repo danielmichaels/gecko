@@ -21,10 +21,10 @@ type CreateInviteInput struct {
 
 type CreateInviteOutput struct {
 	Body struct {
+		ExpiresAt time.Time `json:"expires_at"`
 		Token     string    `json:"token" doc:"Invitation token — shown once. Deliver it to the invitee (email delivery is out of scope)."`
 		Email     string    `json:"email"`
 		Role      string    `json:"role"`
-		ExpiresAt time.Time `json:"expires_at"`
 	}
 }
 
@@ -32,7 +32,10 @@ type CreateInviteOutput struct {
 // Single-tenant emails: an already-registered email is rejected 409 before a token
 // is minted; a stale expired invite for the same email is cleared first, while a
 // still-live one collides on the partial unique index (409).
-func (app *Server) handleInviteCreate(ctx context.Context, i *CreateInviteInput) (*CreateInviteOutput, error) {
+func (app *Server) handleInviteCreate(
+	ctx context.Context,
+	i *CreateInviteInput,
+) (*CreateInviteOutput, error) {
 	p, err := principalOrErr(ctx)
 	if err != nil {
 		return nil, err
@@ -87,12 +90,12 @@ func (app *Server) handleInviteCreate(ctx context.Context, i *CreateInviteInput)
 }
 
 type inviteView struct {
-	UID        string     `json:"uid"`
-	Email      string     `json:"email"`
-	Role       string     `json:"role"`
 	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
 	AcceptedAt *time.Time `json:"accepted_at,omitempty"`
 	CreatedAt  *time.Time `json:"created_at,omitempty"`
+	UID        string     `json:"uid"`
+	Email      string     `json:"email"`
+	Role       string     `json:"role"`
 }
 
 type ListInvitesOutput struct {
@@ -131,7 +134,10 @@ type InviteRevokeInput struct {
 }
 
 // handleInviteRevoke deletes a pending invitation in the caller's tenant.
-func (app *Server) handleInviteRevoke(ctx context.Context, i *InviteRevokeInput) (*struct{}, error) {
+func (app *Server) handleInviteRevoke(
+	ctx context.Context,
+	i *InviteRevokeInput,
+) (*struct{}, error) {
 	p, err := principalOrErr(ctx)
 	if err != nil {
 		return nil, err

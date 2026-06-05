@@ -12,12 +12,12 @@ import (
 )
 
 type userView struct {
+	CreatedAt *time.Time `json:"created_at,omitempty"`
 	UID       string     `json:"uid"`
 	Email     string     `json:"email"`
 	Name      string     `json:"name,omitempty"`
 	Role      string     `json:"role"`
 	Status    string     `json:"status"`
-	CreatedAt *time.Time `json:"created_at,omitempty"`
 }
 
 type ListUsersOutput struct {
@@ -113,7 +113,8 @@ func (app *Server) handleUserUpdate(ctx context.Context, i *UpdateUserInput) (*U
 		return nil
 	}
 	// Demoting an owner is guarded so the tenant cannot be left ownerless.
-	demotingOwner := target.Role == store.UserRoleOwner && store.UserRole(i.Body.Role) != store.UserRoleOwner
+	demotingOwner := target.Role == store.UserRoleOwner &&
+		store.UserRole(i.Body.Role) != store.UserRoleOwner
 	if demotingOwner {
 		if err := app.withLastOwnerGuard(ctx, p.TenantID, update); err != nil {
 			return nil, err

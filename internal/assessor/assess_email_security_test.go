@@ -19,7 +19,13 @@ func TestAssessEmailSecurity_SPFIssues(t *testing.T) {
 	}
 	defer pgContainer.Close(ctx)
 
-	domain, err := pgContainer.Queries.DomainsGetByID(ctx, store.DomainsGetByIDParams{Uid: "domain_00000001", TenantID: pgtype.Int4{Int32: 1, Valid: true}})
+	domain, err := pgContainer.Queries.DomainsGetByID(
+		ctx,
+		store.DomainsGetByIDParams{
+			Uid:      "domain_00000001",
+			TenantID: pgtype.Int4{Int32: 1, Valid: true},
+		},
+	)
 	if err != nil {
 		t.Fatalf("Failed to get domains: %v", err)
 	}
@@ -218,7 +224,13 @@ func TestAssessEmailSecurity_DKIM(t *testing.T) {
 		}
 	}(mockServer)
 
-	domain, err := pgContainer.Queries.DomainsGetByID(ctx, store.DomainsGetByIDParams{Uid: "domain_00000001", TenantID: pgtype.Int4{Int32: 1, Valid: true}})
+	domain, err := pgContainer.Queries.DomainsGetByID(
+		ctx,
+		store.DomainsGetByIDParams{
+			Uid:      "domain_00000001",
+			TenantID: pgtype.Int4{Int32: 1, Valid: true},
+		},
+	)
 	if err != nil {
 		t.Fatalf("Failed to get domains: %v", err)
 	}
@@ -437,7 +449,13 @@ func TestAssessEmailSecurity_DMARC(t *testing.T) {
 		}
 	}(mockServer)
 
-	domain, err := pgContainer.Queries.DomainsGetByID(ctx, store.DomainsGetByIDParams{Uid: "domain_00000001", TenantID: pgtype.Int4{Int32: 1, Valid: true}})
+	domain, err := pgContainer.Queries.DomainsGetByID(
+		ctx,
+		store.DomainsGetByIDParams{
+			Uid:      "domain_00000001",
+			TenantID: pgtype.Int4{Int32: 1, Valid: true},
+		},
+	)
 	if err != nil {
 		t.Fatalf("Failed to get domains: %v", err)
 	}
