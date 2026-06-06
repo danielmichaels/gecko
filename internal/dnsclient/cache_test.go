@@ -44,7 +44,11 @@ func (f *fakeCacheStore) DNSCacheGet(
 	if row.ExpiresAt.Valid && !row.ExpiresAt.Time.After(time.Now()) {
 		return store.DNSCacheGetRow{}, pgx.ErrNoRows
 	}
-	return store.DNSCacheGetRow{Answers: row.Answers, Status: row.Status, ExpiresAt: row.ExpiresAt}, nil
+	return store.DNSCacheGetRow{
+		Answers:   row.Answers,
+		Status:    row.Status,
+		ExpiresAt: row.ExpiresAt,
+	}, nil
 }
 
 func (f *fakeCacheStore) DNSCacheUpsert(_ context.Context, arg store.DNSCacheUpsertParams) error {
@@ -160,7 +164,11 @@ func TestDNSCache_CompositeMethodCoverage(t *testing.T) {
 		t.Fatalf("expected NS lookup to succeed from cache: ok=%v ns=%v", ok, ns)
 	}
 	if after := mock.QueryCount(); after != before {
-		t.Fatalf("expected internal NS lookup to be cached (no new query); before=%d after=%d", before, after)
+		t.Fatalf(
+			"expected internal NS lookup to be cached (no new query); before=%d after=%d",
+			before,
+			after,
+		)
 	}
 }
 
@@ -198,7 +206,11 @@ func TestDNSCache_IsZoneApexUsesCache(t *testing.T) {
 		t.Fatal("expected SOA lookup to succeed")
 	}
 	if after := mock.QueryCount(); after != before {
-		t.Fatalf("expected LookupSOA to reuse the apex SOA cache entry; before=%d after=%d", before, after)
+		t.Fatalf(
+			"expected LookupSOA to reuse the apex SOA cache entry; before=%d after=%d",
+			before,
+			after,
+		)
 	}
 }
 

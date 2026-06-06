@@ -16,6 +16,7 @@ import (
 	"github.com/projectdiscovery/subfinder/v2/pkg/resolve"
 
 	"github.com/miekg/dns"
+	"github.com/projectdiscovery/goflags"
 	"github.com/projectdiscovery/subfinder/v2/pkg/runner"
 )
 
@@ -769,6 +770,34 @@ func (c *DNSClient) compareDS(ds1, ds2 *dns.DS) bool {
 	return result
 }
 
+// buildSubfinderOptions maps the runtime config onto subfinder's runner.Options.
+// Empty Sources/ExcludeSources are left nil so subfinder applies its own default
+// source set; the concurrency arg feeds Threads (configured via
+// ENUMERATION_CONCURRENCY_LIMIT). Kept pure so the mapping is unit-testable
+// without constructing a runner (which makes live network calls).
+func buildSubfinderOptions(
+	cfg *config.Conf,
+	concurrency int,
+	callback func(*resolve.HostEntry),
+) *runner.Options {
+	opts := &runner.Options{
+		Threads:            concurrency,
+		Timeout:            cfg.AppConf.SubfinderTimeout,
+		MaxEnumerationTime: cfg.AppConf.SubfinderMaxTime,
+		RateLimit:          cfg.AppConf.SubfinderRateLimit,
+		Silent:             true,
+		JSON:               false,
+		ResultCallback:     callback,
+	}
+	if len(cfg.AppConf.SubfinderSources) > 0 {
+		opts.Sources = goflags.StringSlice(cfg.AppConf.SubfinderSources)
+	}
+	if len(cfg.AppConf.SubfinderExcludeSources) > 0 {
+		opts.ExcludeSources = goflags.StringSlice(cfg.AppConf.SubfinderExcludeSources)
+	}
+	return opts
+}
+
 // EnumerateWithSubfinderCallback enumerates subdomains for the given domain using the Subfinder tool,
 // and calls the provided callback function for each resolved host entry.
 // The concurrency parameter specifies the number of concurrent requests to make.
@@ -778,14 +807,13 @@ func (c *DNSClient) EnumerateWithSubfinderCallback(
 	concurrency int,
 	callback func(*resolve.HostEntry),
 ) error {
-	subfinderOpts := &runner.Options{
-		Threads:            concurrency,
-		Timeout:            30,
-		MaxEnumerationTime: 10,
-		Silent:             true,
-		JSON:               false,
-		ResultCallback:     callback,
+	cfg := config.AppConfig()
+	if !cfg.AppConf.SubfinderEnabled {
+		c.logger.Info("subfinder enumeration disabled by config, skipping", "domain", domain)
+		return nil
 	}
+
+	subfinderOpts := buildSubfinderOptions(cfg, concurrency, callback)
 
 	subfinder, err := runner.NewRunner(subfinderOpts)
 	if err != nil {
