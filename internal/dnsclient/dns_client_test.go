@@ -908,3 +908,56 @@ func TestDNSClient_WithOptions(t *testing.T) {
 	// Just make a simple call to ensure it doesn't crash
 	_, _ = clientWithCustomDNS.LookupA("example.com")
 }
+
+func TestDNSClient_IsZoneApexUsesReceiverServers(t *testing.T) {
+	// IsZoneApex must query through the receiver's configured servers, not a fresh
+	// default client. Point the default servers (DNS_SERVERS) at a decoy that denies
+	// the SOA and the receiver at a mock that serves it: only an IsZoneApex honouring
+	// the receiver returns true.
+	apex, err := testhelpers.NewMockDNSServer()
+	if err != nil {
+		t.Fatalf("Failed to create apex mock DNS server: %v", err)
+	}
+	if err := apex.Start(); err != nil {
+		t.Fatalf("Failed to start apex mock DNS server: %v", err)
+	}
+	defer func() {
+		if err := apex.Stop(); err != nil {
+			t.Fatalf("Failed to stop apex mock DNS server: %v", err)
+		}
+	}()
+
+	decoy, err := testhelpers.NewMockDNSServer()
+	if err != nil {
+		t.Fatalf("Failed to create decoy mock DNS server: %v", err)
+	}
+	if err := decoy.Start(); err != nil {
+		t.Fatalf("Failed to start decoy mock DNS server: %v", err)
+	}
+	defer func() {
+		if err := decoy.Stop(); err != nil {
+			t.Fatalf("Failed to stop decoy mock DNS server: %v", err)
+		}
+	}()
+
+	const domain = "apex.example.com"
+	if err := apex.AddRecord(domain, dns.TypeSOA, 3600,
+		"ns1.example.com hostmaster.example.com 1 7200 3600 1209600 3600"); err != nil {
+		t.Fatalf("Failed to add SOA record: %v", err)
+	}
+	// Decoy answers NOERROR/NODATA for the SOA so the stray-default-client path
+	// resolves immediately (no backoff) and reports "not apex".
+	decoy.SetRcode(dns.Fqdn(domain), dns.RcodeSuccess)
+
+	// A stray New() reads DNS_SERVERS; route it to the decoy, never the apex mock.
+	t.Setenv("DNS_SERVERS", decoy.ListenAddr)
+
+	client := New(
+		WithServers([]string{apex.ListenAddr}),
+		WithLogger(testhelpers.TestLogger),
+	)
+
+	if !client.IsZoneApex(domain) {
+		t.Fatal("IsZoneApex did not query through the receiver's configured servers")
+	}
+}

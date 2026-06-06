@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/danielmichaels/gecko/internal/dnsclient"
 	"github.com/danielmichaels/gecko/internal/observer"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -35,7 +34,7 @@ func (s *Scan) ScanZoneTransfer(ctx context.Context, domainName string) (string,
 		return "", err
 	}
 
-	client := dnsclient.New()
+	client := s.resolver
 	result := client.AttemptZoneTransfer(domainName)
 	for nameserver, transferType := range result.SuccessfulTransfers {
 		// Convert to assessment-friendly format

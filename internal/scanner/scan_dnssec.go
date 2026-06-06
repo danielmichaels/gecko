@@ -20,24 +20,23 @@ const (
 // todo: a lot of this scanner will need to be moved to an assessor later
 type DNSSECScanner struct {
 	Result *dnsrecords.DNSSECResult
-	Client *dnsclient.DNSClient
+	Client dnsclient.Resolver
 	logger *slog.Logger
 	Domain string
 }
 
-func NewDNSSECScanner(domain string) *DNSSECScanner {
+func NewDNSSECScanner(domain string, client dnsclient.Resolver) *DNSSECScanner {
 	cfg := config.AppConfig()
 	logger, _ := logging.SetupLogger("dns-client", cfg)
 	domain = dns.Fqdn(domain)
 	result := &dnsrecords.DNSSECResult{
 		Domain: domain,
 	}
-	client := dnsclient.New()
 	return &DNSSECScanner{Domain: domain, Client: client, Result: result, logger: logger}
 }
 
 func (s *Scan) ScanDNSSEC(domain string) *dnsrecords.DNSSECResult {
-	ds := NewDNSSECScanner(domain)
+	ds := NewDNSSECScanner(domain, s.resolver)
 
 	// Check if domain is zone apex
 	if !ds.Client.IsZoneApex(domain) {

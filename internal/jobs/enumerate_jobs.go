@@ -38,9 +38,10 @@ func (EnumerateSubdomainArgs) InsertOpts() river.InsertOpts {
 
 type EnumerateSubdomainWorker struct {
 	river.WorkerDefaults[EnumerateSubdomainArgs]
-	Logger  slog.Logger
-	Store   *store.Queries
-	PgxPool *pgxpool.Pool
+	Logger   slog.Logger
+	Store    *store.Queries
+	PgxPool  *pgxpool.Pool
+	Resolver dnsclient.Resolver
 }
 
 func (w *EnumerateSubdomainWorker) Timeout(*river.Job[EnumerateSubdomainArgs]) time.Duration {
@@ -52,7 +53,7 @@ func (w *EnumerateSubdomainWorker) Work(
 	job *river.Job[EnumerateSubdomainArgs],
 ) error {
 	ctx = tracing.WithNewTraceID(ctx, true)
-	dnsClient := dnsclient.New()
+	dnsClient := w.Resolver
 	rc := river.ClientFromContext[pgx.Tx](ctx)
 
 	// Drain the discovered host list WITHOUT holding a transaction across the
@@ -166,9 +167,10 @@ func (ResolveDomainArgs) Kind() string { return "resolve_domain" }
 
 type ResolveDomainWorker struct {
 	river.WorkerDefaults[ResolveDomainArgs]
-	Logger  slog.Logger
-	Store   *store.Queries
-	PgxPool *pgxpool.Pool
+	Logger   slog.Logger
+	Store    *store.Queries
+	PgxPool  *pgxpool.Pool
+	Resolver dnsclient.Resolver
 }
 
 // recordResolved syncs every resolved DNS record type for one scan through the
@@ -210,7 +212,7 @@ func (w *ResolveDomainWorker) recordResolved(
 // job args, so the worker never rediscovers or creates the domain.
 func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDomainArgs]) error {
 	ctx = tracing.WithNewTraceID(ctx, true)
-	dnsClient := dnsclient.New()
+	dnsClient := w.Resolver
 	fqdn := job.Args.DomainName + "."
 
 	lookup := func(qtype uint16) observer.TypeResult {

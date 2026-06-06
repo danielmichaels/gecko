@@ -510,8 +510,7 @@ func (c *DNSClient) IsZoneApex(domain string) bool {
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(domain), dns.TypeSOA)
 
-	client := New()
-	response, ok := client.sendDNSSECQuery(m)
+	response, ok := c.sendDNSSECQuery(m)
 
 	return ok && len(response.Answer) > 0
 }

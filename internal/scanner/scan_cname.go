@@ -2,8 +2,6 @@ package scanner
 
 import (
 	"strings"
-
-	"github.com/danielmichaels/gecko/internal/dnsclient"
 )
 
 type CNAMEScanResult struct {
@@ -20,7 +18,7 @@ func (s *Scan) ScanCNAME(domain string) *CNAMEScanResult {
 	res := CNAMEScanResult{
 		Domain: domain,
 	}
-	dc := dnsclient.New()
+	dc := s.resolver
 	cname, ok := dc.LookupCNAME(res.Domain)
 	if !ok {
 		return &res

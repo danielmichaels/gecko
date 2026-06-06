@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/danielmichaels/gecko/internal/dnsclient"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -24,6 +25,7 @@ type Config struct {
 	PgxPool     *pgxpool.Pool
 	Logger      *slog.Logger
 	Store       *store.Queries
+	Resolver    dnsclient.Resolver
 	WorkerCount int
 	AddWorkers  bool
 }
@@ -48,6 +50,10 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 		)
 	}
 
+	if cfg.Resolver == nil {
+		cfg.Resolver = dnsclient.New()
+	}
+
 	riverConfig := &river.Config{}
 	riverConfig.Hooks = []rivertype.Hook{&CorrelationInsertHook{}}
 	rw := river.NewWorkers()
@@ -55,40 +61,40 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 		// scan workers
 		river.AddWorker(
 			rw,
-			&EnumerateSubdomainWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},
+			&EnumerateSubdomainWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool, Resolver: cfg.Resolver},
 		)
 		river.AddWorker(
 			rw,
-			&ResolveDomainWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},
+			&ResolveDomainWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool, Resolver: cfg.Resolver},
 		)
 		river.AddWorker(
 			rw,
-			&ScanCertificateWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},
+			&ScanCertificateWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool, Resolver: cfg.Resolver},
 		)
 		river.AddWorker(
 			rw,
-			&ScanCNAMEWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},
+			&ScanCNAMEWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool, Resolver: cfg.Resolver},
 		)
 		river.AddWorker(
 			rw,
-			&ScanDNSSECWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},
+			&ScanDNSSECWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool, Resolver: cfg.Resolver},
 		)
 		river.AddWorker(
 			rw,
-			&ScanZoneTransferWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},
+			&ScanZoneTransferWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool, Resolver: cfg.Resolver},
 		)
 		// assess workers
 		river.AddWorker(
 			rw,
-			&AssessCNAMEDanglingWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},
+			&AssessCNAMEDanglingWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool, Resolver: cfg.Resolver},
 		)
 		river.AddWorker(
 			rw,
-			&AssessZoneTransferWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},
+			&AssessZoneTransferWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool, Resolver: cfg.Resolver},
 		)
 		river.AddWorker(
 			rw,
-			&AssessEmailSecurityWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},
+			&AssessEmailSecurityWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool, Resolver: cfg.Resolver},
 		)
 		riverConfig.Workers = rw
 		riverConfig.Middleware = []rivertype.Middleware{

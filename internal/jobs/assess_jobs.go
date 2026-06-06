@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/danielmichaels/gecko/internal/assessor"
+	"github.com/danielmichaels/gecko/internal/dnsclient"
 	"github.com/danielmichaels/gecko/internal/tracing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -27,9 +28,10 @@ func (AssessCNAMEDanglingArgs) Kind() string { return "assess_cname_dangling" }
 
 type AssessCNAMEDanglingWorker struct {
 	river.WorkerDefaults[AssessCNAMEDanglingArgs]
-	Logger  slog.Logger
-	Store   *store.Queries
-	PgxPool *pgxpool.Pool
+	Logger   slog.Logger
+	Store    *store.Queries
+	PgxPool  *pgxpool.Pool
+	Resolver dnsclient.Resolver
 }
 
 func (w *AssessCNAMEDanglingWorker) Work(
@@ -39,8 +41,9 @@ func (w *AssessCNAMEDanglingWorker) Work(
 	ctx = tracing.WithNewTraceID(ctx, true)
 	w.Logger.InfoContext(ctx, "assess CNAME started", "domain", job.Args.DomainName)
 	_ = assessor.NewAssessor(assessor.Config{
-		Logger: &w.Logger,
-		Store:  w.Store,
+		Logger:    &w.Logger,
+		Store:     w.Store,
+		DNSClient: w.Resolver,
 	})
 	/* todo:
 	- cloud provider checks
@@ -65,9 +68,10 @@ func (AssessZoneTransferArgs) Kind() string { return "assess_zone_transfer" }
 
 type AssessZoneTransferWorker struct {
 	river.WorkerDefaults[AssessZoneTransferArgs]
-	Logger  slog.Logger
-	Store   *store.Queries
-	PgxPool *pgxpool.Pool
+	Logger   slog.Logger
+	Store    *store.Queries
+	PgxPool  *pgxpool.Pool
+	Resolver dnsclient.Resolver
 }
 
 func (w *AssessZoneTransferWorker) Work(
@@ -78,9 +82,10 @@ func (w *AssessZoneTransferWorker) Work(
 	start := time.Now()
 	w.Logger.InfoContext(ctx, "assess zone transfer started", "domain", job.Args.DomainUID)
 	a := assessor.NewAssessor(assessor.Config{
-		Logger:   &w.Logger,
-		Store:    w.Store,
-		Identity: job.Args.Identity(),
+		Logger:    &w.Logger,
+		Store:     w.Store,
+		DNSClient: w.Resolver,
+		Identity:  job.Args.Identity(),
 	})
 	err := a.AssessZoneTransfer(ctx, job.Args.DomainUID)
 	if err != nil {
@@ -111,9 +116,10 @@ func (AssessEmailSecurityArgs) Kind() string { return "assess_email_security" }
 
 type AssessEmailSecurityWorker struct {
 	river.WorkerDefaults[AssessEmailSecurityArgs]
-	Logger  slog.Logger
-	Store   *store.Queries
-	PgxPool *pgxpool.Pool
+	Logger   slog.Logger
+	Store    *store.Queries
+	PgxPool  *pgxpool.Pool
+	Resolver dnsclient.Resolver
 }
 
 func (w *AssessEmailSecurityWorker) Work(
@@ -124,9 +130,10 @@ func (w *AssessEmailSecurityWorker) Work(
 	start := time.Now()
 	w.Logger.InfoContext(ctx, "assess email security started", "domain", job.Args.DomainUID)
 	a := assessor.NewAssessor(assessor.Config{
-		Logger:   &w.Logger,
-		Store:    w.Store,
-		Identity: job.Args.Identity(),
+		Logger:    &w.Logger,
+		Store:     w.Store,
+		DNSClient: w.Resolver,
+		Identity:  job.Args.Identity(),
 	})
 	err := a.AssessEmailSecurity(ctx, int(job.Args.DomainID))
 	if err != nil {

@@ -15,7 +15,7 @@ import (
 type Config struct {
 	Logger    *slog.Logger
 	Store     *store.Queries
-	DNSClient *dnsclient.DNSClient
+	DNSClient dnsclient.Resolver
 	// Identity is the scan identity used to stamp observations. Left zero in unit
 	// tests (which exercise finding logic without a scan); emission is skipped then.
 	Identity observer.DomainIdentity
@@ -24,7 +24,7 @@ type Config struct {
 type Assessor struct {
 	logger    *slog.Logger
 	store     *store.Queries
-	dnsClient *dnsclient.DNSClient
+	dnsClient dnsclient.Resolver
 	identity  observer.DomainIdentity
 }
 
