@@ -3,7 +3,9 @@ package jobs
 import (
 	"context"
 	"log/slog"
+	"time"
 
+	"github.com/danielmichaels/gecko/internal/config"
 	"github.com/danielmichaels/gecko/internal/dnsclient"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5"
@@ -51,8 +53,15 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 	}
 
 	if cfg.Resolver == nil {
-		cfg.Resolver = dnsclient.New()
+		// DNSClient holds the fleet-wide limiter and shared cache internally; both
+		// read their feature flags from config and no-op when disabled or when no
+		// store is supplied.
+		cfg.Resolver = dnsclient.New(
+			dnsclient.WithLimiter(dnsclient.NewPgRateLimiter(cfg.Store)),
+			dnsclient.WithCache(cfg.Store),
+		)
 	}
+	seedRateLimitBucket(ctx, cfg.Store, cfg.Logger)
 
 	riverConfig := &river.Config{}
 	riverConfig.Hooks = []rivertype.Hook{&CorrelationInsertHook{}}
@@ -61,41 +70,88 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 		// scan workers
 		river.AddWorker(
 			rw,
-			&EnumerateSubdomainWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool, Resolver: cfg.Resolver},
+			&EnumerateSubdomainWorker{
+				Logger:   *cfg.Logger,
+				Store:    cfg.Store,
+				PgxPool:  cfg.PgxPool,
+				Resolver: cfg.Resolver,
+			},
 		)
 		river.AddWorker(
 			rw,
-			&ResolveDomainWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool, Resolver: cfg.Resolver},
+			&ResolveDomainWorker{
+				Logger:   *cfg.Logger,
+				Store:    cfg.Store,
+				PgxPool:  cfg.PgxPool,
+				Resolver: cfg.Resolver,
+			},
 		)
 		river.AddWorker(
 			rw,
-			&ScanCertificateWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool, Resolver: cfg.Resolver},
+			&ScanCertificateWorker{
+				Logger:   *cfg.Logger,
+				Store:    cfg.Store,
+				PgxPool:  cfg.PgxPool,
+				Resolver: cfg.Resolver,
+			},
 		)
 		river.AddWorker(
 			rw,
-			&ScanCNAMEWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool, Resolver: cfg.Resolver},
+			&ScanCNAMEWorker{
+				Logger:   *cfg.Logger,
+				Store:    cfg.Store,
+				PgxPool:  cfg.PgxPool,
+				Resolver: cfg.Resolver,
+			},
 		)
 		river.AddWorker(
 			rw,
-			&ScanDNSSECWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool, Resolver: cfg.Resolver},
+			&ScanDNSSECWorker{
+				Logger:   *cfg.Logger,
+				Store:    cfg.Store,
+				PgxPool:  cfg.PgxPool,
+				Resolver: cfg.Resolver,
+			},
 		)
 		river.AddWorker(
 			rw,
-			&ScanZoneTransferWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool, Resolver: cfg.Resolver},
+			&ScanZoneTransferWorker{
+				Logger:   *cfg.Logger,
+				Store:    cfg.Store,
+				PgxPool:  cfg.PgxPool,
+				Resolver: cfg.Resolver,
+			},
 		)
 		// assess workers
 		river.AddWorker(
 			rw,
-			&AssessCNAMEDanglingWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool, Resolver: cfg.Resolver},
+			&AssessCNAMEDanglingWorker{
+				Logger:   *cfg.Logger,
+				Store:    cfg.Store,
+				PgxPool:  cfg.PgxPool,
+				Resolver: cfg.Resolver,
+			},
 		)
 		river.AddWorker(
 			rw,
-			&AssessZoneTransferWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool, Resolver: cfg.Resolver},
+			&AssessZoneTransferWorker{
+				Logger:   *cfg.Logger,
+				Store:    cfg.Store,
+				PgxPool:  cfg.PgxPool,
+				Resolver: cfg.Resolver,
+			},
 		)
 		river.AddWorker(
 			rw,
-			&AssessEmailSecurityWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool, Resolver: cfg.Resolver},
+			&AssessEmailSecurityWorker{
+				Logger:   *cfg.Logger,
+				Store:    cfg.Store,
+				PgxPool:  cfg.PgxPool,
+				Resolver: cfg.Resolver,
+			},
 		)
+		// maintenance
+		river.AddWorker(rw, &PurgeDNSCacheWorker{Logger: *cfg.Logger, Store: cfg.Store})
 		riverConfig.Workers = rw
 		riverConfig.Middleware = []rivertype.Middleware{
 			&CorrelationMiddleware{},
@@ -106,12 +162,24 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 			river.QueueDefault: {MaxWorkers: cfg.WorkerCount},
 			// reserved for DNS resolution only
 			queueResolver: {MaxWorkers: cfg.WorkerCount},
-			// reserved for subdomain enumeration
-			queueEnumeration: {MaxWorkers: cfg.WorkerCount},
+			// reserved for subdomain enumeration; capped independently to bound
+			// pressure on subfinder's upstream providers under HA.
+			queueEnumeration: {MaxWorkers: enumerationWorkers(cfg.WorkerCount)},
 			// reserved for scanners
 			queueScanner: {MaxWorkers: cfg.WorkerCount},
 			// reserved for assessors
 			queueAssessor: {MaxWorkers: cfg.WorkerCount},
+		}
+		if config.AppConfig().AppConf.DNSCacheEnabled {
+			riverConfig.PeriodicJobs = []*river.PeriodicJob{
+				river.NewPeriodicJob(
+					river.PeriodicInterval(15*time.Minute),
+					func() (river.JobArgs, *river.InsertOpts) {
+						return PurgeDNSCacheArgs{}, nil
+					},
+					&river.PeriodicJobOpts{RunOnStart: true},
+				),
+			}
 		}
 	}
 
@@ -120,4 +188,36 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 		return nil, err
 	}
 	return rc, nil
+}
+
+// enumerationWorkers returns the per-process cap for the enumeration queue,
+// falling back to the general worker count when ENUMERATION_WORKER_COUNT is unset
+// (0) or negative.
+func enumerationWorkers(fallback int) int {
+	n := config.AppConfig().AppConf.EnumerationWorkerCount
+	if n <= 0 {
+		return fallback
+	}
+	return n
+}
+
+// seedRateLimitBucket ensures the fleet-wide token bucket row exists, seeding it
+// from config on first run. ON CONFLICT DO NOTHING preserves any values an operator
+// has since tuned via SQL.
+func seedRateLimitBucket(ctx context.Context, st *store.Queries, logger *slog.Logger) {
+	if st == nil {
+		return
+	}
+	cfg := config.AppConfig()
+	if !cfg.AppConf.DNSRateLimitEnabled {
+		return
+	}
+	if err := st.RateLimitUpsertBucket(ctx, store.RateLimitUpsertBucketParams{
+		Key:     dnsclient.RateLimitBucketKey,
+		Tokens:  cfg.AppConf.DNSRateLimitBurst,
+		RateQps: cfg.AppConf.DNSRateLimitQPS,
+		Burst:   cfg.AppConf.DNSRateLimitBurst,
+	}); err != nil {
+		logger.Warn("failed to seed dns rate limit bucket", "error", err)
+	}
 }

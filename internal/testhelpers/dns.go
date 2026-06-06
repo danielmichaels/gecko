@@ -6,6 +6,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/miekg/dns"
@@ -19,6 +20,7 @@ type MockDNSServer struct {
 	Logger      *slog.Logger
 	ListenAddr  string
 	Port        int
+	queries     atomic.Int64
 	mu          sync.RWMutex
 }
 
@@ -216,8 +218,15 @@ func (s *MockDNSServer) SetRcode(name string, rcode int) {
 	s.ForcedRcode[dns.Fqdn(name)] = rcode
 }
 
+// QueryCount returns the number of DNS requests the mock has received. Tests use
+// it to assert that caching/rate-limiting prevented (or collapsed) wire queries.
+func (s *MockDNSServer) QueryCount() int64 {
+	return s.queries.Load()
+}
+
 // handleRequest handles DNS requests to the mock server
 func (s *MockDNSServer) handleRequest(w dns.ResponseWriter, r *dns.Msg) {
+	s.queries.Add(1)
 	m := new(dns.Msg)
 	m.SetReply(r)
 	m.Authoritative = true

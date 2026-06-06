@@ -98,12 +98,15 @@ type DNSClient struct {
 	// conf is a pointer to the application configuration struct.
 	// It is used to access the configuration settings for the DNS client.
 	conf *config.Conf
+	// limiter throttles every outbound query across the whole fleet. A nil limiter
+	// is a no-op, so an un-wired client behaves exactly as before.
+	limiter *PgRateLimiter
+	// cache serves answers from the fleet-wide shared cache (in-process L1 +
+	// Postgres L2). A nil cache means every lookup goes straight to the wire.
+	cache *dnsCache
 	// servers is a slice of DNS server addresses to be used for DNS lookups.
 	// If no custom servers are configured, it defaults to a single entry, "8.8.8.8:53" (Google's public DNS server).
 	servers []string
-	// currentServerIdx is the index of the current DNS server being used for lookups.
-	// It is used to keep track of the server being used and cycle through the list of configured servers.
-	currentServerIdx int
 }
 
 // DNSClientOption is a function that modifies a DNSClient
@@ -114,7 +117,6 @@ func WithServers(servers []string) DNSClientOption {
 	return func(c *DNSClient) {
 		if len(servers) > 0 {
 			c.servers = servers
-			c.currentServerIdx = 0
 		}
 	}
 }
@@ -137,6 +139,14 @@ func WithClient(client *dns.Client) DNSClientOption {
 	}
 }
 
+// WithLimiter sets the fleet-wide outbound-DNS rate limiter. A nil limiter leaves
+// the client unthrottled.
+func WithLimiter(limiter *PgRateLimiter) DNSClientOption {
+	return func(c *DNSClient) {
+		c.limiter = limiter
+	}
+}
+
 // New creates a new DNSClient instance with the configured DNS servers and a logger.
 // It initializes the DNS client and sets the current server index to 0.
 // Optional functional options can be provided to customize the client.
@@ -145,11 +155,10 @@ func New(opts ...DNSClientOption) *DNSClient {
 	logger, _ := logging.SetupLogger("dns-client", cfg)
 
 	client := &DNSClient{
-		servers:          getDNSServers(),
-		client:           new(dns.Client),
-		currentServerIdx: 0,
-		logger:           logger,
-		conf:             cfg,
+		servers: getDNSServers(),
+		client:  new(dns.Client),
+		logger:  logger,
+		conf:    cfg,
 	}
 
 	// Apply any provided options
@@ -274,7 +283,7 @@ func (c *DNSClient) LookupDS(target string) ([]string, bool) {
 // NODATA, SERVFAIL and timeouts all report ok=false; callers that need to tell
 // authoritative absence from "couldn't tell" must use LookupWithStatus.
 func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
-	records, status := c.lookupRecordWithStatus(target, qtype)
+	records, status := c.resolve(target, qtype)
 	return records, status == ResolutionData
 }
 
@@ -283,7 +292,7 @@ func (c *DNSClient) lookupRecord(target string, qtype uint16) ([]string, bool) {
 // observation recorder uses the status to gate deletions: it removes projection
 // rows only on an authoritative result, never on Indeterminate.
 func (c *DNSClient) LookupWithStatus(target string, qtype uint16) ([]string, ResolutionStatus) {
-	return c.lookupRecordWithStatus(target, qtype)
+	return c.resolve(target, qtype)
 }
 
 // lookupRecordWithStatus performs a DNS lookup for the given target and query
@@ -315,12 +324,13 @@ func (c *DNSClient) lookupRecordWithStatus(
 		target,
 		"qtype",
 		QTypeToString[qtype],
-		"server",
-		c.servers[c.currentServerIdx],
 	)
 
 	numRetries := c.numRetries()
 	for attempt := 0; attempt < numRetries; attempt++ {
+		if !c.limiter.Acquire() {
+			return nil, ResolutionIndeterminate
+		}
 		// Randomly select a server for this attempt
 		serverIdx := rand.Intn(len(c.servers))
 		server := c.servers[serverIdx]
@@ -442,19 +452,18 @@ func (c *DNSClient) GetParentZone(domain string) (string, error) {
 	return fqdn, nil
 }
 
-// LookupDNSKEYWithRRSIG performs a DNS query for the DNSKEY and RRSIG records
-// for the given target domain. It returns the DNSKEY and RRSIG records, or
-// false if the query was unsuccessful.
-func (c *DNSClient) LookupDNSKEYWithRRSIG(target string) ([]string, []string, bool) {
+// lookupDNSKEYWithRRSIGWire performs the DNSKEY+RRSIG wire query. The exported
+// LookupDNSKEYWithRRSIG wraps it with the shared cache.
+func (c *DNSClient) lookupDNSKEYWithRRSIGWire(target string) ([]string, []string, bool) {
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(target), dns.TypeDNSKEY)
 	m.RecursionDesired = true
 	m.SetEdns0(4096, true)
 
-	for i := 0; i < len(c.servers); i++ {
-		serverIdx := (c.currentServerIdx + i) % len(c.servers)
-		server := c.servers[serverIdx]
-
+	for _, server := range c.servers {
+		if !c.limiter.Acquire() {
+			return nil, nil, false
+		}
 		r, _, err := c.client.Exchange(m, server)
 		if err != nil {
 			continue
@@ -462,7 +471,6 @@ func (c *DNSClient) LookupDNSKEYWithRRSIG(target string) ([]string, []string, bo
 		if r.Rcode != dns.RcodeSuccess {
 			continue
 		}
-		c.currentServerIdx = (serverIdx + 1) % len(c.servers)
 
 		var dnskeys []string
 		var rrsigs []string
@@ -483,36 +491,13 @@ func (c *DNSClient) LookupDNSKEYWithRRSIG(target string) ([]string, []string, bo
 	return nil, nil, false
 }
 
-// sendDNSSECQuery sends a DNS query and returns the response message and a
-// boolean indicating whether the query was successful. It tries each of the
-// configured DNS servers in a round-robin fashion until a successful response
-// is received or all servers have been tried.
-func (c *DNSClient) sendDNSSECQuery(m *dns.Msg) (*dns.Msg, bool) {
-	numRetries := c.numRetries()
-	for attempt := 0; attempt < numRetries; attempt++ {
-		serverIdx := rand.Intn(len(c.servers))
-		server := c.servers[serverIdx]
-
-		r, _, err := c.client.Exchange(m, server)
-		if err != nil || r.Rcode != dns.RcodeSuccess {
-			c.backoffSleep(attempt, m.Question[0].Name)
-			continue
-		}
-		return r, true
-	}
-	return nil, false
-}
-
 // IsZoneApex checks if the given domain is the zone apex by querying for the SOA record.
 // It returns true if the domain is the zone apex, false otherwise.
 func (c *DNSClient) IsZoneApex(domain string) bool {
-	// Query for SOA record to determine if this is a zone apex
-	m := new(dns.Msg)
-	m.SetQuestion(dns.Fqdn(domain), dns.TypeSOA)
-
-	response, ok := c.sendDNSSECQuery(m)
-
-	return ok && len(response.Answer) > 0
+	// Apex detection is "does an SOA exist here", which is exactly the cached SOA
+	// lookup — so it shares the fleet-wide cache and rate limiter with LookupSOA.
+	answers, status := c.resolve(domain, dns.TypeSOA)
+	return status == ResolutionData && len(answers) > 0
 }
 
 // validateRRSIG validates an RRSIG record against a DNSKEY and a record set.
@@ -890,6 +875,9 @@ func (c *DNSClient) performTransfer(domain, nameserver string, m *dns.Msg) []dns
 		"type", transferType,
 	)
 
+	if !c.limiter.Acquire() {
+		return nil
+	}
 	env, err := transfer.In(m, nameserver)
 	if err != nil {
 		c.logger.Debug("zone transfer failed",
