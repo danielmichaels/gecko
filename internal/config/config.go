@@ -82,6 +82,19 @@ type appConf struct {
 	// upstream providers under HA. 0 falls back to the general worker count.
 	EnumerationWorkerCount int `env:"ENUMERATION_WORKER_COUNT,default=10"`
 
+	// Subfinder passive-enumeration tuning. Defaults reproduce the previous
+	// hardcoded runner.Options exactly (Timeout=30s, MaxTime=10m, no rate cap, all
+	// sources). SubfinderRateLimit caps subfinder's own outbound HTTP/sec to its
+	// upstream providers (distinct from the DNS token bucket); 0 leaves subfinder
+	// uncapped. Sources/ExcludeSources are ';'-separated (envdecode), like
+	// DNS_SERVERS; empty means subfinder's default source set.
+	SubfinderEnabled        bool     `env:"SUBFINDER_ENABLED,default=true"`
+	SubfinderRateLimit      int      `env:"SUBFINDER_RATE_LIMIT,default=0"`
+	SubfinderTimeout        int      `env:"SUBFINDER_TIMEOUT,default=30"`
+	SubfinderMaxTime        int      `env:"SUBFINDER_MAX_TIME,default=10"`
+	SubfinderSources        []string `env:"SUBFINDER_SOURCES,default="`
+	SubfinderExcludeSources []string `env:"SUBFINDER_EXCLUDE_SOURCES,default="`
+
 	// ScanRecencyWindow bounds how recently a discovered domain must have been
 	// scanned to be skipped by the dedup guard. Explicit user actions (Force)
 	// bypass this window.

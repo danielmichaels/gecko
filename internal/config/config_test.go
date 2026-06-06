@@ -38,6 +38,31 @@ func TestAuthDefaults(t *testing.T) {
 	}
 }
 
+func TestSubfinderDefaults(t *testing.T) {
+	cfg := AppConfig()
+	if !cfg.AppConf.SubfinderEnabled {
+		t.Errorf("SubfinderEnabled default = false, want true")
+	}
+	if cfg.AppConf.SubfinderRateLimit != 0 {
+		t.Errorf("SubfinderRateLimit default = %d, want 0", cfg.AppConf.SubfinderRateLimit)
+	}
+	if cfg.AppConf.SubfinderTimeout != 30 {
+		t.Errorf("SubfinderTimeout default = %d, want 30", cfg.AppConf.SubfinderTimeout)
+	}
+	if cfg.AppConf.SubfinderMaxTime != 10 {
+		t.Errorf("SubfinderMaxTime default = %d, want 10", cfg.AppConf.SubfinderMaxTime)
+	}
+	if len(cfg.AppConf.SubfinderSources) != 0 {
+		t.Errorf("SubfinderSources default len = %d, want 0", len(cfg.AppConf.SubfinderSources))
+	}
+	if len(cfg.AppConf.SubfinderExcludeSources) != 0 {
+		t.Errorf(
+			"SubfinderExcludeSources default len = %d, want 0",
+			len(cfg.AppConf.SubfinderExcludeSources),
+		)
+	}
+}
+
 func ExampleAppConfig() {
 	type exampleStruct struct {
 		String string `env:"STRING"`
