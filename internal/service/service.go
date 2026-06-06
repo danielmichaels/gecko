@@ -7,10 +7,12 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 
 	"github.com/danielmichaels/gecko/internal/config"
+	"github.com/danielmichaels/gecko/internal/jobs"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -22,18 +24,32 @@ var (
 	ErrForbidden       = errors.New("forbidden")
 	ErrConflict        = errors.New("conflict")
 	ErrUnauthenticated = errors.New("unauthenticated")
+	ErrInvalidInput    = errors.New("invalid input")
 )
+
+// DomainScanScheduler schedules a domain scan job inside a transaction. The
+// seam lets Create/Update tests run without a live River queue.
+type DomainScanScheduler interface {
+	Schedule(
+		ctx context.Context,
+		tx pgx.Tx,
+		st *store.Queries,
+		target jobs.DomainScanTarget,
+		source store.DomainSource,
+	) (int64, error)
+}
 
 // Service holds the shared dependencies used across all domain service methods.
 type Service struct {
-	Conf *config.Conf
-	Log  *slog.Logger
-	DB   *store.Queries
-	Pool *pgxpool.Pool
-	RC   *river.Client[pgx.Tx]
+	Conf      *config.Conf
+	Log       *slog.Logger
+	DB        *store.Queries
+	Pool      *pgxpool.Pool
+	scheduler DomainScanScheduler
 }
 
-// New constructs a Service with all required dependencies wired.
+// New constructs a Service with all required dependencies wired. The production
+// scan scheduler delegates to jobs.EnqueueDomainScan via riverScheduler.
 func New(
 	conf *config.Conf,
 	log *slog.Logger,
@@ -42,10 +58,61 @@ func New(
 	rc *river.Client[pgx.Tx],
 ) *Service {
 	return &Service{
-		Conf: conf,
-		Log:  log,
-		DB:   db,
-		Pool: pool,
-		RC:   rc,
+		Conf:      conf,
+		Log:       log,
+		DB:        db,
+		Pool:      pool,
+		scheduler: &riverScheduler{rc: rc, conf: conf},
 	}
+}
+
+// NewWithScheduler constructs a Service with a custom scheduler — used in
+// tests to inject a fake that records calls without a live River queue.
+func NewWithScheduler(
+	conf *config.Conf,
+	log *slog.Logger,
+	db *store.Queries,
+	pool *pgxpool.Pool,
+	scheduler DomainScanScheduler,
+) *Service {
+	return &Service{
+		Conf:      conf,
+		Log:       log,
+		DB:        db,
+		Pool:      pool,
+		scheduler: scheduler,
+	}
+}
+
+// DomainsService returns the Domains sub-service.
+func (s *Service) DomainsService() *DomainsService {
+	return &DomainsService{s}
+}
+
+// RecordsService returns the Records sub-service.
+func (s *Service) RecordsService() *RecordsService {
+	return &RecordsService{s}
+}
+
+// riverScheduler is the production DomainScanScheduler that delegates to
+// jobs.EnqueueDomainScan with the same options the former scheduleUserDomainScan used.
+type riverScheduler struct {
+	rc   *river.Client[pgx.Tx]
+	conf *config.Conf
+}
+
+func (r *riverScheduler) Schedule(
+	ctx context.Context,
+	tx pgx.Tx,
+	st *store.Queries,
+	target jobs.DomainScanTarget,
+	source store.DomainSource,
+) (int64, error) {
+	return jobs.EnqueueDomainScan(ctx, r.rc, tx, st, target, jobs.DomainScanOptions{
+		EnumerateSubdomains: true,
+		Source:              source,
+		Force:               true,
+		RecencyWindow:       r.conf.AppConf.ScanRecencyWindow,
+		Concurrency:         r.conf.AppConf.EnumerationConcurrencyLimit,
+	})
 }

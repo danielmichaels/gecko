@@ -18,6 +18,7 @@ import (
 	"github.com/alexedwards/scs/v2"
 	"github.com/danielmichaels/gecko/internal/auth"
 	"github.com/danielmichaels/gecko/internal/config"
+	"github.com/danielmichaels/gecko/internal/service"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/danielmichaels/gecko/internal/version"
 	"github.com/jackc/pgx/v5"
@@ -34,6 +35,7 @@ type Server struct {
 	RC           *river.Client[pgx.Tx]
 	AuthProvider auth.Provider
 	Sessions     *scs.SessionManager
+	Svc          *service.Service
 }
 
 func New(
@@ -64,6 +66,7 @@ func New(
 		PgxPool:      pgxPool,
 		AuthProvider: provider,
 		Sessions:     sessions,
+		Svc:          service.New(c, l, db, pgxPool, RC),
 	}, nil
 }
 

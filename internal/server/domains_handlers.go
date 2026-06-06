@@ -4,15 +4,9 @@ import (
 	"context"
 	"errors"
 
-	"github.com/danielmichaels/gecko/internal/dnsrecords"
-	"github.com/danielmichaels/gecko/internal/jobs"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
-
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielmichaels/gecko/internal/dto"
-	"github.com/danielmichaels/gecko/internal/store"
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/danielmichaels/gecko/internal/service"
 )
 
 type DomainInput struct {
@@ -48,17 +42,14 @@ func (app *Server) handleDomainList(ctx context.Context, i *struct {
 	if err != nil {
 		return nil, err
 	}
-	tenantID := pgtype.Int4{Int32: p.TenantID, Valid: true}
 	pageSize, pageNumber, offset := i.GetPaginationParams()
-	var result domainsSearchQueryResult
-	if i.FilterName != "" {
-		result, err = app.executeSearchQuery(ctx, tenantID, i.FilterName, pageSize, offset)
-	} else {
-		result, err = app.executeListQuery(ctx, tenantID, pageSize, offset)
-	}
-
+	result, err := app.Svc.DomainsService().List(ctx, p, service.DomainsListParams{
+		FilterName: i.FilterName,
+		PageSize:   pageSize,
+		Offset:     offset,
+	})
 	if err != nil {
-		return nil, err
+		return nil, huma.Error500InternalServerError("failed to list domains", err)
 	}
 
 	paginationMetadata := NewPaginationMetadata(
@@ -67,7 +58,7 @@ func (app *Server) handleDomainList(ctx context.Context, i *struct {
 		pageNumber,
 		int32(len(result.Domains)),
 	)
-	resp := &DomainListOutput{
+	return &DomainListOutput{
 		Body: struct {
 			Pagination *PaginationMetadata `json:"pagination"`
 			Domains    []dto.Domain        `json:"domains"`
@@ -75,65 +66,6 @@ func (app *Server) handleDomainList(ctx context.Context, i *struct {
 			Domains:    dto.DomainsToAPI(result.Domains),
 			Pagination: &paginationMetadata,
 		},
-	}
-	return resp, nil
-}
-
-type domainsSearchQueryResult struct {
-	Domains    []store.Domains
-	TotalCount int64
-}
-
-func (app *Server) executeSearchQuery(
-	ctx context.Context,
-	tenantID pgtype.Int4,
-	filter string,
-	limit, offset int32,
-) (domainsSearchQueryResult, error) {
-	rows, err := app.Db.DomainsSearchByName(ctx, store.DomainsSearchByNameParams{
-		TenantID: tenantID,
-		Name:     "%" + filter + "%",
-		Limit:    limit,
-		Offset:   offset,
-	})
-	if err != nil {
-		return domainsSearchQueryResult{}, err
-	}
-
-	var totalCount int64
-	if len(rows) > 0 {
-		totalCount = rows[0].TotalCount
-	}
-
-	return domainsSearchQueryResult{
-		Domains:    dto.DomainSearchByNameRowToDomains(rows),
-		TotalCount: totalCount,
-	}, nil
-}
-
-// Helper function for list query
-func (app *Server) executeListQuery(
-	ctx context.Context,
-	tenantID pgtype.Int4,
-	limit, offset int32,
-) (domainsSearchQueryResult, error) {
-	rows, err := app.Db.DomainsListByTenantID(ctx, store.DomainsListByTenantIDParams{
-		TenantID: tenantID,
-		Limit:    limit,
-		Offset:   offset,
-	})
-	if err != nil {
-		return domainsSearchQueryResult{}, err
-	}
-
-	var totalCount int64
-	if len(rows) > 0 {
-		totalCount = rows[0].TotalCount
-	}
-
-	return domainsSearchQueryResult{
-		Domains:    dto.DomainsListByTenantIDToDomains(rows),
-		TotalCount: totalCount,
 	}, nil
 }
 
@@ -146,26 +78,14 @@ func (app *Server) handleDomainGet(ctx context.Context, i *DomainGetInput) (*Dom
 	if err != nil {
 		return nil, err
 	}
-	domain, err := app.Db.DomainsGetByID(ctx, store.DomainsGetByIDParams{
-		Uid:      i.ID,
-		TenantID: pgtype.Int4{Int32: p.TenantID, Valid: true},
-	})
+	domain, err := app.Svc.DomainsService().Get(ctx, p, i.ID)
 	if err != nil {
-		return nil, huma.Error404NotFound("domain not found")
+		if errors.Is(err, service.ErrNotFound) {
+			return nil, huma.Error404NotFound("domain not found")
+		}
+		return nil, huma.Error500InternalServerError("failed to get domain", err)
 	}
-	domainObj := store.Domains{
-		ID:         domain.ID,
-		Uid:        domain.Uid,
-		TenantID:   domain.TenantID,
-		Name:       domain.Name,
-		DomainType: domain.DomainType,
-		Source:     domain.Source,
-		Status:     domain.Status,
-		CreatedAt:  domain.CreatedAt,
-		UpdatedAt:  domain.UpdatedAt,
-	}
-	resp := &DomainOutput{Body: dto.DomainToAPI(domainObj)}
-	return resp, nil
+	return &DomainOutput{Body: dto.DomainToAPI(domain)}, nil
 }
 
 type DomainUpdateInput struct {
@@ -185,73 +105,18 @@ func (app *Server) handleDomainUpdate(
 	if err != nil {
 		return nil, err
 	}
-	patchDomain, err := app.Db.DomainsGetByID(ctx, store.DomainsGetByIDParams{
-		Uid:      i.ID,
-		TenantID: pgtype.Int4{Int32: p.TenantID, Valid: true},
+	domain, err := app.Svc.DomainsService().Update(ctx, p, i.ID, service.DomainsUpdateParams{
+		DomainType: i.Body.DomainType,
+		Source:     i.Body.Source,
+		Status:     i.Body.Status,
 	})
 	if err != nil {
-		app.Log.Error("failed to get domain", "error", err)
-		return nil, huma.Error404NotFound("domain not found")
-	}
-	status := patchDomain.Status
-	if i.Body.Status != "" {
-		status = store.DomainStatus(i.Body.Status)
-	}
-	domainSource := patchDomain.Source
-	if i.Body.Source != "" {
-		domainSource = store.DomainSource(i.Body.Source)
-	}
-	domainType := patchDomain.DomainType
-	if i.Body.DomainType != "" {
-		domainType = store.DomainType(i.Body.DomainType)
-	}
-	tx, err := app.PgxPool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return nil, huma.Error500InternalServerError("failed to begin transaction", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	st := app.Db.WithTx(tx)
-
-	domain, err := st.DomainsUpdateByID(ctx, store.DomainsUpdateByIDParams{
-		Uid:        i.ID,
-		Status:     status,
-		DomainType: domainType,
-		Source:     domainSource,
-		TenantID:   pgtype.Int4{Int32: p.TenantID, Valid: true},
-	})
-	if err != nil {
-		app.Log.Error("failed to update domain", "error", err)
+		if errors.Is(err, service.ErrNotFound) {
+			return nil, huma.Error404NotFound("domain not found")
+		}
 		return nil, huma.Error500InternalServerError("failed to update domain", err)
 	}
-
-	// PUT is an explicit user action, like POST: Force a rescan (bypassing recency)
-	// but still honour the active-status gate inside EnqueueDomainScan.
-	if _, err := app.scheduleUserDomainScan(ctx, tx, st, jobs.DomainScanTarget{
-		TenantID:   domain.TenantID.Int32,
-		DomainID:   domain.ID,
-		DomainUID:  domain.Uid,
-		DomainName: domain.Name,
-		Status:     domain.Status,
-	}, domainSource); err != nil {
-		return nil, huma.Error500InternalServerError("failed to schedule scan", err)
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return nil, huma.Error500InternalServerError("failed to commit transaction", err)
-	}
-
-	domainObj := store.Domains{
-		ID:         domain.ID,
-		Uid:        domain.Uid,
-		TenantID:   domain.TenantID,
-		Name:       domain.Name,
-		DomainType: domain.DomainType,
-		Source:     domain.Source,
-		Status:     domain.Status,
-		CreatedAt:  domain.CreatedAt,
-		UpdatedAt:  domain.UpdatedAt,
-	}
-	return &DomainOutput{Body: dto.DomainToAPI(domainObj)}, nil
+	return &DomainOutput{Body: dto.DomainToAPI(domain)}, nil
 }
 
 // DomainDeletionImpactInput defines the input for the domain deletion impact endpoint
@@ -275,23 +140,15 @@ func (app *Server) handleDomainDeletionImpact(
 	if err != nil {
 		return nil, err
 	}
-	count, err := app.Db.DomainsDeleteCount(ctx, store.DomainsDeleteCountParams{
-		Uid:      i.ID,
-		TenantID: pgtype.Int4{Int32: p.TenantID, Valid: true},
-	})
+	count, err := app.Svc.DomainsService().DeletionImpact(ctx, p, i.ID)
 	if err != nil {
-		app.Log.Error("failed to count domains for deletion", "error", err, "id", i.ID)
+		if errors.Is(err, service.ErrNotFound) {
+			return nil, huma.Error404NotFound("domain not found")
+		}
 		return nil, huma.Error500InternalServerError("failed to count domains for deletion")
 	}
-	// The recursive CTE always counts the domain itself, so 0 means the domain does
-	// not exist in the caller's tenant — 404, consistent with the other by-uid paths.
-	if count == 0 {
-		return nil, huma.Error404NotFound("domain not found")
-	}
-
 	resp := &DomainDeletionImpactOutput{}
 	resp.Body.Count = count
-
 	return resp, nil
 }
 
@@ -307,13 +164,8 @@ func (app *Server) handleDomainDelete(
 	if err != nil {
 		return nil, err
 	}
-	_, err = app.Db.DomainsDeleteByID(ctx, store.DomainsDeleteByIDParams{
-		Uid:      i.ID,
-		TenantID: pgtype.Int4{Int32: p.TenantID, Valid: true},
-	})
-	if err != nil {
-		app.Log.Error("failed to delete domain", "error", err, "id", i.ID)
-		if errors.Is(err, pgx.ErrNoRows) {
+	if err := app.Svc.DomainsService().Delete(ctx, p, i.ID); err != nil {
+		if errors.Is(err, service.ErrNotFound) {
 			return nil, huma.Error404NotFound("domain not found")
 		}
 		return nil, huma.Error500InternalServerError("failed to delete domain")
@@ -334,80 +186,21 @@ func (app *Server) handleDomainCreate(
 	ctx context.Context,
 	i *DomainCreateInput,
 ) (*DomainOutput, error) {
-	// Canonicalize before both the insert and (implicitly) the uniqueness check
-	// so case/trailing-dot variants can't bypass the 409 or split a timeline.
-	name := dnsrecords.CanonicalizeDomain(i.Body.Domain)
 	p, err := principalOrErr(ctx)
 	if err != nil {
 		return nil, err
 	}
-	tenantID := p.TenantID
-
-	status := store.DomainStatusActive
-	if i.Body.Status != "" {
-		status = store.DomainStatus(i.Body.Status)
-	}
-	domainSource := store.DomainSourceUserSupplied
-	if i.Body.Source != "" {
-		domainSource = store.DomainSource(i.Body.Source)
-	}
-	domainType := store.DomainTypeSubdomain
-	if i.Body.DomainType != "" {
-		dt, _ := dnsrecords.GetDomainType(name)
-		domainType = store.DomainType(dt)
-	}
-
-	// One transaction covers the domain write AND the scan enqueue: if scheduling
-	// fails, the domain insert rolls back rather than leaving a domain with no scan.
-	tx, err := app.PgxPool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return nil, huma.Error500InternalServerError("failed to begin transaction", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	st := app.Db.WithTx(tx)
-
-	// Insert-only (vs the enumeration upsert): a duplicate (tenant_id, name) raises
-	// a unique-violation we map to 409. This is TOCTOU-safe against two concurrent
-	// duplicate POSTs, unlike a separate GetByName check.
-	domain, err := st.DomainsInsert(ctx, store.DomainsInsertParams{
-		TenantID:   pgtype.Int4{Int32: tenantID, Valid: true},
-		Name:       name,
-		DomainType: domainType,
-		Source:     domainSource,
-		Status:     status,
+	domain, err := app.Svc.DomainsService().Create(ctx, p, service.DomainsCreateParams{
+		Domain:     i.Body.Domain,
+		DomainType: i.Body.DomainType,
+		Source:     i.Body.Source,
+		Status:     i.Body.Status,
 	})
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique_violation
+		if errors.Is(err, service.ErrConflict) {
 			return nil, huma.Error409Conflict("domain already exists")
 		}
 		return nil, huma.Error500InternalServerError("failed to create domain", err)
 	}
-
-	if _, err := app.scheduleUserDomainScan(ctx, tx, st, jobs.DomainScanTarget{
-		TenantID:   tenantID,
-		DomainID:   domain.ID,
-		DomainUID:  domain.Uid,
-		DomainName: domain.Name,
-		Status:     domain.Status,
-	}, domainSource); err != nil {
-		return nil, huma.Error500InternalServerError("failed to schedule scan", err)
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return nil, huma.Error500InternalServerError("failed to commit transaction", err)
-	}
-
-	domainObj := store.Domains{
-		ID:         domain.ID,
-		Uid:        domain.Uid,
-		TenantID:   pgtype.Int4{Int32: tenantID, Valid: true},
-		Name:       domain.Name,
-		DomainType: domain.DomainType,
-		Source:     domain.Source,
-		Status:     domain.Status,
-		CreatedAt:  domain.CreatedAt,
-		UpdatedAt:  domain.UpdatedAt,
-	}
-	return &DomainOutput{Body: dto.DomainToAPI(domainObj)}, nil
+	return &DomainOutput{Body: dto.DomainToAPI(domain)}, nil
 }

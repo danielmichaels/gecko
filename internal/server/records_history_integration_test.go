@@ -2,9 +2,12 @@ package server
 
 import (
 	"context"
+	"log/slog"
 	"testing"
 
+	"github.com/danielmichaels/gecko/internal/config"
 	"github.com/danielmichaels/gecko/internal/observer"
+	"github.com/danielmichaels/gecko/internal/service"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/danielmichaels/gecko/internal/testhelpers"
 	"github.com/jackc/pgx/v5"
@@ -23,7 +26,8 @@ func TestRecordsHistoryHandler_PreservesTimelineAcrossDeleteReadd(t *testing.T) 
 	}
 	defer pc.Close(ctx)
 
-	app := &Server{Db: pc.Queries}
+	svc := service.NewWithScheduler(config.AppConfig(), slog.New(slog.DiscardHandler), pc.Queries, pc.Pool, nil)
+	app := &Server{Db: pc.Queries, Svc: svc}
 	const tenantID = int32(1)
 	const name = "preserve.example.com"
 
