@@ -60,7 +60,27 @@ type appConf struct {
 	DNSBackoffMaxDelay  int      `env:"DNS_BACKOFF_MAX_DELAY,default=16"`
 	DNSMaxRetries       int      `env:"DNS_MAX_RETRIES,default=5"`
 
+	// Fleet-wide shared DNS answer cache (Postgres L2 + in-process L1). Reused
+	// across all instances so one lookup serves the whole fleet.
+	DNSCacheEnabled     bool          `env:"DNS_CACHE_ENABLED,default=true"`
+	DNSCacheTTL         time.Duration `env:"DNS_CACHE_TTL,default=5m"`
+	DNSCacheNegativeTTL time.Duration `env:"DNS_CACHE_NEGATIVE_TTL,default=60s"`
+	DNSCacheL1Size      int           `env:"DNS_CACHE_L1_SIZE,default=1000"`
+
+	// Global outbound-DNS rate limit shared by the whole fleet via a Postgres
+	// token bucket. On exhaustion within DNSRateLimitMaxWait a query is shed
+	// (degrade-closed); only a Postgres failure degrades open.
+	DNSRateLimitEnabled bool          `env:"DNS_RATE_LIMIT_ENABLED,default=true"`
+	DNSRateLimitQPS     float64       `env:"DNS_RATE_LIMIT_QPS,default=100"`
+	DNSRateLimitBurst   float64       `env:"DNS_RATE_LIMIT_BURST,default=200"`
+	DNSRateLimitMaxWait time.Duration `env:"DNS_RATE_LIMIT_MAX_WAIT,default=10s"`
+
 	EnumerationConcurrencyLimit int `env:"ENUMERATION_CONCURRENCY_LIMIT,default=100"`
+
+	// EnumerationWorkerCount caps concurrent subdomain-enumeration jobs per process
+	// independently of the general worker count, bounding pressure on subfinder's
+	// upstream providers under HA. 0 falls back to the general worker count.
+	EnumerationWorkerCount int `env:"ENUMERATION_WORKER_COUNT,default=10"`
 
 	// ScanRecencyWindow bounds how recently a discovered domain must have been
 	// scanned to be skipped by the dedup guard. Explicit user actions (Force)

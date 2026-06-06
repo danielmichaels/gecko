@@ -522,6 +522,24 @@ type DmarcFindings struct {
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
+type DnsCache struct {
+	Qtype     int32              `json:"qtype"`
+	Fqdn      string             `json:"fqdn"`
+	Answers   []string           `json:"answers"`
+	Status    int16              `json:"status"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type DnsRateLimitBucket struct {
+	Key        string             `json:"key"`
+	Tokens     float64            `json:"tokens"`
+	LastRefill pgtype.Timestamptz `json:"last_refill"`
+	RateQps    float64            `json:"rate_qps"`
+	Burst      float64            `json:"burst"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+}
+
 type DnsResolutionConsistencyFindings struct {
 	ID              int32              `json:"id"`
 	Uid             string             `json:"uid"`
