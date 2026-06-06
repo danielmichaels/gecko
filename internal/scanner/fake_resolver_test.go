@@ -25,10 +25,12 @@ func (f *fakeResolver) LookupCNAME(target string) ([]string, bool) {
 	f.calledCNAME = append(f.calledCNAME, target)
 	return f.cnameReturn, f.cnameOK
 }
+
 func (f *fakeResolver) LookupA(target string) ([]string, bool) {
 	f.calledA = append(f.calledA, target)
 	return f.aReturn, f.aOK
 }
+
 func (f *fakeResolver) LookupAAAA(target string) ([]string, bool) {
 	f.calledAAAA = append(f.calledAAAA, target)
 	return f.aaaaReturn, f.aaaaOK
@@ -38,6 +40,7 @@ func (f *fakeResolver) LookupDS(string) ([]string, bool)  { return nil, false }
 func (f *fakeResolver) LookupDNSKEYWithRRSIG(string) ([]string, []string, bool) {
 	return nil, nil, false
 }
+
 func (f *fakeResolver) LookupWithStatus(string, uint16) ([]string, dnsclient.ResolutionStatus) {
 	return nil, dnsclient.ResolutionIndeterminate
 }
@@ -46,6 +49,7 @@ func (f *fakeResolver) ValidateDNSSEC(string) error { return nil }
 func (f *fakeResolver) AttemptZoneTransfer(string) *dnsrecords.ZoneTransferResult {
 	return &dnsrecords.ZoneTransferResult{}
 }
+
 func (f *fakeResolver) EnumerateWithSubfinderCallback(
 	context.Context, string, int, func(*resolve.HostEntry),
 ) error {

@@ -18,6 +18,7 @@ require (
 	github.com/miekg/dns v1.1.63
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/pressly/goose/v3 v3.24.1
+	github.com/projectdiscovery/goflags v0.1.74
 	github.com/projectdiscovery/subfinder/v2 v2.14.0
 	github.com/riverqueue/river v0.38.0
 	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.38.0
@@ -134,7 +135,6 @@ require (
 	github.com/projectdiscovery/chaos-client v0.5.2 // indirect
 	github.com/projectdiscovery/dnsx v1.2.3 // indirect
 	github.com/projectdiscovery/fastdialer v0.5.6 // indirect
-	github.com/projectdiscovery/goflags v0.1.74 // indirect
 	github.com/projectdiscovery/gologger v1.1.68 // indirect
 	github.com/projectdiscovery/hmap v0.0.100 // indirect
 	github.com/projectdiscovery/machineid v0.0.0-20250715113114-c77eb3567582 // indirect
