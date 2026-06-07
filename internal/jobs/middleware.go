@@ -9,6 +9,12 @@ import (
 	"github.com/riverqueue/river/rivertype"
 )
 
+// quietKinds are high-frequency maintenance jobs whose successful runs are
+// logged at debug to keep the log readable; failures still log at error.
+var quietKinds = map[string]bool{
+	PurgeDNSCacheArgs{}.Kind(): true,
+}
+
 // TimingMiddleware wraps every job worked across all queues, emitting a single
 // structured log line carrying the job's identity, attempt, duration and outcome.
 // It runs around Worker.Work without any worker needing to know about it.
@@ -37,6 +43,8 @@ func (m *TimingMiddleware) Work(
 	if err != nil {
 		level = slog.LevelError
 		attrs = append(attrs, slog.String("error", err.Error()))
+	} else if quietKinds[job.Kind] {
+		level = slog.LevelDebug
 	}
 	m.Logger.LogAttrs(ctx, level, "job worked", attrs...)
 
