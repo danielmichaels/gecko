@@ -8,8 +8,8 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielmichaels/gecko/internal/auth"
+	"github.com/danielmichaels/gecko/internal/service"
 	"github.com/danielmichaels/gecko/internal/store"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -26,9 +26,9 @@ type authOutput struct {
 	}
 }
 
-func authToken(key auth.APIKey, exp pgtype.Timestamptz, email, role, tenantUID string) *authOutput {
+func authOutputFromResult(rawKey string, exp pgtype.Timestamptz, email, role, tenantUID string) *authOutput {
 	out := &authOutput{}
-	out.Body.APIKey = key.Raw
+	out.Body.APIKey = rawKey
 	out.Body.Email = email
 	out.Body.Role = role
 	out.Body.TenantUID = tenantUID
@@ -84,58 +84,19 @@ func (app *Server) handleSignup(ctx context.Context, i *SignupInput) (*authOutpu
 	if !app.Conf.Auth.SignupEnabled {
 		return nil, huma.Error403Forbidden("signup is disabled")
 	}
-	email := normaliseEmail(i.Body.Email)
-	if _, err := app.Db.UserGetByEmail(ctx, email); err == nil {
-		return nil, huma.Error409Conflict("email already registered")
-	} else if !errors.Is(err, pgx.ErrNoRows) {
-		return nil, huma.Error500InternalServerError("signup failed", err)
-	}
-	hash, err := auth.HashPassword(i.Body.Password, app.Conf.Auth.BcryptCost)
-	if err != nil {
-		return nil, huma.Error500InternalServerError("signup failed", err)
-	}
-	tenantName := strings.TrimSpace(i.Body.TenantName)
-	if tenantName == "" {
-		tenantName = email
-	}
-
-	tx, err := app.PgxPool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return nil, huma.Error500InternalServerError("signup failed", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	st := app.Db.WithTx(tx)
-
-	tenant, err := st.TenantCreate(ctx, tenantName)
-	if err != nil {
-		return nil, huma.Error500InternalServerError("signup failed", err)
-	}
-	user, err := st.UserProvision(ctx, store.UserProvisionParams{
-		TenantID: pgtype.Int4{Int32: tenant.ID, Valid: true},
-		Email:    email,
-		Name:     pgtype.Text{String: i.Body.Name, Valid: i.Body.Name != ""},
-		Role:     store.UserRoleOwner,
+	result, err := app.Svc.AuthService().Signup(ctx, service.SignupParams{
+		Email:      i.Body.Email,
+		Password:   i.Body.Password,
+		Name:       i.Body.Name,
+		TenantName: i.Body.TenantName,
 	})
 	if err != nil {
-		if isUniqueViolation(err) {
+		if errors.Is(err, service.ErrConflict) {
 			return nil, huma.Error409Conflict("email already registered")
 		}
 		return nil, huma.Error500InternalServerError("signup failed", err)
 	}
-	if err := st.UserCredentialUpsert(ctx, store.UserCredentialUpsertParams{
-		UserID:       user.ID,
-		PasswordHash: hash,
-	}); err != nil {
-		return nil, huma.Error500InternalServerError("signup failed", err)
-	}
-	key, _, exp, err := app.mintAPIKey(ctx, st, tenant.ID, user.ID, "signup")
-	if err != nil {
-		return nil, huma.Error500InternalServerError("signup failed", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, huma.Error500InternalServerError("signup failed", err)
-	}
-	return authToken(key, exp, email, string(store.UserRoleOwner), tenant.Uid), nil
+	return authOutputFromResult(result.RawKey, result.ExpiresAt, result.Email, result.Role, result.TenantUID), nil
 }
 
 type LoginInput struct {
@@ -147,19 +108,14 @@ type LoginInput struct {
 
 // handleLogin verifies credentials and mints an API key for programmatic/CLI use.
 func (app *Server) handleLogin(ctx context.Context, i *LoginInput) (*authOutput, error) {
-	email := normaliseEmail(i.Body.Email)
-	p, err := app.AuthProvider.Authenticate(ctx, auth.Credentials{
-		Email:    email,
-		Password: i.Body.Password,
-	})
+	result, err := app.Svc.AuthService().Login(ctx, i.Body.Email, i.Body.Password)
 	if err != nil {
-		return nil, huma.Error401Unauthorized("invalid credentials")
-	}
-	key, _, exp, err := app.mintAPIKey(ctx, app.Db, p.TenantID, p.UserID, "cli-login")
-	if err != nil {
+		if errors.Is(err, service.ErrUnauthenticated) {
+			return nil, huma.Error401Unauthorized("invalid credentials")
+		}
 		return nil, huma.Error500InternalServerError("login failed", err)
 	}
-	return authToken(key, exp, p.Email, p.Role, ""), nil
+	return authOutputFromResult(result.RawKey, result.ExpiresAt, result.Email, result.Role, ""), nil
 }
 
 // handleLogout revokes the API key that authenticated this request.
@@ -172,10 +128,7 @@ func (app *Server) handleLogout(ctx context.Context, _ *struct{}) (*struct{}, er
 	if !ok {
 		return &struct{}{}, nil
 	}
-	if _, err := app.Db.ApiKeyRevoke(ctx, store.ApiKeyRevokeParams{
-		Uid:      uid,
-		TenantID: p.TenantID,
-	}); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	if err := app.Svc.AuthService().Logout(ctx, p, uid); err != nil {
 		return nil, huma.Error500InternalServerError("logout failed", err)
 	}
 	return &struct{}{}, nil
@@ -218,51 +171,21 @@ func (app *Server) handleAcceptInvite(
 	ctx context.Context,
 	i *AcceptInviteInput,
 ) (*authOutput, error) {
-	inv, err := app.Db.InvitationGetByTokenHash(ctx, auth.HashToken(i.Body.Token))
-	if err != nil {
-		return nil, huma.Error400BadRequest("invalid or expired invitation")
-	}
-	hash, err := auth.HashPassword(i.Body.Password, app.Conf.Auth.BcryptCost)
-	if err != nil {
-		return nil, huma.Error500InternalServerError("accept failed", err)
-	}
-
-	tx, err := app.PgxPool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return nil, huma.Error500InternalServerError("accept failed", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	st := app.Db.WithTx(tx)
-
-	user, err := st.UserProvision(ctx, store.UserProvisionParams{
-		TenantID: pgtype.Int4{Int32: inv.TenantID, Valid: true},
-		Email:    inv.Email,
-		Name:     pgtype.Text{String: i.Body.Name, Valid: i.Body.Name != ""},
-		Role:     inv.Role,
+	result, err := app.Svc.AuthService().AcceptInvite(ctx, service.AcceptInviteParams{
+		Token:    i.Body.Token,
+		Password: i.Body.Password,
+		Name:     i.Body.Name,
 	})
 	if err != nil {
-		if isUniqueViolation(err) {
+		if errors.Is(err, service.ErrNotFound) {
+			return nil, huma.Error400BadRequest("invalid or expired invitation")
+		}
+		if errors.Is(err, service.ErrConflict) {
 			return nil, huma.Error409Conflict("email already registered")
 		}
 		return nil, huma.Error500InternalServerError("accept failed", err)
 	}
-	if err := st.UserCredentialUpsert(ctx, store.UserCredentialUpsertParams{
-		UserID:       user.ID,
-		PasswordHash: hash,
-	}); err != nil {
-		return nil, huma.Error500InternalServerError("accept failed", err)
-	}
-	if err := st.InvitationMarkAccepted(ctx, inv.ID); err != nil {
-		return nil, huma.Error500InternalServerError("accept failed", err)
-	}
-	key, _, exp, err := app.mintAPIKey(ctx, st, inv.TenantID, user.ID, "invite-accept")
-	if err != nil {
-		return nil, huma.Error500InternalServerError("accept failed", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, huma.Error500InternalServerError("accept failed", err)
-	}
-	return authToken(key, exp, inv.Email, string(inv.Role), ""), nil
+	return authOutputFromResult(result.RawKey, result.ExpiresAt, result.Email, result.Role, ""), nil
 }
 
 func normaliseEmail(email string) string {
@@ -273,3 +196,4 @@ func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
+

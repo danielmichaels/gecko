@@ -808,9 +808,16 @@ type Scans struct {
 }
 
 type Sessions struct {
-	Token  string             `json:"token"`
-	Data   []byte             `json:"data"`
-	Expiry pgtype.Timestamptz `json:"expiry"`
+	ID         int32              `json:"id"`
+	Uid        string             `json:"uid"`
+	UserID     int32              `json:"user_id"`
+	TenantID   int32              `json:"tenant_id"`
+	TokenHash  string             `json:"token_hash"`
+	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
+	LastUsedAt pgtype.Timestamptz `json:"last_used_at"`
+	UserAgent  pgtype.Text        `json:"user_agent"`
+	Ip         pgtype.Text        `json:"ip"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 }
 
 type SoaRecords struct {

@@ -50,7 +50,7 @@ func TestSentinelErrors_IsWrapped(t *testing.T) {
 
 func TestNew_ReturnsNonNil(t *testing.T) {
 	log := slog.Default()
-	svc := service.New(nil, log, nil, nil, nil)
+	svc := service.New(nil, log, nil, nil, nil, nil)
 	if svc == nil {
 		t.Fatal("New returned nil")
 	}

@@ -28,7 +28,7 @@ type dbConf struct {
 type authConf struct {
 	// Provider selects the auth backend: "local" (email/password) or "oidc" (stub).
 	Provider string `env:"AUTH_PROVIDER,default=local"`
-	// Session cookie settings (scs scaffolding for the future web UI).
+	// Session cookie settings used by the cookie-session system.
 	SessionCookieName     string `env:"AUTH_SESSION_COOKIE_NAME,default=gecko_session"`
 	SessionCookieSameSite string `env:"AUTH_SESSION_COOKIE_SAMESITE,default=lax"`
 	// OIDC placeholders — reserved for the OIDC provider; empty until implemented.
@@ -42,7 +42,7 @@ type authConf struct {
 	APIKeyTTL time.Duration `env:"AUTH_APIKEY_TTL,default=0"`
 	// InviteTTL bounds how long an invitation token stays valid.
 	InviteTTL time.Duration `env:"AUTH_INVITE_TTL,default=168h"`
-	// SessionTTL bounds browser (scs) session lifetime.
+	// SessionTTL bounds cookie-session lifetime.
 	SessionTTL time.Duration `env:"AUTH_SESSION_TTL,default=720h"`
 	// SignupEnabled toggles self-service tenant signup.
 	SignupEnabled       bool `env:"SIGNUP_ENABLED,default=true"`

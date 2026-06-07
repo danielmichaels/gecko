@@ -30,7 +30,7 @@ func newAuthAPI(t *testing.T, pc *testhelpers.PostgresContainer) (*Server, strin
 	if err != nil {
 		t.Fatalf("new provider: %v", err)
 	}
-	svc := service.NewWithScheduler(cfg, slog.New(slog.DiscardHandler), pc.Queries, pc.Pool, nil)
+	svc := service.NewWithScheduler(cfg, slog.New(slog.DiscardHandler), pc.Queries, pc.Pool, nil, provider)
 	app := &Server{
 		Conf:         cfg,
 		Log:          slog.New(slog.DiscardHandler),

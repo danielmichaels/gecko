@@ -4,6 +4,8 @@
 // is p *auth.Principal (the authenticated caller), followed by any method-specific
 // inputs. The Principal is passed explicitly rather than read from context so that
 // the compiler enforces authentication at every call site.
+// Exception: the identity-establishing methods (Login, Signup, AcceptInvite) are
+// unauthenticated entry points and take no Principal.
 package service
 
 import (
@@ -11,6 +13,7 @@ import (
 	"errors"
 	"log/slog"
 
+	"github.com/danielmichaels/gecko/internal/auth"
 	"github.com/danielmichaels/gecko/internal/config"
 	"github.com/danielmichaels/gecko/internal/jobs"
 	"github.com/danielmichaels/gecko/internal/store"
@@ -41,11 +44,12 @@ type DomainScanScheduler interface {
 
 // Service holds the shared dependencies used across all domain service methods.
 type Service struct {
-	Conf      *config.Conf
-	Log       *slog.Logger
-	DB        *store.Queries
-	Pool      *pgxpool.Pool
-	scheduler DomainScanScheduler
+	Conf         *config.Conf
+	Log          *slog.Logger
+	DB           *store.Queries
+	Pool         *pgxpool.Pool
+	AuthProvider auth.Provider
+	scheduler    DomainScanScheduler
 }
 
 // New constructs a Service with all required dependencies wired. The production
@@ -56,13 +60,15 @@ func New(
 	db *store.Queries,
 	pool *pgxpool.Pool,
 	rc *river.Client[pgx.Tx],
+	authProvider auth.Provider,
 ) *Service {
 	return &Service{
-		Conf:      conf,
-		Log:       log,
-		DB:        db,
-		Pool:      pool,
-		scheduler: &riverScheduler{rc: rc, conf: conf},
+		Conf:         conf,
+		Log:          log,
+		DB:           db,
+		Pool:         pool,
+		AuthProvider: authProvider,
+		scheduler:    &riverScheduler{rc: rc, conf: conf},
 	}
 }
 
@@ -74,14 +80,19 @@ func NewWithScheduler(
 	db *store.Queries,
 	pool *pgxpool.Pool,
 	scheduler DomainScanScheduler,
+	authProvider ...auth.Provider,
 ) *Service {
-	return &Service{
+	svc := &Service{
 		Conf:      conf,
 		Log:       log,
 		DB:        db,
 		Pool:      pool,
 		scheduler: scheduler,
 	}
+	if len(authProvider) > 0 {
+		svc.AuthProvider = authProvider[0]
+	}
+	return svc
 }
 
 // DomainsService returns the Domains sub-service.
@@ -92,6 +103,11 @@ func (s *Service) DomainsService() *DomainsService {
 // RecordsService returns the Records sub-service.
 func (s *Service) RecordsService() *RecordsService {
 	return &RecordsService{s}
+}
+
+// AuthService returns the Auth sub-service.
+func (s *Service) AuthService() *AuthService {
+	return &AuthService{s}
 }
 
 // riverScheduler is the production DomainScanScheduler that delegates to

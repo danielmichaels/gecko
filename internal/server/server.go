@@ -15,7 +15,6 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/alexedwards/scs/v2"
 	"github.com/danielmichaels/gecko/internal/auth"
 	"github.com/danielmichaels/gecko/internal/config"
 	"github.com/danielmichaels/gecko/internal/service"
@@ -34,7 +33,6 @@ type Server struct {
 	PgxPool      *pgxpool.Pool
 	RC           *river.Client[pgx.Tx]
 	AuthProvider auth.Provider
-	Sessions     *scs.SessionManager
 	Svc          *service.Service
 }
 
@@ -52,12 +50,6 @@ func New(
 	if err != nil {
 		return nil, fmt.Errorf("auth provider: %w", err)
 	}
-	sessions := auth.NewSessionManager(pgxPool, auth.SessionConfig{
-		TTL:            c.Auth.SessionTTL,
-		CookieName:     c.Auth.SessionCookieName,
-		CookieSecure:   c.Auth.SessionCookieSecure,
-		CookieSameSite: c.Auth.SessionCookieSameSite,
-	})
 	return &Server{
 		Conf:         c,
 		Log:          l,
@@ -65,8 +57,7 @@ func New(
 		RC:           RC,
 		PgxPool:      pgxPool,
 		AuthProvider: provider,
-		Sessions:     sessions,
-		Svc:          service.New(c, l, db, pgxPool, RC),
+		Svc:          service.New(c, l, db, pgxPool, RC, provider),
 	}, nil
 }
 

@@ -6,8 +6,6 @@ require (
 	github.com/MatusOllah/slogcolor v1.5.0
 	github.com/alecthomas/kong v1.8.1
 	github.com/alecthomas/kong-yaml v0.2.0
-	github.com/alexedwards/scs/pgxstore v0.0.0-20251002162104-209de6e426de
-	github.com/alexedwards/scs/v2 v2.9.0
 	github.com/briandowns/spinner v1.23.2
 	github.com/carlmjohnson/requests v0.24.3
 	github.com/danielgtaylor/huma/v2 v2.28.0
