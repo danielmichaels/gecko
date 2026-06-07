@@ -38,6 +38,7 @@ func newAuthAPI(t *testing.T, pc *testhelpers.PostgresContainer) (*Server, strin
 		Secure:   cfg.Auth.SessionCookieSecure,
 		SameSite: parseSameSite(cfg.Auth.SessionCookieSameSite),
 	}
+	uiApp := ui.New(svc.AuthService(), cookieCfg, testCSRFKey, slog.New(slog.DiscardHandler))
 	app := &Server{
 		Conf:         cfg,
 		Log:          slog.New(slog.DiscardHandler),
@@ -45,7 +46,8 @@ func newAuthAPI(t *testing.T, pc *testhelpers.PostgresContainer) (*Server, strin
 		PgxPool:      pc.Pool,
 		AuthProvider: provider,
 		Svc:          svc,
-		UI:           ui.New(svc.AuthService(), cookieCfg, testCSRFKey, slog.New(slog.DiscardHandler)),
+		UI:           uiApp,
+		UIHandlers:   ui.NewHandlers(svc, uiApp, cookieCfg, slog.New(slog.DiscardHandler)),
 	}
 	srv := httptest.NewServer(app.routes())
 	t.Cleanup(srv.Close)

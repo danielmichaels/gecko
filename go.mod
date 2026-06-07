@@ -23,6 +23,7 @@ require (
 	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.38.0
 	github.com/riverqueue/river/rivertype v0.38.0
 	github.com/rs/xid v1.5.0
+	github.com/starfederation/datastar-go v1.2.1
 	github.com/testcontainers/testcontainers-go v0.35.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.35.0
 	golang.org/x/crypto v0.50.0
@@ -36,6 +37,7 @@ require (
 	aead.dev/minisign v0.2.0 // indirect
 	dario.cat/mergo v1.0.0 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
+	github.com/CAFxX/httpcompression v0.0.9 // indirect
 	github.com/Masterminds/semver/v3 v3.2.1 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/Mzack9999/gcache v0.0.0-20230410081825-519e28eab057 // indirect
@@ -169,6 +171,7 @@ require (
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/tomnomnom/linkheader v0.0.0-20180905144013-02ca5825eb80 // indirect
 	github.com/ulikunitz/xz v0.5.15 // indirect
+	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/weppos/publicsuffix-go v0.50.3-0.20260104170930-90713dec78f2 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yuin/goldmark v1.7.4 // indirect

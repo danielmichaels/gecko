@@ -578,6 +578,124 @@ func TestAuthService_Session_RawTokenNotStored(t *testing.T) {
 	}
 }
 
+func TestAuthService_Authenticate_Valid(t *testing.T) {
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc := newAuthSvc(t, pc)
+	signupUser(t, svc, "auth@example.com", "password123")
+
+	p, err := svc.Authenticate(ctx, "auth@example.com", "password123")
+	if err != nil {
+		t.Fatalf("authenticate: %v", err)
+	}
+	if p == nil {
+		t.Fatal("authenticate: principal is nil")
+	}
+	if p.Email != "auth@example.com" {
+		t.Errorf("authenticate email = %q, want %q", p.Email, "auth@example.com")
+	}
+	if p.UserID == 0 {
+		t.Error("authenticate: UserID is zero")
+	}
+}
+
+func TestAuthService_Authenticate_Invalid(t *testing.T) {
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc := newAuthSvc(t, pc)
+	signupUser(t, svc, "auth@example.com", "password123")
+
+	_, err = svc.Authenticate(ctx, "auth@example.com", "wrongpassword")
+	if err == nil {
+		t.Fatal("expected error for wrong password, got nil")
+	}
+	if !isErr(err, service.ErrUnauthenticated) {
+		t.Errorf("wrong password: got %v, want ErrUnauthenticated", err)
+	}
+}
+
+func TestAuthService_AcceptInviteWeb_Valid(t *testing.T) {
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc := newAuthSvc(t, pc)
+	signupUser(t, svc, "owner@company.com", "password123")
+
+	ownerUser, err := pc.Queries.UserGetByEmail(ctx, "owner@company.com")
+	if err != nil {
+		t.Fatalf("lookup owner: %v", err)
+	}
+	tenantID := ownerUser.TenantID.Int32
+
+	rawToken := seedInvitation(t, ctx, pc, tenantID, "web-invited@company.com",
+		store.UserRoleViewer, pgtype.Int4{Int32: ownerUser.ID, Valid: true})
+
+	p, err := svc.AcceptInviteWeb(ctx, service.AcceptInviteParams{
+		Token:    rawToken,
+		Password: "newpassword",
+	})
+	if err != nil {
+		t.Fatalf("accept invite web: %v", err)
+	}
+	if p == nil {
+		t.Fatal("accept invite web: principal is nil")
+	}
+	if p.Email != "web-invited@company.com" {
+		t.Errorf("accept invite web email = %q, want %q", p.Email, "web-invited@company.com")
+	}
+	if p.Role != string(store.UserRoleViewer) {
+		t.Errorf("accept invite web role = %q, want %q", p.Role, string(store.UserRoleViewer))
+	}
+
+	// Confirm no api_keys row was created for this user.
+	var count int
+	err = pc.Pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM api_keys WHERE user_id = $1`, p.UserID,
+	).Scan(&count)
+	if err != nil {
+		t.Fatalf("count api_keys: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("AcceptInviteWeb must not create API key rows; found %d", count)
+	}
+}
+
+func TestAuthService_AcceptInviteWeb_InvalidToken(t *testing.T) {
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc := newAuthSvc(t, pc)
+
+	_, err = svc.AcceptInviteWeb(ctx, service.AcceptInviteParams{
+		Token:    "bogus-token-that-does-not-exist",
+		Password: "password123",
+	})
+	if err == nil {
+		t.Fatal("expected ErrNotFound for invalid token, got nil")
+	}
+	if !isErr(err, service.ErrNotFound) {
+		t.Errorf("invalid token: got %v, want ErrNotFound", err)
+	}
+}
+
 // isErr is a small helper so test assertions stay concise.
 func isErr(err, target error) bool {
 	return errors.Is(err, target)

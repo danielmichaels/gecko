@@ -44,16 +44,26 @@ type AcceptInviteResult struct {
 	Role      string
 }
 
-// Login verifies credentials and mints an API key for CLI/programmatic use.
-// Returns ErrUnauthenticated for invalid credentials.
-func (s *AuthService) Login(ctx context.Context, email, password string) (LoginResult, error) {
+// Authenticate verifies email/password and returns the Principal on success.
+// Returns ErrUnauthenticated for invalid or unknown credentials.
+func (s *AuthService) Authenticate(ctx context.Context, email, password string) (*auth.Principal, error) {
 	email = normaliseEmail(email)
 	p, err := s.AuthProvider.Authenticate(ctx, auth.Credentials{
 		Email:    email,
 		Password: password,
 	})
 	if err != nil {
-		return LoginResult{}, fmt.Errorf("%w: authenticate failed", ErrUnauthenticated)
+		return nil, fmt.Errorf("%w: authenticate failed", ErrUnauthenticated)
+	}
+	return p, nil
+}
+
+// Login verifies credentials and mints an API key for CLI/programmatic use.
+// Returns ErrUnauthenticated for invalid credentials.
+func (s *AuthService) Login(ctx context.Context, email, password string) (LoginResult, error) {
+	p, err := s.Authenticate(ctx, email, password)
+	if err != nil {
+		return LoginResult{}, err
 	}
 	key, _, exp, err := s.mintAPIKey(ctx, s.DB, p.TenantID, p.UserID, "cli-login")
 	if err != nil {
@@ -202,6 +212,97 @@ func (s *AuthService) AcceptInvite(ctx context.Context, params AcceptInviteParam
 		Email:     inv.Email,
 		Role:      string(inv.Role),
 	}, nil
+}
+
+// AcceptInviteWeb provisions a user from an invitation token without minting an
+// API key. Used by the browser flow; the caller then mints a session instead.
+// Invalid/expired token → ErrNotFound. Duplicate email → ErrConflict.
+func (s *AuthService) AcceptInviteWeb(ctx context.Context, params AcceptInviteParams) (*auth.Principal, error) {
+	inv, err := s.DB.InvitationGetByTokenHash(ctx, auth.HashToken(params.Token))
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid or expired invitation", ErrNotFound)
+	}
+	hash, err := auth.HashPassword(params.Password, s.Conf.Auth.BcryptCost)
+	if err != nil {
+		return nil, fmt.Errorf("accept invite web: hash password: %w", err)
+	}
+
+	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("accept invite web: begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	st := s.DB.WithTx(tx)
+
+	user, err := st.UserProvision(ctx, store.UserProvisionParams{
+		TenantID: pgtype.Int4{Int32: inv.TenantID, Valid: true},
+		Email:    inv.Email,
+		Name:     pgtype.Text{String: params.Name, Valid: params.Name != ""},
+		Role:     inv.Role,
+	})
+	if err != nil {
+		if isUniqueViolation(err) {
+			return nil, fmt.Errorf("%w: email already registered", ErrConflict)
+		}
+		return nil, fmt.Errorf("accept invite web: provision user: %w", err)
+	}
+	if err := st.UserCredentialUpsert(ctx, store.UserCredentialUpsertParams{
+		UserID:       user.ID,
+		PasswordHash: hash,
+	}); err != nil {
+		return nil, fmt.Errorf("accept invite web: credential upsert: %w", err)
+	}
+	if err := st.InvitationMarkAccepted(ctx, inv.ID); err != nil {
+		return nil, fmt.Errorf("accept invite web: mark accepted: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("accept invite web: commit: %w", err)
+	}
+	return &auth.Principal{
+		UserID:   user.ID,
+		TenantID: inv.TenantID,
+		Email:    inv.Email,
+		Role:     string(inv.Role),
+	}, nil
+}
+
+// InviteContext holds the display fields for the accept-invitation page.
+type InviteContext struct {
+	InviteeEmail string
+	Role         string
+	Expiry       string
+	TenantName   string
+}
+
+// InviteContextFromToken looks up the invitation and returns display fields.
+// Returns ErrNotFound for unknown, expired, or already-accepted tokens.
+func (s *AuthService) InviteContextFromToken(ctx context.Context, token string) (InviteContext, error) {
+	inv, err := s.DB.InvitationGetByTokenHash(ctx, auth.HashToken(token))
+	if err != nil {
+		return InviteContext{}, fmt.Errorf("%w: invalid or expired invitation", ErrNotFound)
+	}
+	ic := InviteContext{
+		InviteeEmail: inv.Email,
+		Role:         string(inv.Role),
+		Expiry:       inv.ExpiresAt.Time.Format("2006-01-02 15:04 UTC"),
+	}
+	if tenant, err := s.DB.TenantGetByID(ctx, inv.TenantID); err == nil {
+		ic.TenantName = tenant.Name
+	}
+	return ic, nil
+}
+
+// TenantName returns the display name for a tenant. Best-effort: returns an
+// empty string when the tenant is not found rather than propagating an error.
+func (s *AuthService) TenantName(ctx context.Context, tenantID int32) (string, error) {
+	tenant, err := s.DB.TenantGetByID(ctx, tenantID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", fmt.Errorf("%w: tenant not found", ErrNotFound)
+		}
+		return "", fmt.Errorf("tenant name: %w", err)
+	}
+	return tenant.Name, nil
 }
 
 // Logout revokes the API key that authenticated the request. Ignores missing rows.

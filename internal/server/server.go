@@ -37,6 +37,7 @@ type Server struct {
 	AuthProvider auth.Provider
 	Svc          *service.Service
 	UI           *ui.App
+	UIHandlers   *ui.Handlers
 }
 
 func New(
@@ -66,6 +67,7 @@ func New(
 		SameSite: parseSameSite(c.Auth.SessionCookieSameSite),
 	}
 
+	uiApp := ui.New(svc.AuthService(), cookieCfg, csrfKey, l)
 	return &Server{
 		Conf:         c,
 		Log:          l,
@@ -74,7 +76,8 @@ func New(
 		PgxPool:      pgxPool,
 		AuthProvider: provider,
 		Svc:          svc,
-		UI:           ui.New(svc.AuthService(), cookieCfg, csrfKey, l),
+		UI:           uiApp,
+		UIHandlers:   ui.NewHandlers(svc, uiApp, cookieCfg, l),
 	}, nil
 }
 

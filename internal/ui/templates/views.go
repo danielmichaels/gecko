@@ -9,11 +9,6 @@ func postWithCSRF(url, token string) string {
 	return fmt.Sprintf("@post('%s', {headers: {'X-CSRF-Token': '%s'}})", url, token)
 }
 
-// deleteWithCSRF returns a datastar data-on-click action string that DELETEs.
-func deleteWithCSRF(url, token string) string {
-	return fmt.Sprintf("@delete('%s', {headers: {'X-CSRF-Token': '%s'}})", url, token)
-}
-
 // deleteRowWithConfirm returns a data-on-click action that confirms before deleting.
 func deleteRowWithConfirm(url, token string) string {
 	return fmt.Sprintf(

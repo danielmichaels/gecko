@@ -45,6 +45,8 @@ func (app *Server) routes() http.Handler {
 	fileServer := http.FileServer(http.FS(assets.EmbeddedAssets))
 	router.Handle("/static/*", fileServer)
 
+	router.Mount("/app", app.UIHandlers.Routes())
+
 	return router
 }
 
