@@ -22,6 +22,7 @@ func (app *Server) routes() http.Handler {
 	router := chi.NewMux()
 	router.Use(middleware.Recoverer)
 	router.Use(middleware.RealIP)
+	router.Use(traceMiddleware)
 	router.Use(middleware.Compress(5))
 	router.Use(httplog.RequestLogger(httpLogger(app.Conf)))
 

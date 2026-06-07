@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielmichaels/gecko/internal/observer"
 	"github.com/danielmichaels/gecko/internal/store"
+	"github.com/danielmichaels/gecko/internal/tracing"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/riverqueue/river"
@@ -79,6 +80,12 @@ func EnqueueDomainScan(
 	target DomainScanTarget,
 	opts DomainScanOptions,
 ) (int64, error) {
+	// Ensure a trace ID exists for the whole scan tree: inherit the caller's
+	// (e.g. the HTTP request that triggered the scan) or mint one. Every leaf job
+	// enqueued below is stamped with it by CorrelationInsertHook, so the entire
+	// scan — and the jobs each worker spawns — share one correlation ID.
+	ctx = tracing.WithNewTraceID(ctx, false)
+
 	// Active-status gate: an explicitly inactive domain is never scanned, even
 	// when Force is set. Force means "ignore recency", not "ignore inactive".
 	if target.Status != store.DomainStatusActive {
