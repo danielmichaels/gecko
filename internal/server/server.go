@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 	"github.com/danielmichaels/gecko/internal/config"
 	"github.com/danielmichaels/gecko/internal/service"
 	"github.com/danielmichaels/gecko/internal/store"
+	"github.com/danielmichaels/gecko/internal/ui"
 	"github.com/danielmichaels/gecko/internal/version"
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
@@ -34,6 +36,7 @@ type Server struct {
 	RC           *river.Client[pgx.Tx]
 	AuthProvider auth.Provider
 	Svc          *service.Service
+	UI           *ui.App
 }
 
 func New(
@@ -50,6 +53,19 @@ func New(
 	if err != nil {
 		return nil, fmt.Errorf("auth provider: %w", err)
 	}
+
+	svc := service.New(c, l, db, pgxPool, RC, provider)
+
+	csrfKey, err := resolveCSRFKey(c.Auth.CSRFSecret, l)
+	if err != nil {
+		return nil, fmt.Errorf("csrf key: %w", err)
+	}
+	cookieCfg := ui.CookieConfig{
+		Name:     c.Auth.SessionCookieName,
+		Secure:   c.Auth.SessionCookieSecure,
+		SameSite: parseSameSite(c.Auth.SessionCookieSameSite),
+	}
+
 	return &Server{
 		Conf:         c,
 		Log:          l,
@@ -57,8 +73,36 @@ func New(
 		RC:           RC,
 		PgxPool:      pgxPool,
 		AuthProvider: provider,
-		Svc:          service.New(c, l, db, pgxPool, RC, provider),
+		Svc:          svc,
+		UI:           ui.New(svc.AuthService(), cookieCfg, csrfKey, l),
 	}, nil
+}
+
+// resolveCSRFKey returns the configured key or a freshly generated random one.
+// A random key means CSRF tokens do not survive a server restart, which is safe
+// but inconvenient for rolling deployments — callers should set AUTH_CSRF_SECRET.
+func resolveCSRFKey(secret string, l *slog.Logger) ([]byte, error) {
+	if secret != "" {
+		return []byte(secret), nil
+	}
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		return nil, err
+	}
+	l.Warn("CSRF key is ephemeral — tokens will not survive a restart; set AUTH_CSRF_SECRET in production")
+	return key, nil
+}
+
+// parseSameSite converts the string env-var value to http.SameSite.
+func parseSameSite(s string) http.SameSite {
+	switch s {
+	case "strict":
+		return http.SameSiteStrictMode
+	case "none":
+		return http.SameSiteNoneMode
+	default:
+		return http.SameSiteLaxMode
+	}
 }
 
 func httpLogger(cfg *config.Conf) *httplog.Logger {

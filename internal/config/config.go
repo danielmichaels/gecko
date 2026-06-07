@@ -44,6 +44,10 @@ type authConf struct {
 	InviteTTL time.Duration `env:"AUTH_INVITE_TTL,default=168h"`
 	// SessionTTL bounds cookie-session lifetime.
 	SessionTTL time.Duration `env:"AUTH_SESSION_TTL,default=720h"`
+	// CSRFSecret is the HMAC key used to derive per-session CSRF tokens. If
+	// empty at startup the server generates a random key — tokens will not
+	// survive a restart in that case. Set AUTH_CSRF_SECRET in production.
+	CSRFSecret string `env:"AUTH_CSRF_SECRET,default="`
 	// SignupEnabled toggles self-service tenant signup.
 	SignupEnabled       bool `env:"SIGNUP_ENABLED,default=true"`
 	SessionCookieSecure bool `env:"AUTH_SESSION_COOKIE_SECURE,default=true"`
