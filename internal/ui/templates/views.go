@@ -13,7 +13,8 @@ func postWithCSRF(url, token string) string {
 func deleteRowWithConfirm(url, token string) string {
 	return fmt.Sprintf(
 		"evt.stopPropagation(); if(!confirm('Delete this domain?')) return; @delete('%s', {headers: {'X-CSRF-Token': '%s'}})",
-		url, token,
+		url,
+		token,
 	)
 }
 
@@ -25,13 +26,13 @@ func inviteSignals(token string) string {
 // AppShellProps contains the data needed to render the application shell:
 // topbar, sidebar navigation, and the authenticated user context.
 type AppShellProps struct {
-	TenantName  string
-	UserEmail   string
+	TenantName   string
+	UserEmail    string
 	UserInitials string
-	ActiveNav   string
-	AppVersion  string
-	ResolverOK  bool
-	CSRFToken   string
+	ActiveNav    string
+	AppVersion   string
+	CSRFToken    string
+	ResolverOK   bool
 }
 
 // LoginPageProps holds data for the login page.
@@ -42,14 +43,14 @@ type LoginPageProps struct {
 
 // AcceptInvitePageProps holds data for the accept-invitation page.
 type AcceptInvitePageProps struct {
-	CSRFToken   string
-	Token       string
-	TenantName  string
+	CSRFToken    string
+	Token        string
+	TenantName   string
 	InviterEmail string
-	Role        string
+	Role         string
 	InviteeEmail string
-	Expiry      string
-	Error       string
+	Expiry       string
+	Error        string
 }
 
 // DomainsStats holds the four stat-strip values for the domains list page.
@@ -121,10 +122,10 @@ type TimelineView struct {
 
 // ComingSoonProps holds data for the coming-soon placeholder page.
 type ComingSoonProps struct {
-	Shell  AppShellProps
-	Glyph  string
-	Title  string
-	Blurb  string
+	Shell AppShellProps
+	Glyph string
+	Title string
+	Blurb string
 }
 
 // ContentErrorProps holds data for the reusable error fragment.

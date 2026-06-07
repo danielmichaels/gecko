@@ -92,7 +92,9 @@ func resolveCSRFKey(secret string, l *slog.Logger) ([]byte, error) {
 	if _, err := rand.Read(key); err != nil {
 		return nil, err
 	}
-	l.Warn("CSRF key is ephemeral — tokens will not survive a restart; set AUTH_CSRF_SECRET in production")
+	l.Warn(
+		"CSRF key is ephemeral — tokens will not survive a restart; set AUTH_CSRF_SECRET in production",
+	)
 	return key, nil
 }
 

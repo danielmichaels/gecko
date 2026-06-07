@@ -25,7 +25,13 @@ func TestDomainTimelineHandler(t *testing.T) {
 	}
 	defer pc.Close(ctx)
 
-	svc := service.NewWithScheduler(config.AppConfig(), slog.New(slog.DiscardHandler), pc.Queries, pc.Pool, nil)
+	svc := service.NewWithScheduler(
+		config.AppConfig(),
+		slog.New(slog.DiscardHandler),
+		pc.Queries,
+		pc.Pool,
+		nil,
+	)
 	app := &Server{Db: pc.Queries, Svc: svc}
 	const tenantID = int32(1)
 
@@ -121,7 +127,13 @@ func TestDomainTimeline_ParentScanUID(t *testing.T) {
 	}
 	defer pc.Close(ctx)
 
-	svc := service.NewWithScheduler(config.AppConfig(), slog.New(slog.DiscardHandler), pc.Queries, pc.Pool, nil)
+	svc := service.NewWithScheduler(
+		config.AppConfig(),
+		slog.New(slog.DiscardHandler),
+		pc.Queries,
+		pc.Pool,
+		nil,
+	)
 	app := &Server{Db: pc.Queries, Svc: svc}
 	const tenantID = int32(1)
 	d, err := pc.Queries.DomainsInsert(ctx, store.DomainsInsertParams{

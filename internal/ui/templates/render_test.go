@@ -208,7 +208,11 @@ func TestTimelineRender(t *testing.T) {
 	var buf bytes.Buffer
 	v := templates.TimelineView{
 		Groups: []templates.TimelineItemView{
-			{Kind: "scan", When: "2026-06-06 20:24 · SCAN #41", What: "Scan completed · 14 records observed"},
+			{
+				Kind: "scan",
+				When: "2026-06-06 20:24 · SCAN #41",
+				What: "Scan completed · 14 records observed",
+			},
 			{Kind: "del", When: "2026-06-06 20:24", What: "removed A 93.184.216.10"},
 			{Kind: "add", When: "2026-05-12 11:08 · SCAN #1", What: "Domain added · first sweep"},
 		},

@@ -103,7 +103,10 @@ func newUIHarness(t *testing.T, pc *testhelpers.PostgresContainer) *uiHarness {
 // loginCookie signs up a user (if they don't exist yet) via Signup then
 // Authenticate + MintSession and returns the raw session cookie value and the
 // matching CSRF token.
-func (h *uiHarness) loginCookie(t *testing.T, email, password string) (cookieValue, csrfToken string) {
+func (h *uiHarness) loginCookie(
+	t *testing.T,
+	email, password string,
+) (cookieValue, csrfToken string) {
 	t.Helper()
 	ctx := context.Background()
 	svcAuth := h.svc.AuthService()
@@ -216,7 +219,12 @@ func seedDomainForTenant(
 }
 
 // tenantIDFor looks up the tenant ID for a registered user.
-func tenantIDFor(t *testing.T, ctx context.Context, pc *testhelpers.PostgresContainer, email string) int32 {
+func tenantIDFor(
+	t *testing.T,
+	ctx context.Context,
+	pc *testhelpers.PostgresContainer,
+	email string,
+) int32 {
 	t.Helper()
 	u, err := pc.Queries.UserGetByEmail(ctx, email)
 	if err != nil {
@@ -271,7 +279,10 @@ func TestHandlerLogin_Post_WrongPassword(t *testing.T) {
 		t.Fatalf("POST /app/login wrong pw: want 200 (SSE), got %d", rr.Code)
 	}
 	if !strings.Contains(rr.Body.String(), `id="login-error"`) {
-		t.Errorf("POST /app/login wrong pw: body should contain login-error element, got: %s", rr.Body.String())
+		t.Errorf(
+			"POST /app/login wrong pw: body should contain login-error element, got: %s",
+			rr.Body.String(),
+		)
 	}
 	// No session cookie must be set.
 	for _, c := range rr.Result().Cookies() {
@@ -299,7 +310,14 @@ func TestHandlerLogin_Post_Success(t *testing.T) {
 		t.Fatalf("signup: %v", err)
 	}
 
-	rr := h.do(t, http.MethodPost, "/app/login", loginBody("loginok@example.com", "secret123"), "", "")
+	rr := h.do(
+		t,
+		http.MethodPost,
+		"/app/login",
+		loginBody("loginok@example.com", "secret123"),
+		"",
+		"",
+	)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("POST /app/login ok: want 200 (SSE), got %d", rr.Code)
@@ -322,7 +340,10 @@ func TestHandlerLogin_Post_Success(t *testing.T) {
 
 	// SSE body must contain a redirect to /app/domains.
 	if !strings.Contains(rr.Body.String(), "/app/domains") {
-		t.Errorf("POST /app/login ok: body should redirect to /app/domains, got: %s", rr.Body.String())
+		t.Errorf(
+			"POST /app/login ok: body should redirect to /app/domains, got: %s",
+			rr.Body.String(),
+		)
 	}
 }
 
@@ -370,7 +391,10 @@ func TestHandlerDomains_Authenticated(t *testing.T) {
 		t.Error("GET /app/domains authed: body should contain 'Domains'")
 	}
 	if !strings.Contains(body, "myseeded.example.com") {
-		t.Errorf("GET /app/domains authed: body should contain seeded domain, got partial: %s", body[:min(200, len(body))])
+		t.Errorf(
+			"GET /app/domains authed: body should contain seeded domain, got partial: %s",
+			body[:min(200, len(body))],
+		)
 	}
 }
 
@@ -409,10 +433,17 @@ func TestHandlerDomains_AddDomain_WithCSRF(t *testing.T) {
 	rr := h.do(t, http.MethodPost, "/app/domains", body, cookie, csrf)
 
 	if rr.Code != http.StatusOK {
-		t.Fatalf("POST /app/domains add: want 200 (SSE), got %d\nbody: %s", rr.Code, rr.Body.String())
+		t.Fatalf(
+			"POST /app/domains add: want 200 (SSE), got %d\nbody: %s",
+			rr.Code,
+			rr.Body.String(),
+		)
 	}
 	if !strings.Contains(rr.Body.String(), "added-by-test.example.com") {
-		t.Errorf("POST /app/domains add: SSE body should contain new domain name, got: %s", rr.Body.String())
+		t.Errorf(
+			"POST /app/domains add: SSE body should contain new domain name, got: %s",
+			rr.Body.String(),
+		)
 	}
 }
 
@@ -433,11 +464,21 @@ func TestHandlerDomains_DeleteDomain(t *testing.T) {
 	rr := h.doDelete(t, "/app/domains/"+d.Uid, nil, cookie, csrf)
 
 	if rr.Code != http.StatusOK {
-		t.Fatalf("DELETE /app/domains/%s: want 200 (SSE), got %d\nbody: %s", d.Uid, rr.Code, rr.Body.String())
+		t.Fatalf(
+			"DELETE /app/domains/%s: want 200 (SSE), got %d\nbody: %s",
+			d.Uid,
+			rr.Code,
+			rr.Body.String(),
+		)
 	}
 	// SSE body should reference the row id for removal.
 	if !strings.Contains(rr.Body.String(), "domain-row-"+d.Uid) {
-		t.Errorf("DELETE /app/domains/%s: SSE body should contain 'domain-row-%s', got: %s", d.Uid, d.Uid, rr.Body.String())
+		t.Errorf(
+			"DELETE /app/domains/%s: SSE body should contain 'domain-row-%s', got: %s",
+			d.Uid,
+			d.Uid,
+			rr.Body.String(),
+		)
 	}
 
 	// Verify domain is actually gone from DB.
@@ -465,15 +506,27 @@ func TestHandlerDomainDetail(t *testing.T) {
 	rr := h.do(t, http.MethodGet, "/app/domains/"+d.Uid, nil, cookie, "")
 
 	if rr.Code != http.StatusOK {
-		t.Fatalf("GET /app/domains/%s: want 200, got %d\nbody: %s", d.Uid, rr.Code, rr.Body.String())
+		t.Fatalf(
+			"GET /app/domains/%s: want 200, got %d\nbody: %s",
+			d.Uid,
+			rr.Code,
+			rr.Body.String(),
+		)
 	}
 	body := rr.Body.String()
 	if !strings.Contains(body, "detail-domain.example.com") {
-		t.Errorf("GET /app/domains/%s: body should contain domain name, got partial: %s", d.Uid, body[:min(300, len(body))])
+		t.Errorf(
+			"GET /app/domains/%s: body should contain domain name, got partial: %s",
+			d.Uid,
+			body[:min(300, len(body))],
+		)
 	}
 	// Verify lazy-load attributes are present.
 	if !strings.Contains(body, "data-on-intersect") {
-		t.Errorf("GET /app/domains/%s: body should contain data-on-intersect lazy-load attribute", d.Uid)
+		t.Errorf(
+			"GET /app/domains/%s: body should contain data-on-intersect lazy-load attribute",
+			d.Uid,
+		)
 	}
 	if !strings.Contains(body, "/records") {
 		t.Errorf("GET /app/domains/%s: body should contain /records lazy-load target", d.Uid)
@@ -500,11 +553,20 @@ func TestHandlerRecordsFragment(t *testing.T) {
 	rr := h.do(t, http.MethodGet, "/app/domains/"+d.Uid+"/records", nil, cookie, "")
 
 	if rr.Code != http.StatusOK {
-		t.Fatalf("GET /app/domains/%s/records: want 200, got %d\nbody: %s", d.Uid, rr.Code, rr.Body.String())
+		t.Fatalf(
+			"GET /app/domains/%s/records: want 200, got %d\nbody: %s",
+			d.Uid,
+			rr.Code,
+			rr.Body.String(),
+		)
 	}
 	// SSE body should target records-content.
 	if !strings.Contains(rr.Body.String(), "records-content") {
-		t.Errorf("GET /app/domains/%s/records: SSE body should target records-content, got: %s", d.Uid, rr.Body.String())
+		t.Errorf(
+			"GET /app/domains/%s/records: SSE body should target records-content, got: %s",
+			d.Uid,
+			rr.Body.String(),
+		)
 	}
 }
 
@@ -525,10 +587,19 @@ func TestHandlerTimelineFragment(t *testing.T) {
 	rr := h.do(t, http.MethodGet, "/app/domains/"+d.Uid+"/timeline", nil, cookie, "")
 
 	if rr.Code != http.StatusOK {
-		t.Fatalf("GET /app/domains/%s/timeline: want 200, got %d\nbody: %s", d.Uid, rr.Code, rr.Body.String())
+		t.Fatalf(
+			"GET /app/domains/%s/timeline: want 200, got %d\nbody: %s",
+			d.Uid,
+			rr.Code,
+			rr.Body.String(),
+		)
 	}
 	if !strings.Contains(rr.Body.String(), "timeline-content") {
-		t.Errorf("GET /app/domains/%s/timeline: SSE body should target timeline-content, got: %s", d.Uid, rr.Body.String())
+		t.Errorf(
+			"GET /app/domains/%s/timeline: SSE body should target timeline-content, got: %s",
+			d.Uid,
+			rr.Body.String(),
+		)
 	}
 }
 
@@ -549,7 +620,10 @@ func TestHandlerComingSoon_Findings(t *testing.T) {
 		t.Fatalf("GET /app/findings: want 200, got %d", rr.Code)
 	}
 	if !strings.Contains(rr.Body.String(), "On the roadmap") {
-		t.Errorf("GET /app/findings: body should contain 'On the roadmap', got partial: %s", rr.Body.String()[:min(300, len(rr.Body.String()))])
+		t.Errorf(
+			"GET /app/findings: body should contain 'On the roadmap', got partial: %s",
+			rr.Body.String()[:min(300, len(rr.Body.String()))],
+		)
 	}
 }
 
@@ -571,7 +645,10 @@ func TestHandlerLogout(t *testing.T) {
 	}
 	// SSE body must redirect to /app/login.
 	if !strings.Contains(rr.Body.String(), "/app/login") {
-		t.Errorf("POST /app/logout: SSE body should redirect to /app/login, got: %s", rr.Body.String())
+		t.Errorf(
+			"POST /app/logout: SSE body should redirect to /app/login, got: %s",
+			rr.Body.String(),
+		)
 	}
 	// Session cookie must be cleared (MaxAge == -1).
 	var cleared bool
@@ -586,7 +663,9 @@ func TestHandlerLogout(t *testing.T) {
 	// Session must be revoked: resolving the old token must fail.
 	_, resolveErr := h.svc.AuthService().ResolveSession(ctx, cookie)
 	if resolveErr == nil {
-		t.Error("POST /app/logout: session should be revoked after logout but ResolveSession succeeded")
+		t.Error(
+			"POST /app/logout: session should be revoked after logout but ResolveSession succeeded",
+		)
 	}
 }
 
@@ -613,7 +692,11 @@ func TestHandlerCrossTenant_DomainDetail(t *testing.T) {
 
 	// Must redirect to /app/domains (not found → redirect) — never show B's domain.
 	if rr.Code != http.StatusSeeOther {
-		t.Fatalf("cross-tenant GET detail: want 303 redirect, got %d\nbody: %s", rr.Code, rr.Body.String())
+		t.Fatalf(
+			"cross-tenant GET detail: want 303 redirect, got %d\nbody: %s",
+			rr.Code,
+			rr.Body.String(),
+		)
 	}
 	if loc := rr.Header().Get("Location"); loc != "/app/domains" {
 		t.Errorf("cross-tenant GET detail: want redirect to /app/domains, got %q", loc)
@@ -775,12 +858,19 @@ func TestHandlerInvite_Get_ValidToken(t *testing.T) {
 	rr := h.do(t, http.MethodGet, "/app/invite?token="+rawToken, nil, "", "")
 
 	if rr.Code != http.StatusOK {
-		t.Fatalf("GET /app/invite valid token: want 200, got %d\nbody: %s", rr.Code, rr.Body.String())
+		t.Fatalf(
+			"GET /app/invite valid token: want 200, got %d\nbody: %s",
+			rr.Code,
+			rr.Body.String(),
+		)
 	}
 	// Accept-invite page should contain the invitee context.
 	body := rr.Body.String()
 	if !strings.Contains(body, "invitee@example.com") {
-		t.Errorf("GET /app/invite valid: body should contain invitee email, got partial: %s", body[:min(400, len(body))])
+		t.Errorf(
+			"GET /app/invite valid: body should contain invitee email, got partial: %s",
+			body[:min(400, len(body))],
+		)
 	}
 }
 
@@ -805,7 +895,10 @@ func TestHandlerInvite_Post_InvalidToken(t *testing.T) {
 		t.Fatalf("POST /app/invite invalid token: want 200 (SSE), got %d", rr.Code)
 	}
 	if !strings.Contains(rr.Body.String(), `id="invite-error"`) {
-		t.Errorf("POST /app/invite invalid token: body should contain invite-error, got: %s", rr.Body.String())
+		t.Errorf(
+			"POST /app/invite invalid token: body should contain invite-error, got: %s",
+			rr.Body.String(),
+		)
 	}
 }
 
@@ -848,7 +941,11 @@ func TestHandlerInvite_Post_Valid(t *testing.T) {
 	rr := h.do(t, http.MethodPost, "/app/invite", body, "", "")
 
 	if rr.Code != http.StatusOK {
-		t.Fatalf("POST /app/invite valid: want 200 (SSE), got %d\nbody: %s", rr.Code, rr.Body.String())
+		t.Fatalf(
+			"POST /app/invite valid: want 200 (SSE), got %d\nbody: %s",
+			rr.Code,
+			rr.Body.String(),
+		)
 	}
 	// A session cookie must be set.
 	var sessionCookie *http.Cookie
@@ -863,7 +960,10 @@ func TestHandlerInvite_Post_Valid(t *testing.T) {
 	}
 	// SSE must redirect to /app/domains.
 	if !strings.Contains(rr.Body.String(), "/app/domains") {
-		t.Errorf("POST /app/invite valid: SSE body should redirect to /app/domains, got: %s", rr.Body.String())
+		t.Errorf(
+			"POST /app/invite valid: SSE body should redirect to /app/domains, got: %s",
+			rr.Body.String(),
+		)
 	}
 }
 
@@ -883,12 +983,20 @@ func TestHandlerDomainRescan_NotFound(t *testing.T) {
 
 	// Handler opens SSE and patches an error element — still 200.
 	if rr.Code != http.StatusOK {
-		t.Fatalf("POST /app/domains/%s/rescan: want 200 (SSE error), got %d", nonExistentUID, rr.Code)
+		t.Fatalf(
+			"POST /app/domains/%s/rescan: want 200 (SSE error), got %d",
+			nonExistentUID,
+			rr.Code,
+		)
 	}
 	body := rr.Body.String()
 	// Should contain the rescan-status error patch (not-found text).
 	if !strings.Contains(body, "rescan-status") {
-		t.Errorf("POST /app/domains/%s/rescan: SSE body should contain rescan-status error, got: %s", nonExistentUID, body)
+		t.Errorf(
+			"POST /app/domains/%s/rescan: SSE body should contain rescan-status error, got: %s",
+			nonExistentUID,
+			body,
+		)
 	}
 }
 

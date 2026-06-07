@@ -288,11 +288,15 @@ func (h *Handlers) handleDomainRescan(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		sse := datastar.NewSSE(w, r)
 		if errors.Is(err, service.ErrNotFound) {
-			_ = sse.PatchElements(`<span id="rescan-status" style="color:var(--warn);font-family:var(--mono);font-size:12px">domain not found</span>`)
+			_ = sse.PatchElements(
+				`<span id="rescan-status" style="color:var(--warn);font-family:var(--mono);font-size:12px">domain not found</span>`,
+			)
 			return
 		}
 		h.log.Error("domain rescan", "error", err, "uid", uid)
-		_ = sse.PatchElements(`<span id="rescan-status" style="color:var(--crit);font-family:var(--mono);font-size:12px">rescan failed</span>`)
+		_ = sse.PatchElements(
+			`<span id="rescan-status" style="color:var(--crit);font-family:var(--mono);font-size:12px">rescan failed</span>`,
+		)
 		return
 	}
 
@@ -300,7 +304,9 @@ func (h *Handlers) handleDomainRescan(w http.ResponseWriter, r *http.Request) {
 	// to patch, so we open the stream and return a no-op; the list page reflects
 	// the scanning state on the next visit.
 	sse := datastar.NewSSE(w, r)
-	_ = sse.PatchElements(`<span id="rescan-status" style="color:var(--ok);font-family:var(--mono);font-size:12px">rescan queued</span>`)
+	_ = sse.PatchElements(
+		`<span id="rescan-status" style="color:var(--ok);font-family:var(--mono);font-size:12px">rescan queued</span>`,
+	)
 }
 
 // handleDomainsRescanAll triggers a rescan for every tracked domain (bounded to
@@ -326,7 +332,8 @@ func (h *Handlers) handleDomainsRescanAll(w http.ResponseWriter, r *http.Request
 
 	csrfToken := CSRFTokenFrom(r.Context())
 	for _, d := range result.Domains {
-		updated, uErr := h.svc.DomainsService().Update(r.Context(), p, d.Uid, service.DomainsUpdateParams{})
+		updated, uErr := h.svc.DomainsService().
+			Update(r.Context(), p, d.Uid, service.DomainsUpdateParams{})
 		if uErr != nil {
 			h.log.Warn("domains rescan all: update", "error", uErr, "uid", d.Uid)
 			continue

@@ -26,12 +26,23 @@ func newAuthSvc(t *testing.T, pc *testhelpers.PostgresContainer) *service.AuthSe
 	if err != nil {
 		t.Fatalf("new provider: %v", err)
 	}
-	svc := service.NewWithScheduler(cfg, slog.New(slog.DiscardHandler), pc.Queries, pc.Pool, nil, provider)
+	svc := service.NewWithScheduler(
+		cfg,
+		slog.New(slog.DiscardHandler),
+		pc.Queries,
+		pc.Pool,
+		nil,
+		provider,
+	)
 	return svc.AuthService()
 }
 
 // signupUser is a test helper that creates a user via Signup and returns the result.
-func signupUser(t *testing.T, svc *service.AuthService, email, password string) service.SignupResult {
+func signupUser(
+	t *testing.T,
+	svc *service.AuthService,
+	email, password string,
+) service.SignupResult {
 	t.Helper()
 	result, err := svc.Signup(context.Background(), service.SignupParams{
 		Email:    email,
@@ -318,12 +329,7 @@ func TestAuthService_Session_MintAndResolve(t *testing.T) {
 		t.Error("mint session: expiresAt is in the past")
 	}
 
-	// Verify the raw token is NOT stored in the DB (only hash is).
-	var storedHash string
-	err = pc.Pool.QueryRow(ctx,
-		`SELECT token_hash FROM sessions WHERE token_hash != $1 LIMIT 1`, rawToken,
-	).Scan(&storedHash)
-	// We expect to find the hash, which is different from the raw token.
+	// Verify the raw token is NOT stored in the DB (only its hash is).
 	var hash string
 	err = pc.Pool.QueryRow(ctx,
 		`SELECT token_hash FROM sessions ORDER BY created_at DESC LIMIT 1`,

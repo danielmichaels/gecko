@@ -18,9 +18,9 @@ type CookieConfig struct {
 // App holds the shared dependencies for browser-facing middleware.
 type App struct {
 	resolver  SessionResolver
-	cookieCfg CookieConfig
-	csrfKey   []byte
 	log       *slog.Logger
+	csrfKey   []byte
+	cookieCfg CookieConfig
 }
 
 // New constructs an App. A nil logger falls back to slog.Default() so callers

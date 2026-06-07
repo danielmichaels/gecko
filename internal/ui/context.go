@@ -9,8 +9,8 @@ import (
 type contextKey string
 
 const (
-	principalKey  contextKey = "ui.principal"
-	csrfTokenKey  contextKey = "ui.csrf_token"
+	principalKey contextKey = "ui.principal"
+	csrfTokenKey contextKey = "ui.csrf_token"
 )
 
 // PrincipalFrom returns the authenticated Principal injected by WebAuth,

@@ -86,7 +86,12 @@ func (app *Server) handleRecordsList(ctx context.Context, i *struct {
 		return nil, huma.Error500InternalServerError("failed to list records", err)
 	}
 
-	pagination := NewPaginationMetadata(result.TotalRecords, pageSize, pageNumber, int32(len(recordTypes)))
+	pagination := NewPaginationMetadata(
+		result.TotalRecords,
+		pageSize,
+		pageNumber,
+		int32(len(recordTypes)),
+	)
 	return &RecordsListOutput{
 		Body: struct {
 			Pagination *PaginationMetadata `json:"pagination"`

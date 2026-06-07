@@ -52,7 +52,10 @@ func ownerPrincipal(tenantID int32) *auth.Principal {
 	}
 }
 
-func newTestService(pc *testhelpers.PostgresContainer, sched service.DomainScanScheduler) *service.Service {
+func newTestService(
+	pc *testhelpers.PostgresContainer,
+	sched service.DomainScanScheduler,
+) *service.Service {
 	cfg := config.AppConfig()
 	return service.NewWithScheduler(
 		cfg,
@@ -119,8 +122,8 @@ func TestDomainsService_List_TenantScoped(t *testing.T) {
 	svc := newTestService(pc, sched)
 	ds := svc.DomainsService()
 
-	tenantA := createTenant(t, ctx, pc,"a@list-test.com")
-	tenantB := createTenant(t, ctx, pc,"b@list-test.com")
+	tenantA := createTenant(t, ctx, pc, "a@list-test.com")
+	tenantB := createTenant(t, ctx, pc, "b@list-test.com")
 
 	seedDomain(t, ctx, pc, tenantA, "a-domain.example.com")
 	seedDomain(t, ctx, pc, tenantA, "a-domain2.example.com")
@@ -152,12 +155,16 @@ func TestDomainsService_List_Search(t *testing.T) {
 	svc := newTestService(pc, sched)
 	ds := svc.DomainsService()
 
-	tenantA := createTenant(t, ctx, pc,"a@search-test.com")
+	tenantA := createTenant(t, ctx, pc, "a@search-test.com")
 	seedDomain(t, ctx, pc, tenantA, "alpha.example.com")
 	seedDomain(t, ctx, pc, tenantA, "beta.example.com")
 	seedDomain(t, ctx, pc, tenantA, "gamma.example.com")
 
-	result, err := ds.List(ctx, ownerPrincipal(tenantA), service.DomainsListParams{PageSize: 10, FilterName: "alpha"})
+	result, err := ds.List(
+		ctx,
+		ownerPrincipal(tenantA),
+		service.DomainsListParams{PageSize: 10, FilterName: "alpha"},
+	)
 	if err != nil {
 		t.Fatalf("List search: %v", err)
 	}
@@ -181,7 +188,7 @@ func TestDomainsService_Get_HappyPath(t *testing.T) {
 	svc := newTestService(pc, sched)
 	ds := svc.DomainsService()
 
-	tenantA := createTenant(t, ctx, pc,"a@get-test.com")
+	tenantA := createTenant(t, ctx, pc, "a@get-test.com")
 	d := seedDomain(t, ctx, pc, tenantA, "get.example.com")
 
 	got, err := ds.Get(ctx, ownerPrincipal(tenantA), d.Uid)
@@ -205,8 +212,8 @@ func TestDomainsService_Get_CrossTenantReturnsNotFound(t *testing.T) {
 	svc := newTestService(pc, sched)
 	ds := svc.DomainsService()
 
-	tenantA := createTenant(t, ctx, pc,"a@get-cross.com")
-	tenantB := createTenant(t, ctx, pc,"b@get-cross.com")
+	tenantA := createTenant(t, ctx, pc, "a@get-cross.com")
+	tenantB := createTenant(t, ctx, pc, "b@get-cross.com")
 	d := seedDomain(t, ctx, pc, tenantB, "b-private.example.com")
 
 	_, err = ds.Get(ctx, ownerPrincipal(tenantA), d.Uid)
@@ -227,7 +234,7 @@ func TestDomainsService_Create_SchedulesCalled(t *testing.T) {
 	svc := newTestService(pc, sched)
 	ds := svc.DomainsService()
 
-	tenantA := createTenant(t, ctx, pc,"a@create-test.com")
+	tenantA := createTenant(t, ctx, pc, "a@create-test.com")
 	d, err := ds.Create(ctx, ownerPrincipal(tenantA), service.DomainsCreateParams{
 		Domain: "new-domain.example.com",
 	})
@@ -254,12 +261,20 @@ func TestDomainsService_Create_DuplicateReturnsConflict(t *testing.T) {
 	svc := newTestService(pc, sched)
 	ds := svc.DomainsService()
 
-	tenantA := createTenant(t, ctx, pc,"a@dup-test.com")
-	_, err = ds.Create(ctx, ownerPrincipal(tenantA), service.DomainsCreateParams{Domain: "dup.example.com"})
+	tenantA := createTenant(t, ctx, pc, "a@dup-test.com")
+	_, err = ds.Create(
+		ctx,
+		ownerPrincipal(tenantA),
+		service.DomainsCreateParams{Domain: "dup.example.com"},
+	)
 	if err != nil {
 		t.Fatalf("first Create: %v", err)
 	}
-	_, err = ds.Create(ctx, ownerPrincipal(tenantA), service.DomainsCreateParams{Domain: "dup.example.com"})
+	_, err = ds.Create(
+		ctx,
+		ownerPrincipal(tenantA),
+		service.DomainsCreateParams{Domain: "dup.example.com"},
+	)
 	if !errors.Is(err, service.ErrConflict) {
 		t.Errorf("duplicate Create = %v, want ErrConflict", err)
 	}
@@ -277,7 +292,7 @@ func TestDomainsService_Update_HappyPath(t *testing.T) {
 	svc := newTestService(pc, sched)
 	ds := svc.DomainsService()
 
-	tenantA := createTenant(t, ctx, pc,"a@update-test.com")
+	tenantA := createTenant(t, ctx, pc, "a@update-test.com")
 	d := seedDomain(t, ctx, pc, tenantA, "update.example.com")
 
 	updated, err := ds.Update(ctx, ownerPrincipal(tenantA), d.Uid, service.DomainsUpdateParams{
@@ -309,11 +324,16 @@ func TestDomainsService_Update_CrossTenantReturnsNotFound(t *testing.T) {
 	svc := newTestService(pc, sched)
 	ds := svc.DomainsService()
 
-	tenantA := createTenant(t, ctx, pc,"a@update-cross.com")
-	tenantB := createTenant(t, ctx, pc,"b@update-cross.com")
+	tenantA := createTenant(t, ctx, pc, "a@update-cross.com")
+	tenantB := createTenant(t, ctx, pc, "b@update-cross.com")
 	d := seedDomain(t, ctx, pc, tenantB, "b-update.example.com")
 
-	_, err = ds.Update(ctx, ownerPrincipal(tenantA), d.Uid, service.DomainsUpdateParams{Status: "inactive"})
+	_, err = ds.Update(
+		ctx,
+		ownerPrincipal(tenantA),
+		d.Uid,
+		service.DomainsUpdateParams{Status: "inactive"},
+	)
 	if !errors.Is(err, service.ErrNotFound) {
 		t.Errorf("cross-tenant Update = %v, want ErrNotFound", err)
 	}
@@ -331,7 +351,7 @@ func TestDomainsService_Delete_HappyPath(t *testing.T) {
 	svc := newTestService(pc, sched)
 	ds := svc.DomainsService()
 
-	tenantA := createTenant(t, ctx, pc,"a@delete-test.com")
+	tenantA := createTenant(t, ctx, pc, "a@delete-test.com")
 	d := seedDomain(t, ctx, pc, tenantA, "delete-me.example.com")
 
 	if err := ds.Delete(ctx, ownerPrincipal(tenantA), d.Uid); err != nil {
@@ -355,8 +375,8 @@ func TestDomainsService_Delete_CrossTenantReturnsNotFound(t *testing.T) {
 	svc := newTestService(pc, sched)
 	ds := svc.DomainsService()
 
-	tenantA := createTenant(t, ctx, pc,"a@del-cross.com")
-	tenantB := createTenant(t, ctx, pc,"b@del-cross.com")
+	tenantA := createTenant(t, ctx, pc, "a@del-cross.com")
+	tenantB := createTenant(t, ctx, pc, "b@del-cross.com")
 	d := seedDomain(t, ctx, pc, tenantB, "b-del.example.com")
 
 	if err := ds.Delete(ctx, ownerPrincipal(tenantA), d.Uid); !errors.Is(err, service.ErrNotFound) {
@@ -376,7 +396,7 @@ func TestDomainsService_DeletionImpact_HappyPath(t *testing.T) {
 	svc := newTestService(pc, sched)
 	ds := svc.DomainsService()
 
-	tenantA := createTenant(t, ctx, pc,"a@impact-test.com")
+	tenantA := createTenant(t, ctx, pc, "a@impact-test.com")
 	d := seedDomain(t, ctx, pc, tenantA, "impact.example.com")
 
 	count, err := ds.DeletionImpact(ctx, ownerPrincipal(tenantA), d.Uid)
@@ -400,8 +420,8 @@ func TestDomainsService_DeletionImpact_CrossTenantReturnsNotFound(t *testing.T) 
 	svc := newTestService(pc, sched)
 	ds := svc.DomainsService()
 
-	tenantA := createTenant(t, ctx, pc,"a@impact-cross.com")
-	tenantB := createTenant(t, ctx, pc,"b@impact-cross.com")
+	tenantA := createTenant(t, ctx, pc, "a@impact-cross.com")
+	tenantB := createTenant(t, ctx, pc, "b@impact-cross.com")
 	d := seedDomain(t, ctx, pc, tenantB, "b-impact.example.com")
 
 	_, err = ds.DeletionImpact(ctx, ownerPrincipal(tenantA), d.Uid)

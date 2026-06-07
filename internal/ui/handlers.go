@@ -22,13 +22,18 @@ import (
 type Handlers struct {
 	svc       *service.Service
 	app       *App
-	cookieCfg CookieConfig
 	log       *slog.Logger
+	cookieCfg CookieConfig
 }
 
 // NewHandlers constructs a Handlers value wiring the service, middleware App,
 // cookie config, and logger together.
-func NewHandlers(svc *service.Service, app *App, cookieCfg CookieConfig, log *slog.Logger) *Handlers {
+func NewHandlers(
+	svc *service.Service,
+	app *App,
+	cookieCfg CookieConfig,
+	log *slog.Logger,
+) *Handlers {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -60,11 +65,51 @@ func (h *Handlers) Routes() http.Handler {
 		r.Post("/logout", h.handleLogoutPost)
 
 		// ComingSoon placeholder pages.
-		r.Get("/findings", h.handleComingSoon("findings", "⚠", "Findings", "Security findings and DNS misconfiguration alerts will surface here. Coming soon."))
-		r.Get("/scans", h.handleComingSoon("scans", "◎", "Scans", "On-demand and scheduled scan results will be visible here. Coming soon."))
-		r.Get("/dashboard", h.handleComingSoon("dashboard", "⊞", "Dashboard", "A high-level overview of your fleet health and activity. Coming soon."))
-		r.Get("/team", h.handleComingSoon("team", "⊕", "Team", "Manage teammates, roles, and pending invitations. Coming soon."))
-		r.Get("/settings", h.handleComingSoon("settings", "⚙", "Settings", "Workspace settings, API keys, and notification preferences. Coming soon."))
+		r.Get(
+			"/findings",
+			h.handleComingSoon(
+				"findings",
+				"⚠",
+				"Findings",
+				"Security findings and DNS misconfiguration alerts will surface here. Coming soon.",
+			),
+		)
+		r.Get(
+			"/scans",
+			h.handleComingSoon(
+				"scans",
+				"◎",
+				"Scans",
+				"On-demand and scheduled scan results will be visible here. Coming soon.",
+			),
+		)
+		r.Get(
+			"/dashboard",
+			h.handleComingSoon(
+				"dashboard",
+				"⊞",
+				"Dashboard",
+				"A high-level overview of your fleet health and activity. Coming soon.",
+			),
+		)
+		r.Get(
+			"/team",
+			h.handleComingSoon(
+				"team",
+				"⊕",
+				"Team",
+				"Manage teammates, roles, and pending invitations. Coming soon.",
+			),
+		)
+		r.Get(
+			"/settings",
+			h.handleComingSoon(
+				"settings",
+				"⚙",
+				"Settings",
+				"Workspace settings, API keys, and notification preferences. Coming soon.",
+			),
+		)
 
 		r.Get("/domains", h.handleDomainsGet)
 		r.Post("/domains", h.handleDomainCreate)
@@ -122,7 +167,9 @@ func (h *Handlers) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, service.ErrUnauthenticated) {
 			sse := datastar.NewSSE(w, r)
-			_ = sse.PatchElements(`<div id="login-error" style="color:var(--crit);font-family:var(--mono);font-size:12.5px;background:var(--crit-bg);border:1px solid var(--crit);border-radius:8px;padding:10px 14px;margin-bottom:12px;">invalid email or password</div>`)
+			_ = sse.PatchElements(
+				`<div id="login-error" style="color:var(--crit);font-family:var(--mono);font-size:12.5px;background:var(--crit-bg);border:1px solid var(--crit);border-radius:8px;padding:10px 14px;margin-bottom:12px;">invalid email or password</div>`,
+			)
 			return
 		}
 		h.log.Error("login: authenticate", "error", err)
@@ -130,7 +177,8 @@ func (h *Handlers) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rawToken, expiresAt, err := h.svc.AuthService().MintSession(r.Context(), p, r.UserAgent(), clientIP(r))
+	rawToken, expiresAt, err := h.svc.AuthService().
+		MintSession(r.Context(), p, r.UserAgent(), clientIP(r))
 	if err != nil {
 		h.log.Error("login: mint session", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -202,17 +250,24 @@ func (h *Handlers) handleInvitePost(w http.ResponseWriter, r *http.Request) {
 		sse := datastar.NewSSE(w, r)
 		switch {
 		case errors.Is(err, service.ErrNotFound):
-			_ = sse.PatchElements(`<div id="invite-error" style="color:var(--crit);font-family:var(--mono);font-size:12.5px;background:var(--crit-bg);border:1px solid var(--crit);border-radius:8px;padding:10px 14px;margin-bottom:12px;">invalid or expired invitation</div>`)
+			_ = sse.PatchElements(
+				`<div id="invite-error" style="color:var(--crit);font-family:var(--mono);font-size:12.5px;background:var(--crit-bg);border:1px solid var(--crit);border-radius:8px;padding:10px 14px;margin-bottom:12px;">invalid or expired invitation</div>`,
+			)
 		case errors.Is(err, service.ErrConflict):
-			_ = sse.PatchElements(`<div id="invite-error" style="color:var(--crit);font-family:var(--mono);font-size:12.5px;background:var(--crit-bg);border:1px solid var(--crit);border-radius:8px;padding:10px 14px;margin-bottom:12px;">email already registered</div>`)
+			_ = sse.PatchElements(
+				`<div id="invite-error" style="color:var(--crit);font-family:var(--mono);font-size:12.5px;background:var(--crit-bg);border:1px solid var(--crit);border-radius:8px;padding:10px 14px;margin-bottom:12px;">email already registered</div>`,
+			)
 		default:
 			h.log.Error("invite: accept", "error", err)
-			_ = sse.PatchElements(`<div id="invite-error" style="color:var(--crit);font-family:var(--mono);font-size:12.5px;background:var(--crit-bg);border:1px solid var(--crit);border-radius:8px;padding:10px 14px;margin-bottom:12px;">something went wrong, please try again</div>`)
+			_ = sse.PatchElements(
+				`<div id="invite-error" style="color:var(--crit);font-family:var(--mono);font-size:12.5px;background:var(--crit-bg);border:1px solid var(--crit);border-radius:8px;padding:10px 14px;margin-bottom:12px;">something went wrong, please try again</div>`,
+			)
 		}
 		return
 	}
 
-	rawToken, expiresAt, err := h.svc.AuthService().MintSession(r.Context(), p, r.UserAgent(), clientIP(r))
+	rawToken, expiresAt, err := h.svc.AuthService().
+		MintSession(r.Context(), p, r.UserAgent(), clientIP(r))
 	if err != nil {
 		h.log.Error("invite: mint session", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)

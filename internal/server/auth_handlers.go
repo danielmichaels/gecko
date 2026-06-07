@@ -26,7 +26,11 @@ type authOutput struct {
 	}
 }
 
-func authOutputFromResult(rawKey string, exp pgtype.Timestamptz, email, role, tenantUID string) *authOutput {
+func authOutputFromResult(
+	rawKey string,
+	exp pgtype.Timestamptz,
+	email, role, tenantUID string,
+) *authOutput {
 	out := &authOutput{}
 	out.Body.APIKey = rawKey
 	out.Body.Email = email
@@ -96,7 +100,13 @@ func (app *Server) handleSignup(ctx context.Context, i *SignupInput) (*authOutpu
 		}
 		return nil, huma.Error500InternalServerError("signup failed", err)
 	}
-	return authOutputFromResult(result.RawKey, result.ExpiresAt, result.Email, result.Role, result.TenantUID), nil
+	return authOutputFromResult(
+		result.RawKey,
+		result.ExpiresAt,
+		result.Email,
+		result.Role,
+		result.TenantUID,
+	), nil
 }
 
 type LoginInput struct {
@@ -196,4 +206,3 @@ func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
-

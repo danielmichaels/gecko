@@ -46,7 +46,10 @@ type AcceptInviteResult struct {
 
 // Authenticate verifies email/password and returns the Principal on success.
 // Returns ErrUnauthenticated for invalid or unknown credentials.
-func (s *AuthService) Authenticate(ctx context.Context, email, password string) (*auth.Principal, error) {
+func (s *AuthService) Authenticate(
+	ctx context.Context,
+	email, password string,
+) (*auth.Principal, error) {
 	email = normaliseEmail(email)
 	p, err := s.AuthProvider.Authenticate(ctx, auth.Credentials{
 		Email:    email,
@@ -159,7 +162,10 @@ type AcceptInviteParams struct {
 // AcceptInvite consumes an invitation token, creating the user with the
 // invited role in the inviting tenant, and mints a key.
 // Invalid/expired token → ErrNotFound. Duplicate email → ErrConflict.
-func (s *AuthService) AcceptInvite(ctx context.Context, params AcceptInviteParams) (AcceptInviteResult, error) {
+func (s *AuthService) AcceptInvite(
+	ctx context.Context,
+	params AcceptInviteParams,
+) (AcceptInviteResult, error) {
 	inv, err := s.DB.InvitationGetByTokenHash(ctx, auth.HashToken(params.Token))
 	if err != nil {
 		// Deliberately opaque: expired and invalid tokens both return not-found
@@ -217,7 +223,10 @@ func (s *AuthService) AcceptInvite(ctx context.Context, params AcceptInviteParam
 // AcceptInviteWeb provisions a user from an invitation token without minting an
 // API key. Used by the browser flow; the caller then mints a session instead.
 // Invalid/expired token → ErrNotFound. Duplicate email → ErrConflict.
-func (s *AuthService) AcceptInviteWeb(ctx context.Context, params AcceptInviteParams) (*auth.Principal, error) {
+func (s *AuthService) AcceptInviteWeb(
+	ctx context.Context,
+	params AcceptInviteParams,
+) (*auth.Principal, error) {
 	inv, err := s.DB.InvitationGetByTokenHash(ctx, auth.HashToken(params.Token))
 	if err != nil {
 		return nil, fmt.Errorf("%w: invalid or expired invitation", ErrNotFound)
@@ -276,7 +285,10 @@ type InviteContext struct {
 
 // InviteContextFromToken looks up the invitation and returns display fields.
 // Returns ErrNotFound for unknown, expired, or already-accepted tokens.
-func (s *AuthService) InviteContextFromToken(ctx context.Context, token string) (InviteContext, error) {
+func (s *AuthService) InviteContextFromToken(
+	ctx context.Context,
+	token string,
+) (InviteContext, error) {
 	inv, err := s.DB.InvitationGetByTokenHash(ctx, auth.HashToken(token))
 	if err != nil {
 		return InviteContext{}, fmt.Errorf("%w: invalid or expired invitation", ErrNotFound)
@@ -347,7 +359,10 @@ func (s *AuthService) MintSession(
 // ResolveSession looks up a session by the raw token, slides last_used_at, and
 // returns the associated Principal. Returns ErrUnauthenticated for unknown or
 // expired tokens; a touch failure is logged but does not fail resolution.
-func (s *AuthService) ResolveSession(ctx context.Context, rawToken string) (*auth.Principal, error) {
+func (s *AuthService) ResolveSession(
+	ctx context.Context,
+	rawToken string,
+) (*auth.Principal, error) {
 	row, err := s.DB.SessionResolve(ctx, auth.HashToken(rawToken))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

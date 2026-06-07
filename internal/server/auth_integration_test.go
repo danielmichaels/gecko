@@ -31,7 +31,14 @@ func newAuthAPI(t *testing.T, pc *testhelpers.PostgresContainer) (*Server, strin
 	if err != nil {
 		t.Fatalf("new provider: %v", err)
 	}
-	svc := service.NewWithScheduler(cfg, slog.New(slog.DiscardHandler), pc.Queries, pc.Pool, nil, provider)
+	svc := service.NewWithScheduler(
+		cfg,
+		slog.New(slog.DiscardHandler),
+		pc.Queries,
+		pc.Pool,
+		nil,
+		provider,
+	)
 	testCSRFKey := make([]byte, 32) // deterministic zero-filled key for tests
 	cookieCfg := ui.CookieConfig{
 		Name:     cfg.Auth.SessionCookieName,
