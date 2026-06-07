@@ -110,6 +110,11 @@ func (s *Service) AuthService() *AuthService {
 	return &AuthService{s}
 }
 
+// UsersService returns the Users sub-service.
+func (s *Service) UsersService() *UsersService {
+	return &UsersService{s}
+}
+
 // riverScheduler is the production DomainScanScheduler that delegates to
 // jobs.EnqueueDomainScan with the same options the former scheduleUserDomainScan used.
 type riverScheduler struct {

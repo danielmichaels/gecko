@@ -94,15 +94,3 @@ func requireCanGrant(p *auth.Principal, target string) error {
 	}
 	return nil
 }
-
-// requireCanManage returns 403 unless the principal outranks-or-equals the target
-// user's current role. requireCanGrant guards the role being *set*; this guards the
-// user being *acted on*, so a manager cannot demote, rewrite, or delete an owner. At
-// or below the caller's own rank is allowed (owners manage owners; managers manage
-// managers and viewers).
-func requireCanManage(p *auth.Principal, targetRole string) error {
-	if roleRank[p.Role] < roleRank[targetRole] {
-		return huma.Error403Forbidden("cannot modify a user above your own role")
-	}
-	return nil
-}

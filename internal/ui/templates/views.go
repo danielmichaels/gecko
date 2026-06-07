@@ -81,7 +81,6 @@ type DomainRowView struct {
 
 // DomainDetailPageProps holds data for the domain detail page.
 type DomainDetailPageProps struct {
-	Shell         AppShellProps
 	UID           string
 	Name          string
 	Severity      string
@@ -91,6 +90,7 @@ type DomainDetailPageProps struct {
 	Source        string
 	Added         string
 	Scanned       string
+	Shell         AppShellProps
 }
 
 // RecordRowView is the presentation model for one DNS record row.
@@ -122,10 +122,10 @@ type TimelineView struct {
 
 // ComingSoonProps holds data for the coming-soon placeholder page.
 type ComingSoonProps struct {
-	Shell AppShellProps
 	Glyph string
 	Title string
 	Blurb string
+	Shell AppShellProps
 }
 
 // ContentErrorProps holds data for the reusable error fragment.
