@@ -66,7 +66,14 @@ func (h *Handlers) Routes() http.Handler {
 		r.Get("/team", h.handleComingSoon("team", "⊕", "Team", "Manage teammates, roles, and pending invitations. Coming soon."))
 		r.Get("/settings", h.handleComingSoon("settings", "⚙", "Settings", "Workspace settings, API keys, and notification preferences. Coming soon."))
 
-		// domain routes added in F2b
+		r.Get("/domains", h.handleDomainsGet)
+		r.Post("/domains", h.handleDomainCreate)
+		r.Post("/domains/rescan", h.handleDomainsRescanAll)
+		r.Get("/domains/{uid}", h.handleDomainDetail)
+		r.Delete("/domains/{uid}", h.handleDomainDelete)
+		r.Post("/domains/{uid}/rescan", h.handleDomainRescan)
+		r.Get("/domains/{uid}/records", h.handleRecordsFragment)
+		r.Get("/domains/{uid}/timeline", h.handleTimelineFragment)
 	})
 
 	return r

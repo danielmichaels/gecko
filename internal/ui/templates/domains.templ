@@ -45,6 +45,7 @@ templ DomainsPage(props DomainsPageProps) {
 					data-on-click={ postWithCSRF("/app/domains", props.Shell.CSRFToken) }
 				>+ Add domain</button>
 			</div>
+			<div id="domain-add-error"></div>
 			<div class="table">
 				<div class="thead">
 					<span>Domain</span>

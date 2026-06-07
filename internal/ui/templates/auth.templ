@@ -38,7 +38,7 @@ templ LoginPage(props LoginPageProps) {
 					<button
 						class="btn"
 						type="button"
-						data-on-click={ postWithCSRF("/app/login", props.CSRFToken) }
+						data-on-click="@post('/app/login')"
 					>Sign in &#x2192;</button>
 				</div>
 				<p class="alt">Got an invite link? <a href="/app/invite">Accept invitation</a></p>
@@ -85,6 +85,8 @@ templ AcceptInvitePage(props AcceptInvitePageProps) {
 						<span class="dot"></span>
 						Joining as <b>{ props.InviteeEmail }</b>
 					</div>
+					<label class="lbl">Display name (optional)</label>
+					<input class="inp" type="text" placeholder="Your name" data-bind="name"/>
 					<label class="lbl">Choose a password</label>
 					<input class="inp" type="password" placeholder="..." data-bind="password"/>
 					<div class="meter">
@@ -93,7 +95,7 @@ templ AcceptInvitePage(props AcceptInvitePageProps) {
 					<button
 						class="btn"
 						type="button"
-						data-on-click={ postWithCSRF("/app/invite", props.CSRFToken) }
+						data-on-click="@post('/app/invite')"
 					>Accept &amp; continue &#x2192;</button>
 				</div>
 			</div>

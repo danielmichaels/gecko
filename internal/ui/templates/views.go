@@ -19,7 +19,7 @@ func deleteRowWithConfirm(url, token string) string {
 
 // inviteSignals returns a JSON signals string for the invite form.
 func inviteSignals(token string) string {
-	return fmt.Sprintf(`{"token":"%s","password":""}`, token)
+	return fmt.Sprintf(`{"token":"%s","password":"","name":""}`, token)
 }
 
 // AppShellProps contains the data needed to render the application shell:
