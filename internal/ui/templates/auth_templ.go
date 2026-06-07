@@ -41,48 +41,35 @@ func LoginPage(props LoginPageProps) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"auth\"><div class=\"auth-aside\"><div><div class=\"brand\" style=\"margin-bottom:30px\"><span class=\"logo\">🦎</span> <span>ge<b>cko</b></span></div><p class=\"big\">See your DNS<br>the way an<br><b>attacker</b> would.</p><p class=\"tagline\">Continuous DNS reconnaissance &amp; misconfiguration assessment across every domain you own.</p></div><div class=\"telemetry\"><div>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var3 string
-			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs("// fleet status")
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/auth.templ`, Line: 16, Col: 29}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</div><div class=\"ok\">&#x25cf; resolvers ......... operational</div><div class=\"ok\">&#x25cf; scan queue ........ 0 backlog</div><div class=\"warn\">&#x25cf; last sweep ........ 2h 14m ago</div></div><div class=\"scan-deco\"></div></div><div class=\"auth-form\"><h2>Sign in</h2><p class=\"lead\">Authenticate to your team workspace.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"auth\"><div class=\"auth-aside\"><div><div class=\"brand\" style=\"margin-bottom:30px\"><span class=\"logo\">🦎</span> <span>ge<b>cko</b></span></div><p class=\"big\">See your DNS<br>the way an<br><b>attacker</b> would.</p><p class=\"tagline\">Continuous DNS reconnaissance &amp; misconfiguration assessment across every domain you own.</p></div><div class=\"scan-deco\"></div></div><div class=\"auth-form\"><h2>Sign in</h2><p class=\"lead\">Authenticate to your team workspace.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if props.Error != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div id=\"login-error\" style=\"color:var(--crit);font-family:var(--mono);font-size:12.5px;background:var(--crit-bg);border:1px solid var(--crit);border-radius:8px;padding:10px 14px;margin-bottom:12px;\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div id=\"login-error\" style=\"color:var(--crit);font-family:var(--mono);font-size:12.5px;background:var(--crit-bg);border:1px solid var(--crit);border-radius:8px;padding:10px 14px;margin-bottom:12px;\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var4 string
-				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(props.Error)
+				var templ_7745c5c3_Var3 string
+				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(props.Error)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/auth.templ`, Line: 28, Col: 19}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/auth.templ`, Line: 22, Col: 19}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<div id=\"login-error\" style=\"display:none\"></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<div id=\"login-error\" style=\"display:none\"></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<div data-signals='{\"email\":\"\",\"password\":\"\"}'><label class=\"lbl\">Email</label> <input class=\"inp\" type=\"email\" placeholder=\"you@example.com\" data-bind=\"email\"> <label class=\"lbl\">Password</label> <input class=\"inp\" type=\"password\" placeholder=\"...\" data-bind=\"password\"> <button class=\"btn\" type=\"button\" data-on-click=\"@post('/app/login')\">Sign in &#x2192;</button></div><p class=\"alt\">Got an invite link? <a href=\"/app/invite\">Accept invitation</a></p></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<div data-signals='{\"email\":\"\",\"password\":\"\"}'><label class=\"lbl\">Email</label> <input class=\"inp\" type=\"email\" placeholder=\"you@example.com\" data-bind=\"email\"> <label class=\"lbl\">Password</label> <input class=\"inp\" type=\"password\" placeholder=\"...\" data-bind=\"password\"> <button class=\"btn\" type=\"button\" data-on-click=\"@post('/app/login')\">Sign in &#x2192;</button></div></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -112,12 +99,12 @@ func AcceptInvitePage(props AcceptInvitePageProps) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var5 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var5 == nil {
-			templ_7745c5c3_Var5 = templ.NopComponent
+		templ_7745c5c3_Var4 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var4 == nil {
+			templ_7745c5c3_Var4 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Var6 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_Var5 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 			templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 			templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
 			if !templ_7745c5c3_IsBuffer {
@@ -129,158 +116,158 @@ func AcceptInvitePage(props AcceptInvitePageProps) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<div class=\"auth\"><div class=\"auth-aside\"><div><div class=\"brand\" style=\"margin-bottom:30px\"><span class=\"logo\">🦎</span> <span>ge<b>cko</b></span></div><p class=\"big\">You&#39;ve been<br>invited to<br><b>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<div class=\"auth\"><div class=\"auth-aside\"><div><div class=\"brand\" style=\"margin-bottom:30px\"><span class=\"logo\">🦎</span> <span>ge<b>cko</b></span></div><p class=\"big\">You&#39;ve been<br>invited to<br><b>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var6 string
+			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(props.TenantName)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/auth.templ`, Line: 53, Col: 62}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</b>.</p><p class=\"tagline\">Set a password to join the workspace and start tracking your team&#39;s domains.</p></div><div class=\"telemetry\"><div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var7 string
-			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(props.TenantName)
+			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs("// invitation")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/auth.templ`, Line: 60, Col: 62}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/auth.templ`, Line: 58, Col: 27}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</b>.</p><p class=\"tagline\">Set a password to join the workspace and start tracking your team&#39;s domains.</p></div><div class=\"telemetry\"><div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</div><div>token .......... ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var8 string
-			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs("// invitation")
+			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(props.Token)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/auth.templ`, Line: 65, Col: 27}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/auth.templ`, Line: 59, Col: 40}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</div><div>token .......... ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, " (valid)</div><div class=\"warn\">expires ........ ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var9 string
-			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(props.Token)
+			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(props.Expiry)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/auth.templ`, Line: 66, Col: 40}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/auth.templ`, Line: 60, Col: 54}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, " (valid)</div><div class=\"warn\">expires ........ ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</div></div><div class=\"scan-deco\"></div></div><div class=\"auth-form\"><h2>Join ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var10 string
-			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(props.Expiry)
+			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(props.TenantName)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/auth.templ`, Line: 67, Col: 54}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/auth.templ`, Line: 65, Col: 31}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</div></div><div class=\"scan-deco\"></div></div><div class=\"auth-form\"><h2>Join ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</h2><p class=\"lead\">Invited by <b style=\"color:var(--txt)\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var11 string
-			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(props.TenantName)
+			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(props.InviterEmail)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/auth.templ`, Line: 72, Col: 31}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/auth.templ`, Line: 67, Col: 64}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</h2><p class=\"lead\">Invited by <b style=\"color:var(--txt)\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</b> as <b style=\"color:var(--brand)\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var12 string
-			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(props.InviterEmail)
+			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(props.Role)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/auth.templ`, Line: 74, Col: 64}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/auth.templ`, Line: 67, Col: 116}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</b> as <b style=\"color:var(--brand)\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var13 string
-			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(props.Role)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/auth.templ`, Line: 74, Col: 116}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</b>.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</b>.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if props.Error != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<div id=\"invite-error\" style=\"color:var(--crit);font-family:var(--mono);font-size:12.5px;background:var(--crit-bg);border:1px solid var(--crit);border-radius:8px;padding:10px 14px;margin-bottom:12px;\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<div id=\"invite-error\" style=\"color:var(--crit);font-family:var(--mono);font-size:12.5px;background:var(--crit-bg);border:1px solid var(--crit);border-radius:8px;padding:10px 14px;margin-bottom:12px;\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var14 string
-				templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(props.Error)
+				var templ_7745c5c3_Var13 string
+				templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(props.Error)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/auth.templ`, Line: 78, Col: 19}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/auth.templ`, Line: 71, Col: 19}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<div id=\"invite-error\" style=\"display:none\"></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "<div id=\"invite-error\" style=\"display:none\"></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<div data-signals=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<div data-signals=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var14 string
+			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(inviteSignals(props.Token))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/auth.templ`, Line: 76, Col: 50}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\"><div class=\"invite-card\"><span class=\"dot\"></span> Joining as <b>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var15 string
-			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(inviteSignals(props.Token))
+			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(props.InviteeEmail)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/auth.templ`, Line: 83, Col: 50}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/auth.templ`, Line: 79, Col: 40}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "\"><div class=\"invite-card\"><span class=\"dot\"></span> Joining as <b>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var16 string
-			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(props.InviteeEmail)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/auth.templ`, Line: 86, Col: 40}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</b></div><label class=\"lbl\">Display name (optional)</label> <input class=\"inp\" type=\"text\" placeholder=\"Your name\" data-bind=\"name\"> <label class=\"lbl\">Choose a password</label> <input class=\"inp\" type=\"password\" placeholder=\"...\" data-bind=\"password\"><div class=\"meter\"><i></i><i></i><i></i><i></i><i></i></div><button class=\"btn\" type=\"button\" data-on-click=\"@post('/app/invite')\">Accept &amp; continue &#x2192;</button></div></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</b></div><label class=\"lbl\">Display name (optional)</label> <input class=\"inp\" type=\"text\" placeholder=\"Your name\" data-bind=\"name\"> <label class=\"lbl\">Choose a password</label> <input class=\"inp\" type=\"password\" placeholder=\"...\" data-bind=\"password\"><div class=\"meter\"><i></i><i></i><i></i><i></i><i></i></div><button class=\"btn\" type=\"button\" data-on-click=\"@post('/app/invite')\">Accept &amp; continue &#x2192;</button></div></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = Page("gecko - Accept invitation").Render(templ.WithChildren(ctx, templ_7745c5c3_Var6), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = Page("gecko - Accept invitation").Render(templ.WithChildren(ctx, templ_7745c5c3_Var5), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

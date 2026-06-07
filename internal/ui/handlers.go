@@ -52,6 +52,9 @@ func (h *Handlers) Routes() http.Handler {
 	r := chi.NewRouter()
 
 	// Public routes — no auth, no CSRF.
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/app/domains", http.StatusSeeOther)
+	})
 	r.Get("/login", h.handleLoginGet)
 	r.Post("/login", h.handleLoginPost)
 	r.Get("/invite", h.handleInviteGet)

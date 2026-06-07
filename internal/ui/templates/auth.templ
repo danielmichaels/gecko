@@ -12,12 +12,6 @@ templ LoginPage(props LoginPageProps) {
 					<p class="big">See your DNS<br/>the way an<br/><b>attacker</b> would.</p>
 					<p class="tagline">Continuous DNS reconnaissance &amp; misconfiguration assessment across every domain you own.</p>
 				</div>
-				<div class="telemetry">
-					<div>{ "// fleet status" }</div>
-					<div class="ok">&#x25cf; resolvers ......... operational</div>
-					<div class="ok">&#x25cf; scan queue ........ 0 backlog</div>
-					<div class="warn">&#x25cf; last sweep ........ 2h 14m ago</div>
-				</div>
 				<div class="scan-deco"></div>
 			</div>
 			<div class="auth-form">
@@ -41,7 +35,6 @@ templ LoginPage(props LoginPageProps) {
 						data-on-click="@post('/app/login')"
 					>Sign in &#x2192;</button>
 				</div>
-				<p class="alt">Got an invite link? <a href="/app/invite">Accept invitation</a></p>
 			</div>
 		</div>
 	}

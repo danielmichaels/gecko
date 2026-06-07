@@ -366,6 +366,27 @@ func TestHandlerDomains_Unauthenticated(t *testing.T) {
 	}
 }
 
+func TestHandlerRoot_RedirectsToDomains(t *testing.T) {
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+
+	for _, path := range []string{"/app", "/app/"} {
+		rr := h.do(t, http.MethodGet, path, nil, "", "")
+		if rr.Code != http.StatusSeeOther {
+			t.Fatalf("GET %s: want 303, got %d", path, rr.Code)
+		}
+		if loc := rr.Header().Get("Location"); loc != "/app/domains" {
+			t.Errorf("GET %s: want redirect to /app/domains, got %q", path, loc)
+		}
+	}
+}
+
 func TestHandlerDomains_Authenticated(t *testing.T) {
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)

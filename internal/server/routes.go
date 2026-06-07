@@ -46,6 +46,9 @@ func (app *Server) routes() http.Handler {
 	router.Handle("/static/*", fileServer)
 
 	router.Mount("/app", app.UIHandlers.Routes())
+	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/app/domains", http.StatusSeeOther)
+	})
 
 	return router
 }
