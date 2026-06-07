@@ -69,7 +69,7 @@ func LoginPage(props LoginPageProps) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<div data-signals='{\"email\":\"\",\"password\":\"\"}'><label class=\"lbl\">Email</label> <input class=\"inp\" type=\"email\" placeholder=\"you@example.com\" data-bind=\"email\"> <label class=\"lbl\">Password</label> <input class=\"inp\" type=\"password\" placeholder=\"...\" data-bind=\"password\"> <button class=\"btn\" type=\"button\" data-on-click=\"@post('/app/login')\">Sign in &#x2192;</button></div></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<div data-signals='{\"email\":\"\",\"password\":\"\"}'><label class=\"lbl\">Email</label> <input class=\"inp\" type=\"email\" placeholder=\"you@example.com\" data-bind=\"email\"> <label class=\"lbl\">Password</label> <input class=\"inp\" type=\"password\" placeholder=\"...\" data-bind=\"password\"> <button class=\"btn\" type=\"button\" data-on:click=\"@post('/app/login')\">Sign in &#x2192;</button></div></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -261,7 +261,7 @@ func AcceptInvitePage(props AcceptInvitePageProps) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</b></div><label class=\"lbl\">Display name (optional)</label> <input class=\"inp\" type=\"text\" placeholder=\"Your name\" data-bind=\"name\"> <label class=\"lbl\">Choose a password</label> <input class=\"inp\" type=\"password\" placeholder=\"...\" data-bind=\"password\"><div class=\"meter\"><i></i><i></i><i></i><i></i><i></i></div><button class=\"btn\" type=\"button\" data-on-click=\"@post('/app/invite')\">Accept &amp; continue &#x2192;</button></div></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</b></div><label class=\"lbl\">Display name (optional)</label> <input class=\"inp\" type=\"text\" placeholder=\"Your name\" data-bind=\"name\"> <label class=\"lbl\">Choose a password</label> <input class=\"inp\" type=\"password\" placeholder=\"...\" data-bind=\"password\"><div class=\"meter\"><i></i><i></i><i></i><i></i><i></i></div><button class=\"btn\" type=\"button\" data-on:click=\"@post('/app/invite')\">Accept &amp; continue &#x2192;</button></div></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

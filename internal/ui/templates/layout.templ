@@ -35,7 +35,7 @@ templ AppShell(props AppShellProps) {
 					method="POST"
 					action="/app/logout"
 					style="display:inline"
-					data-on-submit__prevent={ postWithCSRF("/app/logout", props.CSRFToken) }
+					data-on:submit__prevent={ postWithCSRF("/app/logout", props.CSRFToken) }
 				>
 					<button type="submit" class="user-chip" style="background:transparent;border:1px solid var(--line);cursor:pointer">
 						<span class="avatar">{ props.UserInitials }</span>

@@ -21,8 +21,13 @@ func TestLoginPageRender(t *testing.T) {
 	if !strings.Contains(out, "Sign in") {
 		t.Error("expected 'Sign in' in LoginPage output")
 	}
-	if !strings.Contains(out, "fleet status") {
-		t.Error("expected 'fleet status' in LoginPage output")
+	// Guards the datastar event-binding syntax: the keyed `on` plugin needs a
+	// colon (data-on:click), not a hyphen — the hyphen form silently binds
+	// nothing and the form does nothing on click.
+	if !strings.Contains(out, `data-on:click="@post('/app/login')"`) {
+		t.Error(
+			"expected colon-form datastar submit binding data-on:click=\"@post('/app/login')\" in LoginPage output",
+		)
 	}
 	if !strings.Contains(out, "/static/app.css") {
 		t.Error("expected '/static/app.css' link in LoginPage output")

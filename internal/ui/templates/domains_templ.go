@@ -92,7 +92,7 @@ func DomainsPage(props DomainsPageProps) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, " warnings</div></div><button class=\"btn-ghost btn\" type=\"button\" data-on-click=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, " warnings</div></div><button class=\"btn-ghost btn\" type=\"button\" data-on:click=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -157,7 +157,7 @@ func DomainsPage(props DomainsPageProps) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, " <small>total</small></div></div></div><div class=\"addbar\" data-signals='{\"newDomain\":\"\"}'><div class=\"field\"><span class=\"pfx\">domain ⟶</span> <input placeholder=\"add a domain, e.g. example.com\" data-bind=\"newDomain\"></div><button class=\"btn\" type=\"button\" data-on-click=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, " <small>total</small></div></div></div><div class=\"addbar\" data-signals='{\"newDomain\":\"\"}'><div class=\"field\"><span class=\"pfx\">domain ⟶</span> <input placeholder=\"add a domain, e.g. example.com\" data-bind=\"newDomain\"></div><button class=\"btn\" type=\"button\" data-on:click=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -345,7 +345,7 @@ func DomainRow(d DomainRowView, csrfToken string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</span></a> <span class=\"chev\" style=\"display:flex;align-items:center;gap:8px;justify-content:flex-end\"><button type=\"button\" style=\"background:transparent;border:0;color:var(--txt-faint);cursor:pointer;font-size:13px;padding:2px 6px;border-radius:4px\" data-on-click=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</span></a> <span class=\"chev\" style=\"display:flex;align-items:center;gap:8px;justify-content:flex-end\"><button type=\"button\" style=\"background:transparent;border:0;color:var(--txt-faint);cursor:pointer;font-size:13px;padding:2px 6px;border-radius:4px\" data-on:click=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

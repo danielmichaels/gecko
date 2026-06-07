@@ -13,7 +13,7 @@ templ DomainsPage(props DomainsPageProps) {
 				<button
 					class="btn-ghost btn"
 					type="button"
-					data-on-click={ postWithCSRF("/app/domains/rescan", props.Shell.CSRFToken) }
+					data-on:click={ postWithCSRF("/app/domains/rescan", props.Shell.CSRFToken) }
 				>⟳ Rescan all</button>
 			</div>
 			<div class="stats">
@@ -42,7 +42,7 @@ templ DomainsPage(props DomainsPageProps) {
 				<button
 					class="btn"
 					type="button"
-					data-on-click={ postWithCSRF("/app/domains", props.Shell.CSRFToken) }
+					data-on:click={ postWithCSRF("/app/domains", props.Shell.CSRFToken) }
 				>+ Add domain</button>
 			</div>
 			<div id="domain-add-error"></div>
@@ -89,7 +89,7 @@ templ DomainRow(d DomainRowView, csrfToken string) {
 			<button
 				type="button"
 				style="background:transparent;border:0;color:var(--txt-faint);cursor:pointer;font-size:13px;padding:2px 6px;border-radius:4px"
-				data-on-click={ deleteRowWithConfirm("/app/domains/"+d.UID, csrfToken) }
+				data-on:click={ deleteRowWithConfirm("/app/domains/"+d.UID, csrfToken) }
 			>✕</button>
 			→
 		</span>

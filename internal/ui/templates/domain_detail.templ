@@ -19,7 +19,7 @@ templ DomainDetailPage(props DomainDetailPageProps) {
 				<button
 					class="btn"
 					type="button"
-					data-on-click={ postWithCSRF("/app/domains/"+props.UID+"/rescan", props.Shell.CSRFToken) }
+					data-on:click={ postWithCSRF("/app/domains/"+props.UID+"/rescan", props.Shell.CSRFToken) }
 				>⟳ Rescan</button>
 			</div>
 			<div class="tabs">

@@ -22,7 +22,7 @@ templ ContentError(props ContentErrorProps) {
 		<button
 			class="btn-ghost btn"
 			type="button"
-			data-on-click={ "@get('" + props.RetryURL + "')" }
+			data-on:click={ "@get('" + props.RetryURL + "')" }
 		>⟳ Retry</button>
 	</div>
 }
