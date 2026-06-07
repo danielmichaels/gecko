@@ -1,0 +1,96 @@
+package templates
+
+templ DomainsPage(props DomainsPageProps) {
+	@Page("gecko · Domains") {
+		@AppShell(props.Shell) {
+			<div class="page-head">
+				<div>
+					<h1>Domains</h1>
+					<div class="sub">
+						{ props.Stats.Tracked } tracked · { props.Stats.Critical } critical · { props.Stats.Warnings } warnings
+					</div>
+				</div>
+				<button
+					class="btn-ghost btn"
+					type="button"
+					data-on-click={ postWithCSRF("/app/domains/rescan", props.Shell.CSRFToken) }
+				>⟳ Rescan all</button>
+			</div>
+			<div class="stats">
+				<div class="stat">
+					<div class="k">Tracked</div>
+					<div class="v">{ props.Stats.Tracked }</div>
+				</div>
+				<div class="stat">
+					<div class="k">Critical</div>
+					<div class="v" style="color:var(--crit)">{ props.Stats.Critical }</div>
+				</div>
+				<div class="stat">
+					<div class="k">Warnings</div>
+					<div class="v" style="color:var(--warn)">{ props.Stats.Warnings }</div>
+				</div>
+				<div class="stat">
+					<div class="k">Records</div>
+					<div class="v">{ props.Stats.Records } <small>total</small></div>
+				</div>
+			</div>
+			<div class="addbar" data-signals='{"newDomain":""}'>
+				<div class="field">
+					<span class="pfx">domain ⟶</span>
+					<input placeholder="add a domain, e.g. example.com" data-bind="newDomain"/>
+				</div>
+				<button
+					class="btn"
+					type="button"
+					data-on-click={ postWithCSRF("/app/domains", props.Shell.CSRFToken) }
+				>+ Add domain</button>
+			</div>
+			<div class="table">
+				<div class="thead">
+					<span>Domain</span>
+					<span>Records</span>
+					<span>Findings</span>
+					<span>Last scan</span>
+					<span></span>
+				</div>
+				<div id="domains-rows">
+					for _, d := range props.Domains {
+						@DomainRow(d, props.Shell.CSRFToken)
+					}
+				</div>
+			</div>
+		}
+	}
+}
+
+templ DomainRow(d DomainRowView, csrfToken string) {
+	<div
+		class={ "trow", d.Severity }
+		id={ "domain-row-" + d.UID }
+	>
+		<a href={ templ.SafeURL("/app/domains/" + d.UID) } style="display:contents;text-decoration:none;color:inherit">
+			<div class="dname">
+				<span class="sdot"></span>
+				<span class="n">{ d.Name }</span>
+			</div>
+			<span class="cell-mono">{ d.RecordCount }</span>
+			<span>
+				<span class={ "badge", d.FindingsSeverity }>
+					if d.FindingsSeverity == "info" && d.FindingsLabel == "scanning" {
+						<span class="pulse"></span>
+					}
+					{ d.FindingsLabel }
+				</span>
+			</span>
+			<span class="cell-mono">{ d.LastScan }</span>
+		</a>
+		<span class="chev" style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
+			<button
+				type="button"
+				style="background:transparent;border:0;color:var(--txt-faint);cursor:pointer;font-size:13px;padding:2px 6px;border-radius:4px"
+				data-on-click={ deleteRowWithConfirm("/app/domains/"+d.UID, csrfToken) }
+			>✕</button>
+			→
+		</span>
+	</div>
+}

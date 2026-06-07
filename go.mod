@@ -4,6 +4,7 @@ go 1.26.3
 
 require (
 	github.com/MatusOllah/slogcolor v1.5.0
+	github.com/a-h/templ v0.3.977
 	github.com/alecthomas/kong v1.8.1
 	github.com/alecthomas/kong-yaml v0.2.0
 	github.com/briandowns/spinner v1.23.2
@@ -76,7 +77,6 @@ require (
 	github.com/evanphx/json-patch/v5 v5.9.0 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
-	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
 	github.com/gaissmai/bart v0.26.1 // indirect
 	github.com/go-logr/logr v1.4.1 // indirect

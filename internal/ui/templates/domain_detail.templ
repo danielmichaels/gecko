@@ -1,0 +1,104 @@
+package templates
+
+templ DomainDetailPage(props DomainDetailPageProps) {
+	@Page("gecko · " + props.Name) {
+		@AppShell(props.Shell) {
+			<div class="detail-head">
+				<a class="back" href="/app/domains">← domains</a>
+			</div>
+			<div class="detail-title">
+				<span class="sdot" style={ "background:var(--" + props.Severity + ");box-shadow:0 0 12px var(--" + props.Severity + ")" }></span>
+				<h1>{ props.Name }</h1>
+				if props.FindingsCount != "" && props.FindingsCount != "0" {
+					<span class="badge crit">{ props.FindingsCount } critical</span>
+				}
+				<span class="badge info">{ props.RecordCount } records</span>
+			</div>
+			<div class="page-head" style="margin-top:-6px">
+				<div class="sub">{ props.Type } · { props.Source } · added { props.Added } · scanned { props.Scanned }</div>
+				<button
+					class="btn"
+					type="button"
+					data-on-click={ postWithCSRF("/app/domains/"+props.UID+"/rescan", props.Shell.CSRFToken) }
+				>⟳ Rescan</button>
+			</div>
+			<div class="tabs">
+				<a class="active" href={ templ.SafeURL("/app/domains/" + props.UID + "#records") }>Records</a>
+				<a href={ templ.SafeURL("/app/domains/" + props.UID + "#timeline") }>Timeline</a>
+				<a href={ templ.SafeURL("/app/domains/" + props.UID + "#findings") }>
+					Findings
+					if props.FindingsCount != "" && props.FindingsCount != "0" {
+						<span style="color:var(--crit)">·{ props.FindingsCount }</span>
+					}
+				</a>
+			</div>
+			<div class="detail-grid">
+				<div class="panel" id="records-panel">
+					<div
+						id="records-content"
+						data-on-intersect__once={ "@get('/app/domains/" + props.UID + "/records')" }
+					>
+						<div class="panel-h">DNS records <span class="count">loading…</span></div>
+						@recordsSkeleton()
+					</div>
+				</div>
+				<div class="panel" id="timeline-panel">
+					<div
+						id="timeline-content"
+						data-on-intersect__once={ "@get('/app/domains/" + props.UID + "/timeline')" }
+					>
+						<div class="panel-h">Change timeline <span class="count">loading…</span></div>
+						@timelineSkeleton()
+					</div>
+				</div>
+			</div>
+		}
+	}
+}
+
+templ recordsSkeleton() {
+	<div style="padding:16px">
+		<div style="height:16px;background:var(--panel-2);border-radius:4px;margin-bottom:10px;width:80%"></div>
+		<div style="height:16px;background:var(--panel-2);border-radius:4px;margin-bottom:10px;width:60%"></div>
+		<div style="height:16px;background:var(--panel-2);border-radius:4px;margin-bottom:10px;width:70%"></div>
+	</div>
+}
+
+templ timelineSkeleton() {
+	<div style="padding:16px">
+		<div style="height:16px;background:var(--panel-2);border-radius:4px;margin-bottom:10px;width:75%"></div>
+		<div style="height:16px;background:var(--panel-2);border-radius:4px;margin-bottom:10px;width:55%"></div>
+	</div>
+}
+
+templ RecordsTable(v RecordsView) {
+	<div class="panel-h">{ v.Title } <span class="count">{ v.Count }</span></div>
+	for _, r := range v.Rows {
+		if r.Flagged {
+			<div class="rec flag">
+				<span class="type">{ r.Type }</span>
+				<span class="val">{ r.Value }</span>
+				<span class="ttl">{ r.TTL }</span>
+			</div>
+		} else {
+			<div class="rec">
+				<span class="type">{ r.Type }</span>
+				<span class="val">{ r.Value }</span>
+				<span class="ttl">{ r.TTL }</span>
+			</div>
+		}
+	}
+}
+
+templ Timeline(v TimelineView) {
+	<div class="panel-h">Change timeline <span class="count">grouped by scan</span></div>
+	<div class="tl">
+		for _, item := range v.Groups {
+			<div class={ "tl-item", item.Kind }>
+				<span class="dot"></span>
+				<div class="when">{ item.When }</div>
+				<div class="what">{ item.What }</div>
+			</div>
+		}
+	</div>
+}

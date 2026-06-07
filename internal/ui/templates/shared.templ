@@ -1,0 +1,28 @@
+package templates
+
+templ ComingSoon(props ComingSoonProps) {
+	@Page("gecko · " + props.Title) {
+		@AppShell(props.Shell) {
+			<div class="soon-wrap">
+				<div>
+					<div class="soon-glyph">{ props.Glyph }</div>
+					<div style="margin-top:18px"><span class="soon-badge">On the roadmap</span></div>
+					<h2>{ props.Title }</h2>
+					<p>{ props.Blurb }</p>
+				</div>
+			</div>
+		}
+	}
+}
+
+templ ContentError(props ContentErrorProps) {
+	<div style="display:grid;place-items:center;padding:40px;text-align:center">
+		<div style="font-size:32px;margin-bottom:16px">⚠</div>
+		<p style="color:var(--txt-dim);font-family:var(--mono);font-size:13px;margin-bottom:20px">{ props.Message }</p>
+		<button
+			class="btn-ghost btn"
+			type="button"
+			data-on-click={ "@get('" + props.RetryURL + "')" }
+		>⟳ Retry</button>
+	</div>
+}

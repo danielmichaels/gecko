@@ -1,0 +1,98 @@
+package templates
+
+templ Page(title string) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ title }</title>
+			<link rel="preconnect" href="https://fonts.googleapis.com"/>
+			<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+			<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+			<link rel="stylesheet" href="/static/app.css"/>
+			<script type="module" src="/static/datastar.js"></script>
+		</head>
+		<body>
+			{ children... }
+		</body>
+	</html>
+}
+
+templ AppShell(props AppShellProps) {
+	<div class="app">
+		<div class="topbar">
+			<div class="brand">
+				<span class="logo">🦎</span>
+				<span>ge<b>cko</b></span>
+			</div>
+			<div class="topbar-right">
+				<div class="tenant-chip">
+					<span class="dot"></span>
+					{ props.TenantName }
+				</div>
+				<form
+					method="POST"
+					action="/app/logout"
+					style="display:inline"
+					data-on-submit__prevent={ postWithCSRF("/app/logout", props.CSRFToken) }
+				>
+					<button type="submit" class="user-chip" style="background:transparent;border:1px solid var(--line);cursor:pointer">
+						<span class="avatar">{ props.UserInitials }</span>
+						<span>{ props.UserEmail } ▾</span>
+					</button>
+				</form>
+			</div>
+		</div>
+		<nav class="side">
+			<div class="nav-label">Monitor</div>
+			<div class="nav">
+				if props.ActiveNav == "domains" {
+					<a class="active" href="/app/domains"><span class="ico">◳</span> Domains</a>
+				} else {
+					<a href="/app/domains"><span class="ico">◳</span> Domains</a>
+				}
+				if props.ActiveNav == "findings" {
+					<a class="active" href="/app/findings"><span class="ico">⚠</span> Findings</a>
+				} else {
+					<a class="soon" href="/app/findings"><span class="ico">⚠</span> Findings <span class="soon-tag">SOON</span></a>
+				}
+				if props.ActiveNav == "scans" {
+					<a class="active" href="/app/scans"><span class="ico">◎</span> Scans</a>
+				} else {
+					<a class="soon" href="/app/scans"><span class="ico">◎</span> Scans <span class="soon-tag">SOON</span></a>
+				}
+			</div>
+			<div class="nav-label" style="margin-top:18px">Workspace</div>
+			<div class="nav">
+				if props.ActiveNav == "dashboard" {
+					<a class="active" href="/app/dashboard"><span class="ico">⊞</span> Dashboard</a>
+				} else {
+					<a class="soon" href="/app/dashboard"><span class="ico">⊞</span> Dashboard <span class="soon-tag">SOON</span></a>
+				}
+				if props.ActiveNav == "team" {
+					<a class="active" href="/app/team"><span class="ico">⊕</span> Team</a>
+				} else {
+					<a class="soon" href="/app/team"><span class="ico">⊕</span> Team <span class="soon-tag">SOON</span></a>
+				}
+				if props.ActiveNav == "settings" {
+					<a class="active" href="/app/settings"><span class="ico">⚙</span> Settings</a>
+				} else {
+					<a class="soon" href="/app/settings"><span class="ico">⚙</span> Settings <span class="soon-tag">SOON</span></a>
+				}
+			</div>
+			<div class="side-foot">
+				{ props.AppVersion }
+				<br/>
+				if props.ResolverOK {
+					<span class="ok">● resolvers ok</span>
+				} else {
+					<span style="color:var(--crit)">● resolvers degraded</span>
+				}
+			</div>
+		</nav>
+		<main class="main">
+			{ children... }
+		</main>
+	</div>
+}
