@@ -24,8 +24,6 @@ import (
 
 type Globals struct {
 	ServerURL  string          `help:"Server URL"`
-	Username   string          `help:"Email/username for 'auth login'"`
-	Password   string          `help:"Password for 'auth login'"`
 	APIKey     string          `name:"api-key" env:"GECKO_API_KEY" help:"API key for authenticated requests (or run 'gecko auth login')"`
 	ConfigFile kong.ConfigFlag `short:"c" help:"Location of client config files" type:"yamlfile" default:"${config_path}"`
 	Format     string          `short:"f" help:"Output format - use 'json' for parsing output consistently" default:"text" enum:"text,json"`
