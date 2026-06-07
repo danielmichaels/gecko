@@ -6,10 +6,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/danielmichaels/gecko/internal/auth"
-	"github.com/danielmichaels/gecko/internal/store"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/danielmichaels/gecko/internal/service"
 )
 
 type CreateInviteInput struct {
@@ -29,9 +26,6 @@ type CreateInviteOutput struct {
 }
 
 // handleInviteCreate issues an invitation for a new teammate. Owner/manager only.
-// Single-tenant emails: an already-registered email is rejected 409 before a token
-// is minted; a stale expired invite for the same email is cleared first, while a
-// still-live one collides on the partial unique index (409).
 func (app *Server) handleInviteCreate(
 	ctx context.Context,
 	i *CreateInviteInput,
@@ -40,52 +34,25 @@ func (app *Server) handleInviteCreate(
 	if err != nil {
 		return nil, err
 	}
-	if err := ownerOrManager(p); err != nil {
-		return nil, err
-	}
-	if err := requireCanGrant(p, i.Body.Role); err != nil {
-		return nil, err
-	}
-	email := normaliseEmail(i.Body.Email)
-
-	if _, err := app.Db.UserGetByEmail(ctx, email); err == nil {
-		return nil, huma.Error409Conflict("email already registered")
-	} else if !errors.Is(err, pgx.ErrNoRows) {
-		return nil, huma.Error500InternalServerError("failed to create invitation", err)
-	}
-
-	if err := app.Db.InvitationExpiredDelete(ctx, store.InvitationExpiredDeleteParams{
-		TenantID: p.TenantID,
-		Email:    email,
-	}); err != nil {
-		return nil, huma.Error500InternalServerError("failed to create invitation", err)
-	}
-
-	token, err := auth.GenerateToken()
+	result, err := app.Svc.InvitationsService().Create(ctx, p, service.InvitationsCreateParams{
+		Email: i.Body.Email,
+		Role:  i.Body.Role,
+	})
 	if err != nil {
-		return nil, huma.Error500InternalServerError("failed to create invitation", err)
-	}
-	expiresAt := time.Now().Add(app.Conf.Auth.InviteTTL)
-
-	if _, err := app.Db.InvitationCreate(ctx, store.InvitationCreateParams{
-		TenantID:  p.TenantID,
-		Email:     email,
-		Role:      store.UserRole(i.Body.Role),
-		TokenHash: auth.HashToken(token),
-		InvitedBy: pgtype.Int4{Int32: p.UserID, Valid: true},
-		ExpiresAt: pgtype.Timestamptz{Time: expiresAt, Valid: true},
-	}); err != nil {
-		if isUniqueViolation(err) {
-			return nil, huma.Error409Conflict("an invitation for this email is already pending")
+		switch {
+		case errors.Is(err, service.ErrForbidden):
+			return nil, huma.Error403Forbidden(err.Error())
+		case errors.Is(err, service.ErrConflict):
+			return nil, huma.Error409Conflict(err.Error())
+		default:
+			return nil, huma.Error500InternalServerError("failed to create invitation", err)
 		}
-		return nil, huma.Error500InternalServerError("failed to create invitation", err)
 	}
-
 	out := &CreateInviteOutput{}
-	out.Body.Token = token
-	out.Body.Email = email
-	out.Body.Role = i.Body.Role
-	out.Body.ExpiresAt = expiresAt
+	out.Body.Token = result.Token
+	out.Body.Email = result.Email
+	out.Body.Role = result.Role
+	out.Body.ExpiresAt = result.ExpiresAt
 	return out, nil
 }
 
@@ -110,7 +77,7 @@ func (app *Server) handleInviteList(ctx context.Context, _ *struct{}) (*ListInvi
 	if err != nil {
 		return nil, err
 	}
-	rows, err := app.Db.InvitationsListByTenant(ctx, p.TenantID)
+	rows, err := app.Svc.InvitationsService().List(ctx, p)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to list invitations", err)
 	}
@@ -142,14 +109,15 @@ func (app *Server) handleInviteRevoke(
 	if err != nil {
 		return nil, err
 	}
-	if err := ownerOrManager(p); err != nil {
-		return nil, err
-	}
-	if _, err := app.Db.InvitationRevoke(ctx, store.InvitationRevokeParams{
-		Uid:      i.UID,
-		TenantID: p.TenantID,
-	}); err != nil {
-		return nil, huma.Error404NotFound("invitation not found")
+	if err := app.Svc.InvitationsService().Revoke(ctx, p, i.UID); err != nil {
+		switch {
+		case errors.Is(err, service.ErrForbidden):
+			return nil, huma.Error403Forbidden(err.Error())
+		case errors.Is(err, service.ErrNotFound):
+			return nil, huma.Error404NotFound(err.Error())
+		default:
+			return nil, huma.Error500InternalServerError("failed to revoke invitation", err)
+		}
 	}
 	return &struct{}{}, nil
 }

@@ -115,6 +115,16 @@ func (s *Service) UsersService() *UsersService {
 	return &UsersService{s}
 }
 
+// InvitationsService returns the Invitations sub-service.
+func (s *Service) InvitationsService() *InvitationsService {
+	return &InvitationsService{s}
+}
+
+// APIKeysService returns the APIKeys sub-service.
+func (s *Service) APIKeysService() *APIKeysService {
+	return &APIKeysService{s}
+}
+
 // riverScheduler is the production DomainScanScheduler that delegates to
 // jobs.EnqueueDomainScan with the same options the former scheduleUserDomainScan used.
 type riverScheduler struct {

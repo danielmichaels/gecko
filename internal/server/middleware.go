@@ -6,7 +6,6 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielmichaels/gecko/internal/auth"
-	"github.com/danielmichaels/gecko/internal/store"
 )
 
 type contextKey string
@@ -60,37 +59,4 @@ func principalOrErr(ctx context.Context) (*auth.Principal, error) {
 func apiKeyUIDFromContext(ctx context.Context) (string, bool) {
 	uid, ok := ctx.Value(apiKeyUIDKey).(string)
 	return uid, ok
-}
-
-// requireRole returns a 403 error unless the principal holds one of the given roles.
-// huma does not enforce security scopes, so role gating happens here in Go.
-func requireRole(p *auth.Principal, roles ...string) error {
-	for _, r := range roles {
-		if p.Role == r {
-			return nil
-		}
-	}
-	return huma.Error403Forbidden("insufficient permissions")
-}
-
-// roleRank orders roles by privilege; a higher number outranks a lower one. An
-// unknown role ranks 0, so the grant check below fails closed for it. superadmin is
-// included to outrank owner even though the API never assigns it.
-var roleRank = map[string]int{
-	string(store.UserRoleViewer):     1,
-	string(store.UserRoleManager):    2,
-	string(store.UserRoleOwner):      3,
-	string(store.UserRoleSuperadmin): 4,
-}
-
-// requireCanGrant returns 403 unless the principal may assign target — an actor can
-// never grant a role above their own. This complements ownerOrManager: that gate
-// decides who may manage members, this caps how high they may promote, closing the
-// manager→owner escalation (including self-promotion, where target outranks the
-// manager's own role).
-func requireCanGrant(p *auth.Principal, target string) error {
-	if roleRank[p.Role] < roleRank[target] {
-		return huma.Error403Forbidden("cannot grant a role above your own")
-	}
-	return nil
 }

@@ -2,18 +2,13 @@ package server
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/danielmichaels/gecko/internal/auth"
-	"github.com/danielmichaels/gecko/internal/store"
+	"github.com/danielmichaels/gecko/internal/service"
 	"github.com/jackc/pgx/v5/pgtype"
 )
-
-// ownerOrManager gates an action to owners and managers.
-func ownerOrManager(p *auth.Principal) error {
-	return requireRole(p, string(store.UserRoleOwner), string(store.UserRoleManager))
-}
 
 func tsPtr(t pgtype.Timestamptz) *time.Time {
 	if !t.Valid {
@@ -47,18 +42,20 @@ func (app *Server) handleAPIKeyCreate(
 	if err != nil {
 		return nil, err
 	}
-	if err := ownerOrManager(p); err != nil {
-		return nil, err
-	}
-	key, uid, exp, err := app.mintAPIKey(ctx, app.Db, p.TenantID, p.UserID, i.Body.Name)
+	result, err := app.Svc.APIKeysService().Create(ctx, p, i.Body.Name)
 	if err != nil {
-		return nil, huma.Error500InternalServerError("failed to create api key", err)
+		switch {
+		case errors.Is(err, service.ErrForbidden):
+			return nil, huma.Error403Forbidden(err.Error())
+		default:
+			return nil, huma.Error500InternalServerError("failed to create api key", err)
+		}
 	}
 	out := &CreateAPIKeyOutput{}
-	out.Body.UID = uid
-	out.Body.APIKey = key.Raw
-	out.Body.Prefix = key.Prefix
-	out.Body.ExpiresAt = tsPtr(exp)
+	out.Body.UID = result.UID
+	out.Body.APIKey = result.Raw
+	out.Body.Prefix = result.Prefix
+	out.Body.ExpiresAt = tsPtr(result.ExpiresAt)
 	return out, nil
 }
 
@@ -84,7 +81,7 @@ func (app *Server) handleAPIKeyList(ctx context.Context, _ *struct{}) (*ListAPIK
 	if err != nil {
 		return nil, err
 	}
-	rows, err := app.Db.ApiKeysListByTenant(ctx, p.TenantID)
+	rows, err := app.Svc.APIKeysService().List(ctx, p)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to list api keys", err)
 	}
@@ -117,14 +114,15 @@ func (app *Server) handleAPIKeyRevoke(
 	if err != nil {
 		return nil, err
 	}
-	if err := ownerOrManager(p); err != nil {
-		return nil, err
-	}
-	if _, err := app.Db.ApiKeyRevoke(ctx, store.ApiKeyRevokeParams{
-		Uid:      i.UID,
-		TenantID: p.TenantID,
-	}); err != nil {
-		return nil, huma.Error404NotFound("api key not found")
+	if err := app.Svc.APIKeysService().Revoke(ctx, p, i.UID); err != nil {
+		switch {
+		case errors.Is(err, service.ErrForbidden):
+			return nil, huma.Error403Forbidden(err.Error())
+		case errors.Is(err, service.ErrNotFound):
+			return nil, huma.Error404NotFound(err.Error())
+		default:
+			return nil, huma.Error500InternalServerError("failed to revoke api key", err)
+		}
 	}
 	return &struct{}{}, nil
 }

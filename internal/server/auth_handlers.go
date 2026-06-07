@@ -3,14 +3,10 @@ package server
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/danielmichaels/gecko/internal/auth"
 	"github.com/danielmichaels/gecko/internal/service"
-	"github.com/danielmichaels/gecko/internal/store"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -41,36 +37,6 @@ func authOutputFromResult(
 		out.Body.ExpiresAt = &t
 	}
 	return out
-}
-
-// mintAPIKey creates and persists an API key for (tenant, user) using q (which may
-// be a transaction-scoped Queries), returning the raw key and its expiry. The raw
-// secret is returned to the caller once and never stored.
-func (app *Server) mintAPIKey(
-	ctx context.Context,
-	q *store.Queries,
-	tenantID, userID int32,
-	name string,
-) (key auth.APIKey, uid string, exp pgtype.Timestamptz, err error) {
-	key, err = auth.NewAPIKey()
-	if err != nil {
-		return auth.APIKey{}, "", pgtype.Timestamptz{}, err
-	}
-	if ttl := app.Conf.Auth.APIKeyTTL; ttl > 0 {
-		exp = pgtype.Timestamptz{Time: time.Now().Add(ttl), Valid: true}
-	}
-	row, err := q.ApiKeyCreate(ctx, store.ApiKeyCreateParams{
-		TenantID:  tenantID,
-		UserID:    userID,
-		Name:      name,
-		Prefix:    key.Prefix,
-		KeyHash:   key.KeyHash,
-		ExpiresAt: exp,
-	})
-	if err != nil {
-		return auth.APIKey{}, "", pgtype.Timestamptz{}, err
-	}
-	return key, row.Uid, exp, nil
 }
 
 type SignupInput struct {
@@ -196,13 +162,4 @@ func (app *Server) handleAcceptInvite(
 		return nil, huma.Error500InternalServerError("accept failed", err)
 	}
 	return authOutputFromResult(result.RawKey, result.ExpiresAt, result.Email, result.Role, ""), nil
-}
-
-func normaliseEmail(email string) string {
-	return strings.ToLower(strings.TrimSpace(email))
-}
-
-func isUniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
