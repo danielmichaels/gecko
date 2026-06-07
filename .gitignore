@@ -1,6 +1,8 @@
 .env
 tmp
 .idea
+.superpowers
+.worktrees
 
 # compiled binary (module name)
 /gecko

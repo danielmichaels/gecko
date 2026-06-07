@@ -212,6 +212,22 @@ tasks:
           echo "$output"
           exit 1
         fi
+  generate:
+    desc: Generate templ Go files from .templ templates
+    cmds:
+      - templ generate
+
+  css:
+    desc: Compile Tailwind CSS input to assets/static/app.css
+    cmds:
+      - tailwindcss -i ./assets/css/app.css -o ./assets/static/app.css --minify
+
+  ui:
+    desc: Run templ generate and compile Tailwind CSS
+    cmds:
+      - task: generate
+      - task: css
+
   install_bins:
     desc: Install all required go binaries
     cmds:

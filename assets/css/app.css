@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+@source "../../internal/ui/**/*.templ";
+
+:root {
+  --bg: #070a0f;
+  --bg-elev: #0c111a;
+  --panel: #0e1420;
+  --panel-2: #111a28;
+  --line: #1b2636;
+  --line-soft: #161f2d;
+  --txt: #dbe5f0;
+  --txt-dim: #8a99ad;
+  --txt-faint: #56657a;
+  --brand: #b6ff3a;
+  --brand-dim: #7ba62a;
+  --brand-glow: rgba(182, 255, 58, 0.18);
+  --crit: #ff5c63;
+  --crit-bg: rgba(255, 92, 99, 0.12);
+  --warn: #ecb44a;
+  --warn-bg: rgba(236, 180, 74, 0.12);
+  --ok: #35d6a4;
+  --ok-bg: rgba(53, 214, 164, 0.12);
+  --info: #5aa7ff;
+  --info-bg: rgba(90, 167, 255, 0.12);
+  --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --hud: 'Chakra Petch', system-ui, sans-serif;
+  --body: 'Archivo', system-ui, sans-serif;
+  --r: 10px;
+}
+
+/* Component styles added in Task F (UI module) */
