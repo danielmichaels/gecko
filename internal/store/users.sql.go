@@ -62,6 +62,25 @@ func (q *Queries) TenantCreate(ctx context.Context, name string) (Tenants, error
 	return i, err
 }
 
+const tenantGetByID = `-- name: TenantGetByID :one
+SELECT id, uid, name, created_at, updated_at
+FROM tenants
+WHERE id = $1
+`
+
+func (q *Queries) TenantGetByID(ctx context.Context, id int32) (Tenants, error) {
+	row := q.db.QueryRow(ctx, tenantGetByID, id)
+	var i Tenants
+	err := row.Scan(
+		&i.ID,
+		&i.Uid,
+		&i.Name,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const userCreate = `-- name: UserCreate :one
 INSERT INTO users (tenant_id, email, name, role)
 SELECT $1, $2, $3, $4

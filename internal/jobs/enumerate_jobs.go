@@ -52,7 +52,7 @@ func (w *EnumerateSubdomainWorker) Work(
 	ctx context.Context,
 	job *river.Job[EnumerateSubdomainArgs],
 ) error {
-	ctx = tracing.WithNewTraceID(ctx, true)
+	ctx = tracing.WithNewTraceID(ctx, false)
 	dnsClient := w.Resolver
 	rc := river.ClientFromContext[pgx.Tx](ctx)
 
@@ -211,7 +211,7 @@ func (w *ResolveDomainWorker) recordResolved(
 // applied only on an authoritative result. The domain identity arrives on the
 // job args, so the worker never rediscovers or creates the domain.
 func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDomainArgs]) error {
-	ctx = tracing.WithNewTraceID(ctx, true)
+	ctx = tracing.WithNewTraceID(ctx, false)
 	dnsClient := w.Resolver
 	fqdn := job.Args.DomainName + "."
 

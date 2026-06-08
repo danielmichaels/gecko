@@ -40,7 +40,7 @@ func (w *ScanCertificateWorker) Work(
 	ctx context.Context,
 	job *river.Job[ScanCertificateArgs],
 ) error {
-	ctx = tracing.WithNewTraceID(ctx, true)
+	ctx = tracing.WithNewTraceID(ctx, false)
 	start := time.Now()
 
 	s := scanner.NewScanner(scanner.Config{Logger: &w.Logger, Store: w.Store, Resolver: w.Resolver})
@@ -75,7 +75,7 @@ type ScanCNAMEWorker struct {
 }
 
 func (w *ScanCNAMEWorker) Work(ctx context.Context, job *river.Job[ScanCNAMEArgs]) error {
-	ctx = tracing.WithNewTraceID(ctx, true)
+	ctx = tracing.WithNewTraceID(ctx, false)
 	start := time.Now()
 
 	s := scanner.NewScanner(scanner.Config{Logger: &w.Logger, Store: w.Store, Resolver: w.Resolver})
@@ -117,7 +117,7 @@ type ScanDNSSECWorker struct {
 }
 
 func (w *ScanDNSSECWorker) Work(ctx context.Context, job *river.Job[ScanDNSSECArgs]) error {
-	ctx = tracing.WithNewTraceID(ctx, true)
+	ctx = tracing.WithNewTraceID(ctx, false)
 	start := time.Now()
 
 	s := scanner.NewScanner(scanner.Config{Logger: &w.Logger, Store: w.Store, Resolver: w.Resolver})
@@ -160,7 +160,7 @@ func (w *ScanZoneTransferWorker) Work(
 	ctx context.Context,
 	job *river.Job[ScanZoneTransferArgs],
 ) error {
-	ctx = tracing.WithNewTraceID(ctx, true)
+	ctx = tracing.WithNewTraceID(ctx, false)
 	start := time.Now()
 
 	s := scanner.NewScanner(scanner.Config{

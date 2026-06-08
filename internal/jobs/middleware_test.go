@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"testing"
 
+	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
 )
 
@@ -82,6 +83,48 @@ func TestTimingMiddleware_LogsSuccessAtInfo(t *testing.T) {
 	}
 	if _, ok := attrs["error"]; ok {
 		t.Error("did not expect error attribute on success")
+	}
+}
+
+func TestTimingMiddleware_QuietKindSuccessLogsAtDebug(t *testing.T) {
+	mw, h := newTimingMiddleware()
+	job := &rivertype.JobRow{
+		Kind:        PurgeDNSCacheArgs{}.Kind(),
+		Queue:       river.QueueDefault,
+		Attempt:     1,
+		MaxAttempts: 5,
+	}
+
+	if err := mw.Work(context.Background(), job, func(context.Context) error { return nil }); err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+
+	if len(h.records) != 1 {
+		t.Fatalf("expected exactly 1 log record, got %d", len(h.records))
+	}
+	if got := h.records[0].Level; got != slog.LevelDebug {
+		t.Errorf("expected quiet-kind success at DEBUG, got %v", got)
+	}
+}
+
+func TestTimingMiddleware_QuietKindErrorStillLogsAtError(t *testing.T) {
+	mw, h := newTimingMiddleware()
+	job := &rivertype.JobRow{
+		Kind:        PurgeDNSCacheArgs{}.Kind(),
+		Queue:       river.QueueDefault,
+		Attempt:     1,
+		MaxAttempts: 5,
+	}
+	sentinel := errors.New("purge failed")
+
+	if err := mw.Work(context.Background(), job, func(context.Context) error { return sentinel }); !errors.Is(
+		err,
+		sentinel,
+	) {
+		t.Fatalf("expected sentinel error to propagate, got %v", err)
+	}
+	if got := h.records[0].Level; got != slog.LevelError {
+		t.Errorf("expected quiet-kind failure at ERROR, got %v", got)
 	}
 }
 

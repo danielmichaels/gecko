@@ -1,0 +1,97 @@
+package templates
+
+templ LoginPage(props LoginPageProps) {
+	@Page("gecko - Sign in") {
+		<div class="auth">
+			<div class="auth-aside">
+				<div>
+					<div class="brand" style="margin-bottom:30px">
+						<span class="logo">🦎</span>
+						<span>ge<b>cko</b></span>
+					</div>
+					<p class="big">See your DNS<br/>the way an<br/><b>attacker</b> would.</p>
+					<p class="tagline">Continuous DNS reconnaissance &amp; misconfiguration assessment across every domain you own.</p>
+				</div>
+				<div class="scan-deco"></div>
+			</div>
+			<div class="auth-form">
+				<h2>Sign in</h2>
+				<p class="lead">Authenticate to your team workspace.</p>
+				if props.Error != "" {
+					<div id="login-error" style="color:var(--crit);font-family:var(--mono);font-size:12.5px;background:var(--crit-bg);border:1px solid var(--crit);border-radius:8px;padding:10px 14px;margin-bottom:12px;">
+						{ props.Error }
+					</div>
+				} else {
+					<div id="login-error" style="display:none"></div>
+				}
+				<div data-signals='{"email":"","password":""}'>
+					<label class="lbl">Email</label>
+					<input class="inp" type="email" placeholder="you@example.com" data-bind="email"/>
+					<label class="lbl">Password</label>
+					<input class="inp" type="password" placeholder="..." data-bind="password"/>
+					<button
+						class="btn"
+						type="button"
+						data-on:click="@post('/app/login')"
+					>Sign in &#x2192;</button>
+				</div>
+			</div>
+		</div>
+	}
+}
+
+templ AcceptInvitePage(props AcceptInvitePageProps) {
+	@Page("gecko - Accept invitation") {
+		<div class="auth">
+			<div class="auth-aside">
+				<div>
+					<div class="brand" style="margin-bottom:30px">
+						<span class="logo">🦎</span>
+						<span>ge<b>cko</b></span>
+					</div>
+					<p class="big">
+						You&#39;ve been<br/>invited to<br/><b>{ props.TenantName }</b>.
+					</p>
+					<p class="tagline">Set a password to join the workspace and start tracking your team&#39;s domains.</p>
+				</div>
+				<div class="telemetry">
+					<div>{ "// invitation" }</div>
+					<div>token .......... { props.Token } (valid)</div>
+					<div class="warn">expires ........ { props.Expiry }</div>
+				</div>
+				<div class="scan-deco"></div>
+			</div>
+			<div class="auth-form">
+				<h2>Join { props.TenantName }</h2>
+				<p class="lead">
+					Invited by <b style="color:var(--txt)">{ props.InviterEmail }</b> as <b style="color:var(--brand)">{ props.Role }</b>.
+				</p>
+				if props.Error != "" {
+					<div id="invite-error" style="color:var(--crit);font-family:var(--mono);font-size:12.5px;background:var(--crit-bg);border:1px solid var(--crit);border-radius:8px;padding:10px 14px;margin-bottom:12px;">
+						{ props.Error }
+					</div>
+				} else {
+					<div id="invite-error" style="display:none"></div>
+				}
+				<div data-signals={ inviteSignals(props.Token) }>
+					<div class="invite-card">
+						<span class="dot"></span>
+						Joining as <b>{ props.InviteeEmail }</b>
+					</div>
+					<label class="lbl">Display name (optional)</label>
+					<input class="inp" type="text" placeholder="Your name" data-bind="name"/>
+					<label class="lbl">Choose a password</label>
+					<input class="inp" type="password" placeholder="..." data-bind="password"/>
+					<div class="meter">
+						<i></i><i></i><i></i><i></i><i></i>
+					</div>
+					<button
+						class="btn"
+						type="button"
+						data-on:click="@post('/app/invite')"
+					>Accept &amp; continue &#x2192;</button>
+				</div>
+			</div>
+		</div>
+	}
+}

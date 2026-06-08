@@ -14,7 +14,7 @@ import (
 type SlogHandler struct{ slog.Handler }
 
 func (s *SlogHandler) Handle(ctx context.Context, r slog.Record) error {
-	if traceID, ok := ctx.Value(tracing.TraceCtxKey).(string); ok {
+	if traceID, ok := tracing.TraceIDFromContext(ctx); ok {
 		r.Add("trace_id", slog.StringValue(traceID))
 	}
 	return s.Handler.Handle(ctx, r)

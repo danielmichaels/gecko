@@ -74,3 +74,8 @@ RETURNING id, uid, tenant_id, email;
 INSERT INTO tenants (name)
 VALUES ($1)
 RETURNING *;
+
+-- name: TenantGetByID :one
+SELECT id, uid, name, created_at, updated_at
+FROM tenants
+WHERE id = $1;

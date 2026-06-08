@@ -38,7 +38,7 @@ func (w *AssessCNAMEDanglingWorker) Work(
 	ctx context.Context,
 	job *river.Job[AssessCNAMEDanglingArgs],
 ) error {
-	ctx = tracing.WithNewTraceID(ctx, true)
+	ctx = tracing.WithNewTraceID(ctx, false)
 	w.Logger.InfoContext(ctx, "assess CNAME started", "domain", job.Args.DomainName)
 	_ = assessor.NewAssessor(assessor.Config{
 		Logger:    &w.Logger,
@@ -78,7 +78,7 @@ func (w *AssessZoneTransferWorker) Work(
 	ctx context.Context,
 	job *river.Job[AssessZoneTransferArgs],
 ) error {
-	ctx = tracing.WithNewTraceID(ctx, true)
+	ctx = tracing.WithNewTraceID(ctx, false)
 	start := time.Now()
 	w.Logger.InfoContext(ctx, "assess zone transfer started", "domain", job.Args.DomainUID)
 	a := assessor.NewAssessor(assessor.Config{
@@ -126,7 +126,7 @@ func (w *AssessEmailSecurityWorker) Work(
 	ctx context.Context,
 	job *river.Job[AssessEmailSecurityArgs],
 ) error {
-	ctx = tracing.WithNewTraceID(ctx, true)
+	ctx = tracing.WithNewTraceID(ctx, false)
 	start := time.Now()
 	w.Logger.InfoContext(ctx, "assess email security started", "domain", job.Args.DomainUID)
 	a := assessor.NewAssessor(assessor.Config{

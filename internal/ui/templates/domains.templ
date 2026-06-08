@@ -1,0 +1,140 @@
+package templates
+
+templ DomainsPage(props DomainsPageProps) {
+	@Page("gecko · Domains") {
+		@AppShell(props.Shell) {
+			<div data-signals='{"q":"","newDomain":"","drawerOpen":false}'>
+				<div class="page-head">
+					<div>
+						<h1>Domains</h1>
+						<div class="sub">
+							{ props.Stats.Tracked } tracked · { props.Stats.Critical } critical · { props.Stats.Warnings } warnings
+						</div>
+					</div>
+					<button
+						class="btn-ghost btn"
+						type="button"
+						data-on:click={ postWithCSRF("/app/domains/rescan", props.Shell.CSRFToken) }
+					>⟳ Rescan all</button>
+				</div>
+				<div class="stats">
+					<div class="stat">
+						<div class="k">Tracked</div>
+						<div class="v">{ props.Stats.Tracked }</div>
+					</div>
+					<div class="stat crit">
+						<div class="k">Critical</div>
+						<div class="v">{ props.Stats.Critical }</div>
+					</div>
+					<div class="stat warn">
+						<div class="k">Warnings</div>
+						<div class="v">{ props.Stats.Warnings }</div>
+					</div>
+					<div class="stat">
+						<div class="k">Records</div>
+						<div class="v">{ props.Stats.Records } <small>total</small></div>
+					</div>
+				</div>
+				<div class="toolbar">
+					<div class="search">
+						<span class="mag">⌕</span>
+						<input
+							placeholder="Search domains…"
+							data-bind="q"
+							data-on:input__debounce.300ms="@get('/app/domains')"
+						/>
+						<span class="kbd">/</span>
+					</div>
+					<button
+						class="btn btn-add"
+						type="button"
+						data-on:click="$drawerOpen = true"
+					>+ Add domain</button>
+				</div>
+				<div class="result-meta" id="result-meta">{ props.Stats.Tracked } domains</div>
+				<div id="domain-add-error"></div>
+				<div class="domain-table">
+					<div class="thead">
+						<span>Domain</span>
+						<span>Records</span>
+						<span>Findings</span>
+						<span>Last scan</span>
+						<span></span>
+					</div>
+					<div id="domains-rows">
+						@DomainRowsFragment(props.Domains, props.Shell.CSRFToken)
+					</div>
+				</div>
+				<div class="scrim" data-class="{'open': $drawerOpen}" data-on:click="$drawerOpen = false"></div>
+				<aside class="drawer" data-class="{'open': $drawerOpen}">
+					<div class="drawer-h">
+						<h3>Add domain</h3>
+						<span class="x" data-on:click="$drawerOpen = false">✕</span>
+					</div>
+					<div class="drawer-b">
+						<div>
+							<span class="lbl">Domain</span>
+							<div class="in">
+								<span class="lead">domain ⟶</span>
+								<input placeholder="example.com" data-bind="newDomain"/>
+							</div>
+							<p class="hint">Enter an apex or subdomain. Gecko resolves its DNS facts and assesses them on the next scan.</p>
+						</div>
+					</div>
+					<div class="drawer-f">
+						<button class="btn-ghost btn" type="button" data-on:click="$drawerOpen = false">Cancel</button>
+						<button
+							class="btn"
+							type="button"
+							data-on:click={ postWithCSRF("/app/domains", props.Shell.CSRFToken) }
+						>+ Add domain</button>
+					</div>
+				</aside>
+			</div>
+		}
+	}
+}
+
+// DomainRowsFragment renders the inner content of #domains-rows: every domain
+// row, or an empty-state line. Shared by the full page and the search SSE patch.
+templ DomainRowsFragment(domains []DomainRowView, csrfToken string) {
+	if len(domains) == 0 {
+		<div class="trow-empty">no domains match your search</div>
+	} else {
+		for _, d := range domains {
+			@DomainRow(d, csrfToken)
+		}
+	}
+}
+
+templ DomainRow(d DomainRowView, csrfToken string) {
+	<div
+		class={ "trow", d.Severity }
+		id={ "domain-row-" + d.UID }
+	>
+		<a href={ templ.SafeURL("/app/domains/" + d.UID) } style="display:contents;text-decoration:none;color:inherit">
+			<div class="dname">
+				<span class="sdot"></span>
+				<span class="n">{ d.Name }</span>
+			</div>
+			<span class="cell-mono">{ d.RecordCount }</span>
+			<span>
+				<span class={ "badge", d.FindingsSeverity }>
+					if d.FindingsSeverity == "info" && d.FindingsLabel == "scanning" {
+						<span class="pulse"></span>
+					}
+					{ d.FindingsLabel }
+				</span>
+			</span>
+			<span class="cell-mono">{ d.LastScan }</span>
+		</a>
+		<span class="chev" style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
+			<button
+				type="button"
+				style="background:transparent;border:0;color:var(--txt-faint);cursor:pointer;font-size:13px;padding:2px 6px;border-radius:4px"
+				data-on:click={ deleteRowWithConfirm("/app/domains/"+d.UID, csrfToken) }
+			>✕</button>
+			→
+		</span>
+	</div>
+}

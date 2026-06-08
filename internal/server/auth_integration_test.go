@@ -12,8 +12,10 @@ import (
 
 	"github.com/danielmichaels/gecko/internal/auth"
 	"github.com/danielmichaels/gecko/internal/config"
+	"github.com/danielmichaels/gecko/internal/service"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/danielmichaels/gecko/internal/testhelpers"
+	"github.com/danielmichaels/gecko/internal/ui"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -29,12 +31,30 @@ func newAuthAPI(t *testing.T, pc *testhelpers.PostgresContainer) (*Server, strin
 	if err != nil {
 		t.Fatalf("new provider: %v", err)
 	}
+	svc := service.NewWithScheduler(
+		cfg,
+		slog.New(slog.DiscardHandler),
+		pc.Queries,
+		pc.Pool,
+		nil,
+		provider,
+	)
+	testCSRFKey := make([]byte, 32) // deterministic zero-filled key for tests
+	cookieCfg := ui.CookieConfig{
+		Name:     cfg.Auth.SessionCookieName,
+		Secure:   cfg.Auth.SessionCookieSecure,
+		SameSite: parseSameSite(cfg.Auth.SessionCookieSameSite),
+	}
+	uiApp := ui.New(svc.AuthService(), cookieCfg, testCSRFKey, slog.New(slog.DiscardHandler))
 	app := &Server{
 		Conf:         cfg,
 		Log:          slog.New(slog.DiscardHandler),
 		Db:           pc.Queries,
 		PgxPool:      pc.Pool,
 		AuthProvider: provider,
+		Svc:          svc,
+		UI:           uiApp,
+		UIHandlers:   ui.NewHandlers(svc, uiApp, cookieCfg, slog.New(slog.DiscardHandler)),
 	}
 	srv := httptest.NewServer(app.routes())
 	t.Cleanup(srv.Close)

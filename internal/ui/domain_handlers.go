@@ -1,0 +1,792 @@
+package ui
+
+import (
+	"errors"
+	"fmt"
+	"html"
+	"math"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/danielmichaels/gecko/internal/dto"
+	"github.com/danielmichaels/gecko/internal/service"
+	"github.com/danielmichaels/gecko/internal/store"
+	"github.com/danielmichaels/gecko/internal/ui/templates"
+	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	datastar "github.com/starfederation/datastar-go/datastar"
+)
+
+// handleDomainsGet renders the full domains list page.
+func (h *Handlers) handleDomainsGet(w http.ResponseWriter, r *http.Request) {
+	p, ok := PrincipalFrom(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// The same route serves the full page (browser nav) and a rows-only fragment
+	// (datastar search/refresh). Datastar tags its fetches with this header.
+	isDatastar := r.Header.Get("Datastar-Request") == "true"
+
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if query == "" && isDatastar {
+		var sig struct {
+			Q string `json:"q"`
+		}
+		if err := datastar.ReadSignals(r, &sig); err == nil {
+			query = strings.TrimSpace(sig.Q)
+		}
+	}
+
+	result, err := h.svc.DomainsService().List(r.Context(), p, service.DomainsListParams{
+		FilterName: query,
+		PageSize:   100,
+		Offset:     0,
+	})
+	if err != nil {
+		h.log.Error("domains list", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	ids := make([]int32, len(result.Domains))
+	for i, d := range result.Domains {
+		ids[i] = d.ID
+	}
+	summaries, err := h.svc.DomainsService().FindingsSummaryForPage(r.Context(), p, ids)
+	if err != nil {
+		h.log.Error("domains list: findings summary", "error", err)
+		summaries = nil
+	}
+
+	rows := make([]templates.DomainRowView, len(result.Domains))
+	for i, d := range result.Domains {
+		view := domainRowView(d)
+		if sum, ok := summaries[d.ID]; ok {
+			view.FindingsSeverity, view.FindingsLabel = findingBadge(sum)
+		}
+		rows[i] = view
+	}
+
+	if isDatastar {
+		sse := datastar.NewSSE(w, r)
+		_ = sse.PatchElementTempl(
+			templates.DomainRowsFragment(rows, CSRFTokenFrom(r.Context())),
+			datastar.WithSelectorID("domains-rows"),
+			datastar.WithModeInner(),
+		)
+		_ = sse.PatchElements(
+			fmt.Sprintf(
+				`<div class="result-meta" id="result-meta">%s</div>`,
+				resultMeta(int(result.TotalCount), query),
+			),
+			datastar.WithSelectorID("result-meta"),
+		)
+		return
+	}
+
+	// RecordCount per-domain is still deferred (would need a separate aggregate).
+	critical, warnings, err := h.svc.DomainsService().TenantFindingStats(r.Context(), p)
+	if err != nil {
+		h.log.Error("domains list: tenant finding stats", "error", err)
+	}
+	stats := templates.DomainsStats{
+		Tracked:  strconv.FormatInt(result.TotalCount, 10),
+		Critical: strconv.Itoa(int(critical)),
+		Warnings: strconv.Itoa(int(warnings)),
+		Records:  "—",
+	}
+
+	shell, err := h.shell(r.Context(), "domains")
+	if err != nil {
+		h.log.Error("domains: build shell", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	renderPage(w, r, templates.DomainsPage(templates.DomainsPageProps{
+		Shell:   shell,
+		Stats:   stats,
+		Domains: rows,
+	}))
+}
+
+// resultMeta renders the count line under the search bar: the tenant total, or
+// the match count for an active query (query echoed back, HTML-escaped).
+func resultMeta(total int, query string) string {
+	if query == "" {
+		return fmt.Sprintf("%d domains", total)
+	}
+	return fmt.Sprintf("%d matching “%s”", total, html.EscapeString(query))
+}
+
+// handleDomainCreate adds a new domain via a datastar SSE POST.
+// The addbar input is bound to the "newDomain" signal.
+func (h *Handlers) handleDomainCreate(w http.ResponseWriter, r *http.Request) {
+	p, ok := PrincipalFrom(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var form struct {
+		NewDomain string `json:"newDomain"`
+	}
+	if err := datastar.ReadSignals(r, &form); err != nil {
+		h.log.Error("domain create: read signals", "error", err)
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	sse := datastar.NewSSE(w, r)
+
+	domain, err := h.svc.DomainsService().Create(r.Context(), p, service.DomainsCreateParams{
+		Domain: form.NewDomain,
+	})
+	if err != nil {
+		if errors.Is(err, service.ErrConflict) {
+			_ = sse.PatchElements(
+				`<div id="domain-add-error" style="color:var(--crit);font-family:var(--mono);font-size:12.5px;background:var(--crit-bg);border:1px solid var(--crit);border-radius:8px;padding:8px 12px;margin:8px 0">domain already tracked</div>`,
+				datastar.WithSelectorID("domain-add-error"),
+			)
+			return
+		}
+		h.log.Error("domain create", "error", err)
+		_ = sse.PatchElements(
+			`<div id="domain-add-error" style="color:var(--crit);font-family:var(--mono);font-size:12.5px;background:var(--crit-bg);border:1px solid var(--crit);border-radius:8px;padding:8px 12px;margin:8px 0">failed to add domain</div>`,
+			datastar.WithSelectorID("domain-add-error"),
+		)
+		return
+	}
+
+	// Newly created domain is immediately scanning — show the scanning badge.
+	view := domainRowView(domain)
+	view.Severity = "scan"
+	view.FindingsLabel = "scanning"
+	view.FindingsSeverity = "info"
+
+	_ = sse.PatchElementTempl(
+		templates.DomainRow(view, CSRFTokenFrom(r.Context())),
+		datastar.WithSelectorID("domains-rows"),
+		datastar.WithModeAppend(),
+	)
+	// Clear any prior error, then close the drawer and reset its input.
+	_ = sse.PatchElements(
+		`<div id="domain-add-error"></div>`,
+		datastar.WithSelectorID("domain-add-error"),
+	)
+	_ = sse.MarshalAndPatchSignals(map[string]any{"drawerOpen": false, "newDomain": ""})
+}
+
+// handleDomainDelete removes a domain via a datastar SSE DELETE.
+func (h *Handlers) handleDomainDelete(w http.ResponseWriter, r *http.Request) {
+	p, ok := PrincipalFrom(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	uid := chi.URLParam(r, "uid")
+	sse := datastar.NewSSE(w, r)
+
+	err := h.svc.DomainsService().Delete(r.Context(), p, uid)
+	if err != nil && !errors.Is(err, service.ErrNotFound) {
+		h.log.Error("domain delete", "error", err, "uid", uid)
+	}
+
+	// Remove the row regardless (idempotent: a 404 just means it's already gone).
+	_ = sse.RemoveElementByID("domain-row-" + uid)
+}
+
+// handleDomainDetail renders the domain detail full page.
+// The page lazy-loads records and timeline panels via intersect events.
+func (h *Handlers) handleDomainDetail(w http.ResponseWriter, r *http.Request) {
+	p, ok := PrincipalFrom(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	uid := chi.URLParam(r, "uid")
+
+	d, err := h.svc.DomainsService().Get(r.Context(), p, uid)
+	if err != nil {
+		if errors.Is(err, service.ErrNotFound) {
+			http.Redirect(w, r, "/app/domains", http.StatusSeeOther)
+			return
+		}
+		h.log.Error("domain detail: get", "error", err, "uid", uid)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	shell, err := h.shell(r.Context(), "domains")
+	if err != nil {
+		h.log.Error("domain detail: build shell", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	added := "—"
+	if d.CreatedAt.Valid {
+		added = d.CreatedAt.Time.Format("2006-01-02")
+	}
+
+	findingsCount := "0"
+	findingsSeverity := "ok"
+	if sums, sErr := h.svc.DomainsService().FindingsSummaryForPage(r.Context(), p, []int32{d.ID}); sErr != nil {
+		h.log.Error("domain detail: findings summary", "error", sErr, "uid", uid)
+	} else if sum, ok := sums[d.ID]; ok && sum.Count > 0 {
+		findingsCount = strconv.Itoa(int(sum.Count))
+		findingsSeverity, _ = findingBadge(sum)
+	}
+
+	renderPage(w, r, templates.DomainDetailPage(templates.DomainDetailPageProps{
+		Shell:            shell,
+		UID:              d.Uid,
+		Name:             d.Name,
+		Severity:         severityForStatus(d.Status),
+		RecordCount:      "—", // still deferred until a per-domain record-count aggregate
+		FindingsCount:    findingsCount,
+		FindingsSeverity: findingsSeverity,
+		Type:             string(d.DomainType),
+		Source:           string(d.Source),
+		Added:            added,
+		Scanned:          relativeTime(d.UpdatedAt),
+	}))
+}
+
+// handleRecordsFragment lazy-loads DNS records into the records panel.
+func (h *Handlers) handleRecordsFragment(w http.ResponseWriter, r *http.Request) {
+	p, ok := PrincipalFrom(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	uid := chi.URLParam(r, "uid")
+	sse := datastar.NewSSE(w, r)
+
+	result, err := h.svc.RecordsService().List(r.Context(), p, uid, nil)
+	if err != nil {
+		retryURL := fmt.Sprintf("/app/domains/%s/records", uid)
+		msg := "failed to load records"
+		if errors.Is(err, service.ErrNotFound) {
+			msg = "domain not found"
+		}
+		_ = sse.PatchElementTempl(
+			templates.ContentError(templates.ContentErrorProps{Message: msg, RetryURL: retryURL}),
+			datastar.WithSelectorID("records-content"),
+			datastar.WithModeInner(),
+		)
+		return
+	}
+
+	rows := recordRows(result.Records)
+
+	// Build a summary of record types present for the count label.
+	typeSummary := recordTypeSummary(result.Records)
+	count := strconv.FormatInt(result.TotalRecords, 10)
+	if typeSummary != "" {
+		count = count + " · " + typeSummary
+	}
+
+	view := templates.RecordsView{
+		Title: "DNS records",
+		Count: count,
+		Rows:  rows,
+	}
+
+	_ = sse.PatchElementTempl(
+		templates.RecordsTable(view),
+		datastar.WithSelectorID("records-content"),
+		datastar.WithModeInner(),
+	)
+}
+
+// handleTimelineFragment lazy-loads the scan timeline into the timeline panel.
+func (h *Handlers) handleTimelineFragment(w http.ResponseWriter, r *http.Request) {
+	p, ok := PrincipalFrom(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	uid := chi.URLParam(r, "uid")
+	sse := datastar.NewSSE(w, r)
+
+	result, err := h.svc.RecordsService().Timeline(r.Context(), p, uid)
+	if err != nil {
+		retryURL := fmt.Sprintf("/app/domains/%s/timeline", uid)
+		msg := "failed to load timeline"
+		if errors.Is(err, service.ErrNotFound) {
+			msg = "domain not found"
+		}
+		_ = sse.PatchElementTempl(
+			templates.ContentError(templates.ContentErrorProps{Message: msg, RetryURL: retryURL}),
+			datastar.WithSelectorID("timeline-content"),
+			datastar.WithModeInner(),
+		)
+		return
+	}
+
+	items := timelineItems(result.Scans)
+
+	_ = sse.PatchElementTempl(
+		templates.Timeline(templates.TimelineView{Groups: items}),
+		datastar.WithSelectorID("timeline-content"),
+		datastar.WithModeInner(),
+	)
+}
+
+// handleTimelineFullFragment lazy-loads the full-width Timeline tab (loaded on
+// first click of the tab). Reuses the same scan-grouped data as the side panel.
+func (h *Handlers) handleTimelineFullFragment(w http.ResponseWriter, r *http.Request) {
+	p, ok := PrincipalFrom(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	uid := chi.URLParam(r, "uid")
+	sse := datastar.NewSSE(w, r)
+
+	result, err := h.svc.RecordsService().Timeline(r.Context(), p, uid)
+	if err != nil {
+		msg := "failed to load timeline"
+		if errors.Is(err, service.ErrNotFound) {
+			msg = "domain not found"
+		}
+		_ = sse.PatchElementTempl(
+			templates.ContentError(templates.ContentErrorProps{
+				Message:  msg,
+				RetryURL: fmt.Sprintf("/app/domains/%s/timeline/full", uid),
+			}),
+			datastar.WithSelectorID("timeline-full-content"),
+			datastar.WithModeInner(),
+		)
+		return
+	}
+
+	_ = sse.PatchElementTempl(
+		templates.TimelineFull(timelineFullView(result.Scans)),
+		datastar.WithSelectorID("timeline-full-content"),
+		datastar.WithModeInner(),
+	)
+}
+
+// handleFindingsFragment lazy-loads the Findings tab (loaded on first click).
+func (h *Handlers) handleFindingsFragment(w http.ResponseWriter, r *http.Request) {
+	p, ok := PrincipalFrom(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	uid := chi.URLParam(r, "uid")
+	sse := datastar.NewSSE(w, r)
+
+	result, err := h.svc.FindingsService().ListByDomain(r.Context(), p, uid)
+	if err != nil {
+		msg := "failed to load findings"
+		if errors.Is(err, service.ErrNotFound) {
+			msg = "domain not found"
+		}
+		_ = sse.PatchElementTempl(
+			templates.ContentError(templates.ContentErrorProps{
+				Message:  msg,
+				RetryURL: fmt.Sprintf("/app/domains/%s/findings", uid),
+			}),
+			datastar.WithSelectorID("findings-content"),
+			datastar.WithModeInner(),
+		)
+		return
+	}
+
+	_ = sse.PatchElementTempl(
+		templates.FindingsPanel(toFindingsView(result)),
+		datastar.WithSelectorID("findings-content"),
+		datastar.WithModeInner(),
+	)
+}
+
+// handleDomainRescan triggers a rescan for a single domain.
+// It forces a re-scan via Update (empty params = keep fields, just rescan).
+// NOTE: this endpoint is called from the detail page where no #domain-row-{uid}
+// exists, so we cannot patch a row — v1 gives no inline feedback; the list page
+// reflects the updated state on the next load.
+func (h *Handlers) handleDomainRescan(w http.ResponseWriter, r *http.Request) {
+	p, ok := PrincipalFrom(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	uid := chi.URLParam(r, "uid")
+
+	// Call Update BEFORE opening the SSE stream so we can still write an HTTP
+	// error status if the request fails (once SSE headers are flushed, status
+	// codes are discarded by the browser).
+	_, err := h.svc.DomainsService().Update(r.Context(), p, uid, service.DomainsUpdateParams{})
+	if err != nil {
+		sse := datastar.NewSSE(w, r)
+		if errors.Is(err, service.ErrNotFound) {
+			_ = sse.PatchElements(
+				`<span id="rescan-status" style="color:var(--warn);font-family:var(--mono);font-size:12px">domain not found</span>`,
+			)
+			return
+		}
+		h.log.Error("domain rescan", "error", err, "uid", uid)
+		_ = sse.PatchElements(
+			`<span id="rescan-status" style="color:var(--crit);font-family:var(--mono);font-size:12px">rescan failed</span>`,
+		)
+		return
+	}
+
+	// Open SSE only on the success path. The detail page has no #domain-row-{uid}
+	// to patch, so we open the stream and return a no-op; the list page reflects
+	// the scanning state on the next visit.
+	sse := datastar.NewSSE(w, r)
+	_ = sse.PatchElements(
+		`<span id="rescan-status" style="color:var(--ok);font-family:var(--mono);font-size:12px">rescan queued</span>`,
+	)
+}
+
+// handleDomainsRescanAll triggers a rescan for every tracked domain (bounded to
+// the first 100 — same as the list page). Each Update enqueues a scan.
+func (h *Handlers) handleDomainsRescanAll(w http.ResponseWriter, r *http.Request) {
+	p, ok := PrincipalFrom(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	result, err := h.svc.DomainsService().List(r.Context(), p, service.DomainsListParams{
+		PageSize: 100,
+		Offset:   0,
+	})
+	if err != nil {
+		h.log.Error("domains rescan all: list", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	sse := datastar.NewSSE(w, r)
+
+	csrfToken := CSRFTokenFrom(r.Context())
+	for _, d := range result.Domains {
+		updated, uErr := h.svc.DomainsService().
+			Update(r.Context(), p, d.Uid, service.DomainsUpdateParams{})
+		if uErr != nil {
+			h.log.Warn("domains rescan all: update", "error", uErr, "uid", d.Uid)
+			continue
+		}
+		view := domainRowView(updated)
+		view.Severity = "scan"
+		view.FindingsLabel = "scanning"
+		view.FindingsSeverity = "info"
+
+		_ = sse.PatchElementTempl(
+			templates.DomainRow(view, csrfToken),
+			datastar.WithSelectorID("domain-row-"+d.Uid),
+		)
+	}
+}
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+// domainRowView maps a store.Domains to the presentation model.
+func domainRowView(d store.Domains) templates.DomainRowView {
+	return templates.DomainRowView{
+		UID:  d.Uid,
+		Name: d.Name,
+		// v1 placeholder: RecordCount is "—" to avoid N+1 per-domain queries.
+		RecordCount: "—",
+		Severity:    severityForStatus(d.Status),
+		// v1 placeholders: findings subsystem not yet implemented.
+		FindingsLabel:    "healthy",
+		FindingsSeverity: "ok",
+		LastScan:         relativeTime(d.UpdatedAt),
+	}
+}
+
+// findingBadge maps an open-findings aggregate to a row badge (CSS class + label).
+// Worst severity drives the colour; info-only and no-findings both read "healthy".
+func findingBadge(sum service.DomainFindingSummary) (severity, label string) {
+	switch {
+	case sum.SeverityRank <= 2:
+		return "crit", "critical"
+	case sum.SeverityRank == 3 || sum.SeverityRank == 4:
+		return "warn", "warning"
+	default:
+		return "ok", "healthy"
+	}
+}
+
+// severityForStatus maps a domain status to the CSS severity class used in the UI.
+func severityForStatus(s store.DomainStatus) string {
+	switch s {
+	case store.DomainStatusPending:
+		return "scan"
+	default:
+		return "ok"
+	}
+}
+
+// relativeTime converts a pgtype.Timestamptz to a human-readable relative string
+// such as "2h ago" or "3d ago". Returns "—" if the timestamp is not valid.
+func relativeTime(t pgtype.Timestamptz) string {
+	if !t.Valid {
+		return "—"
+	}
+	d := time.Since(t.Time)
+	if d < 0 {
+		d = 0
+	}
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return strconv.Itoa(int(math.Round(d.Minutes()))) + "m ago"
+	case d < 24*time.Hour:
+		return strconv.Itoa(int(math.Round(d.Hours()))) + "h ago"
+	case d < 7*24*time.Hour:
+		return strconv.Itoa(int(math.Round(d.Hours()/24))) + "d ago"
+	default:
+		return t.Time.Format("2006-01-02")
+	}
+}
+
+// recordRows flattens dto.AllRecords into a slice of RecordRowView.
+// TTL is rendered as "—" because it is not modeled in the current store schema.
+func recordRows(all dto.AllRecords) []templates.RecordRowView {
+	var rows []templates.RecordRowView
+
+	for _, r := range all.A {
+		rows = append(rows, templates.RecordRowView{Type: "A", Value: r.IPv4Address, TTL: "—"})
+	}
+	for _, r := range all.AAAA {
+		rows = append(rows, templates.RecordRowView{Type: "AAAA", Value: r.IPv6Address, TTL: "—"})
+	}
+	for _, r := range all.CNAME {
+		rows = append(rows, templates.RecordRowView{Type: "CNAME", Value: r.Target, TTL: "—"})
+	}
+	for _, r := range all.MX {
+		rows = append(rows, templates.RecordRowView{
+			Type:  "MX",
+			Value: fmt.Sprintf("%d %s", r.Preference, r.Target),
+			TTL:   "—",
+		})
+	}
+	for _, r := range all.TXT {
+		rows = append(rows, templates.RecordRowView{Type: "TXT", Value: r.Value, TTL: "—"})
+	}
+	for _, r := range all.NS {
+		rows = append(rows, templates.RecordRowView{Type: "NS", Value: r.Nameserver, TTL: "—"})
+	}
+	for _, r := range all.SOA {
+		rows = append(rows, templates.RecordRowView{Type: "SOA", Value: r.Nameserver, TTL: "—"})
+	}
+	for _, r := range all.PTR {
+		rows = append(rows, templates.RecordRowView{Type: "PTR", Value: r.Target, TTL: "—"})
+	}
+	for _, r := range all.CAA {
+		rows = append(rows, templates.RecordRowView{
+			Type:  "CAA",
+			Value: fmt.Sprintf("%s %s", r.Tag, r.Value),
+			TTL:   "—",
+		})
+	}
+	for _, r := range all.SRV {
+		rows = append(rows, templates.RecordRowView{Type: "SRV", Value: r.Target, TTL: "—"})
+	}
+	for _, r := range all.DNSKEY {
+		key := r.PublicKey
+		if len(key) > 40 {
+			key = key[:40] + "…"
+		}
+		rows = append(rows, templates.RecordRowView{Type: "DNSKEY", Value: key, TTL: "—"})
+	}
+	for _, r := range all.DS {
+		rows = append(rows, templates.RecordRowView{Type: "DS", Value: r.Digest, TTL: "—"})
+	}
+	for _, r := range all.RRSIG {
+		rows = append(rows, templates.RecordRowView{Type: "RRSIG", Value: r.SignerName, TTL: "—"})
+	}
+
+	return rows
+}
+
+// recordTypeSummary builds a compact label of which record types are present.
+func recordTypeSummary(all dto.AllRecords) string {
+	var parts []string
+	if len(all.A) > 0 {
+		parts = append(parts, fmt.Sprintf("%d A", len(all.A)))
+	}
+	if len(all.AAAA) > 0 {
+		parts = append(parts, fmt.Sprintf("%d AAAA", len(all.AAAA)))
+	}
+	if len(all.CNAME) > 0 {
+		parts = append(parts, fmt.Sprintf("%d CNAME", len(all.CNAME)))
+	}
+	if len(all.MX) > 0 {
+		parts = append(parts, fmt.Sprintf("%d MX", len(all.MX)))
+	}
+	if len(all.TXT) > 0 {
+		parts = append(parts, fmt.Sprintf("%d TXT", len(all.TXT)))
+	}
+	if len(all.NS) > 0 {
+		parts = append(parts, fmt.Sprintf("%d NS", len(all.NS)))
+	}
+	if len(all.SOA) > 0 {
+		parts = append(parts, fmt.Sprintf("%d SOA", len(all.SOA)))
+	}
+	if len(all.PTR) > 0 {
+		parts = append(parts, fmt.Sprintf("%d PTR", len(all.PTR)))
+	}
+	if len(all.CAA) > 0 {
+		parts = append(parts, fmt.Sprintf("%d CAA", len(all.CAA)))
+	}
+	if len(all.SRV) > 0 {
+		parts = append(parts, fmt.Sprintf("%d SRV", len(all.SRV)))
+	}
+	if len(all.DNSKEY) > 0 {
+		parts = append(parts, fmt.Sprintf("%d DNSKEY", len(all.DNSKEY)))
+	}
+	if len(all.DS) > 0 {
+		parts = append(parts, fmt.Sprintf("%d DS", len(all.DS)))
+	}
+	if len(all.RRSIG) > 0 {
+		parts = append(parts, fmt.Sprintf("%d RRSIG", len(all.RRSIG)))
+	}
+	return strings.Join(parts, " ")
+}
+
+// timelineItems flattens []dto.ScanDiff into a flat []TimelineItemView.
+// Each scan emits a header item followed by one item per change.
+func timelineItems(scans []dto.ScanDiff) []templates.TimelineItemView {
+	var items []templates.TimelineItemView
+
+	for _, scan := range scans {
+		shortUID := scan.ScanUID
+		if len(shortUID) > 8 {
+			shortUID = shortUID[:8]
+		}
+
+		when := scan.StartedAt
+		if t, err := time.Parse(time.RFC3339, scan.StartedAt); err == nil {
+			when = t.Format("2006-01-02 15:04")
+		}
+
+		items = append(items, templates.TimelineItemView{
+			Kind: "scan",
+			When: when,
+			What: fmt.Sprintf("Scan %s · %d change(s)", shortUID, len(scan.Changes)),
+		})
+
+		for _, ch := range scan.Changes {
+			chWhen := ch.ObservedAt
+			if t, err := time.Parse(time.RFC3339, ch.ObservedAt); err == nil {
+				chWhen = t.Format("2006-01-02 15:04")
+			}
+
+			var prefix, kind string
+			switch ch.ChangeType {
+			case "created":
+				prefix = "+"
+				kind = "add"
+			case "deleted":
+				prefix = "−"
+				kind = "del"
+			default:
+				prefix = "~"
+				kind = "chg"
+			}
+
+			items = append(items, templates.TimelineItemView{
+				Kind: kind,
+				When: chWhen,
+				What: fmt.Sprintf("%s %s %s", prefix, ch.EntityType, ch.EntityKey),
+			})
+		}
+	}
+
+	return items
+}
+
+// changeGlyph maps an observation change_type to a diff glyph + CSS kind.
+func changeGlyph(changeType string) (op, kind string) {
+	switch changeType {
+	case "created":
+		return "+", "add"
+	case "deleted":
+		return "−", "del"
+	default:
+		return "~", "chg"
+	}
+}
+
+// timelineFullView maps []dto.ScanDiff into the full-width Timeline tab model.
+func timelineFullView(scans []dto.ScanDiff) templates.TimelineFullView {
+	groups := make([]templates.ScanGroupView, 0, len(scans))
+	totalChanges := 0
+
+	for _, scan := range scans {
+		when := scan.StartedAt
+		if t, err := time.Parse(time.RFC3339, scan.StartedAt); err == nil {
+			when = t.Format("2006-01-02 15:04")
+		}
+
+		changes := make([]templates.ChangeView, len(scan.Changes))
+		for i, ch := range scan.Changes {
+			op, kind := changeGlyph(ch.ChangeType)
+			changes[i] = templates.ChangeView{
+				Kind:   kind,
+				Op:     op,
+				Entity: ch.EntityType,
+				Value:  ch.EntityKey,
+			}
+		}
+		totalChanges += len(scan.Changes)
+
+		groups = append(groups, templates.ScanGroupView{
+			ScanID:      scan.ScanUID,
+			When:        when,
+			Meta:        scan.Source,
+			ChangeCount: len(scan.Changes),
+			Changes:     changes,
+		})
+	}
+
+	return templates.TimelineFullView{
+		ScanCount:   len(scans),
+		ChangeCount: totalChanges,
+		Groups:      groups,
+	}
+}
+
+// toFindingsView maps a service.FindingsResult into the Findings tab model.
+func toFindingsView(r service.FindingsResult) templates.FindingsView {
+	cards := make([]templates.FindingCardView, len(r.Findings))
+	for i, f := range r.Findings {
+		cards[i] = templates.FindingCardView{
+			SevClass:    f.SevClass,
+			Severity:    f.Severity,
+			Icon:        f.Icon,
+			Title:       f.Title,
+			Description: f.Description,
+			Evidence:    f.Evidence,
+			FixHint:     f.FixHint,
+		}
+	}
+	return templates.FindingsView{
+		TotalCount:    r.TotalCount,
+		CriticalCount: r.CriticalCount,
+		WarningCount:  r.WarningCount,
+		HealthyCount:  r.HealthyCount,
+		Findings:      cards,
+	}
+}

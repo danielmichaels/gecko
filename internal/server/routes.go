@@ -22,6 +22,7 @@ func (app *Server) routes() http.Handler {
 	router := chi.NewMux()
 	router.Use(middleware.Recoverer)
 	router.Use(middleware.RealIP)
+	router.Use(traceMiddleware)
 	router.Use(middleware.Compress(5))
 	router.Use(httplog.RequestLogger(httpLogger(app.Conf)))
 
@@ -44,6 +45,11 @@ func (app *Server) routes() http.Handler {
 	app.registerEndpoints(api)
 	fileServer := http.FileServer(http.FS(assets.EmbeddedAssets))
 	router.Handle("/static/*", fileServer)
+
+	router.Mount("/app", app.UIHandlers.Routes())
+	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/app/domains", http.StatusSeeOther)
+	})
 
 	return router
 }

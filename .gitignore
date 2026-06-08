@@ -1,6 +1,10 @@
 .env
 tmp
+wireframe
+docs/ui-mockups
 .idea
+.superpowers
+.worktrees
 
 # compiled binary (module name)
 /gecko

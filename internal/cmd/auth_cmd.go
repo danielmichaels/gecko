@@ -32,7 +32,10 @@ type authTokenResponse struct {
 	TenantUID string     `json:"tenant_uid"`
 }
 
-type LoginCmd struct{}
+type LoginCmd struct {
+	Username string `help:"Email/username for login"`
+	Password string `help:"Password for login"`
+}
 
 // Run exchanges email/password for an API key and persists it to the YAML config so
 // subsequent commands authenticate via X-API-Key.
@@ -40,10 +43,10 @@ func (l *LoginCmd) Run(g *Globals, ac *AuthCmd) error {
 	if g.ServerURL == "" {
 		return fmt.Errorf("server-url is required")
 	}
-	if g.Username == "" {
+	if l.Username == "" {
 		return fmt.Errorf("username (email) is required for login")
 	}
-	if g.Password == "" {
+	if l.Password == "" {
 		return fmt.Errorf("password is required for login")
 	}
 	ctx, cancel := createCancellableContext()
@@ -53,7 +56,7 @@ func (l *LoginCmd) Run(g *Globals, ac *AuthCmd) error {
 	var apiErr huma.ErrorModel
 	err := requests.
 		URL(g.ServerURL + "/api/auth/login").
-		BodyJSON(map[string]string{"email": g.Username, "password": g.Password}).
+		BodyJSON(map[string]string{"email": l.Username, "password": l.Password}).
 		ToJSON(&out).
 		ErrorJSON(&apiErr).
 		Fetch(ctx)

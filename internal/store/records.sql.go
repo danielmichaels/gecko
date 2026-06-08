@@ -11,6 +11,87 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const domainsListRecordCounts = `-- name: DomainsListRecordCounts :many
+WITH ids AS (
+    SELECT unnest($1::int[]) AS domain_id
+),
+     all_records AS (
+         SELECT domain_id FROM a_records
+         UNION ALL SELECT domain_id FROM aaaa_records
+         UNION ALL SELECT domain_id FROM caa_records
+         UNION ALL SELECT domain_id FROM cname_records
+         UNION ALL SELECT domain_id FROM dnskey_records
+         UNION ALL SELECT domain_id FROM ds_records
+         UNION ALL SELECT domain_id FROM mx_records
+         UNION ALL SELECT domain_id FROM ns_records
+         UNION ALL SELECT domain_id FROM ptr_records
+         UNION ALL SELECT domain_id FROM rrsig_records
+         UNION ALL SELECT domain_id FROM soa_records
+         UNION ALL SELECT domain_id FROM srv_records
+         UNION ALL SELECT domain_id FROM txt_records
+     )
+SELECT ids.domain_id::int AS domain_id, count(r.domain_id)::int AS record_count
+FROM ids
+         LEFT JOIN all_records r ON r.domain_id = ids.domain_id
+GROUP BY ids.domain_id
+`
+
+type DomainsListRecordCountsRow struct {
+	DomainID    int32 `json:"domain_id"`
+	RecordCount int32 `json:"record_count"`
+}
+
+// Per-domain record counts for a page of domain IDs (one query, no N+1).
+func (q *Queries) DomainsListRecordCounts(ctx context.Context, domainIds []int32) ([]DomainsListRecordCountsRow, error) {
+	rows, err := q.db.Query(ctx, domainsListRecordCounts, domainIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DomainsListRecordCountsRow{}
+	for rows.Next() {
+		var i DomainsListRecordCountsRow
+		if err := rows.Scan(&i.DomainID, &i.RecordCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const domainsTenantRecordTotal = `-- name: DomainsTenantRecordTotal :one
+WITH all_records AS (
+    SELECT domain_id FROM a_records
+    UNION ALL SELECT domain_id FROM aaaa_records
+    UNION ALL SELECT domain_id FROM caa_records
+    UNION ALL SELECT domain_id FROM cname_records
+    UNION ALL SELECT domain_id FROM dnskey_records
+    UNION ALL SELECT domain_id FROM ds_records
+    UNION ALL SELECT domain_id FROM mx_records
+    UNION ALL SELECT domain_id FROM ns_records
+    UNION ALL SELECT domain_id FROM ptr_records
+    UNION ALL SELECT domain_id FROM rrsig_records
+    UNION ALL SELECT domain_id FROM soa_records
+    UNION ALL SELECT domain_id FROM srv_records
+    UNION ALL SELECT domain_id FROM txt_records
+)
+SELECT count(*)::bigint AS total
+FROM all_records r
+         JOIN domains d ON r.domain_id = d.id
+WHERE d.tenant_id = $1
+`
+
+// Total DNS records across every record table for a tenant's domains.
+func (q *Queries) DomainsTenantRecordTotal(ctx context.Context, tenantID pgtype.Int4) (int64, error) {
+	row := q.db.QueryRow(ctx, domainsTenantRecordTotal, tenantID)
+	var total int64
+	err := row.Scan(&total)
+	return total, err
+}
+
 const getNameserversForDomain = `-- name: GetNameserversForDomain :many
 SELECT
     id,

@@ -29,7 +29,7 @@ func (w *PurgeDNSCacheWorker) Work(ctx context.Context, _ *river.Job[PurgeDNSCac
 	if err != nil {
 		return fmt.Errorf("purge expired dns cache: %w", err)
 	}
-	w.Logger.InfoContext(
+	w.Logger.DebugContext(
 		ctx,
 		"dns cache purge complete",
 		"deleted", deleted,

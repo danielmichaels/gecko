@@ -28,7 +28,7 @@ type dbConf struct {
 type authConf struct {
 	// Provider selects the auth backend: "local" (email/password) or "oidc" (stub).
 	Provider string `env:"AUTH_PROVIDER,default=local"`
-	// Session cookie settings (scs scaffolding for the future web UI).
+	// Session cookie settings used by the cookie-session system.
 	SessionCookieName     string `env:"AUTH_SESSION_COOKIE_NAME,default=gecko_session"`
 	SessionCookieSameSite string `env:"AUTH_SESSION_COOKIE_SAMESITE,default=lax"`
 	// OIDC placeholders — reserved for the OIDC provider; empty until implemented.
@@ -36,13 +36,17 @@ type authConf struct {
 	OIDCClientID     string `env:"OIDC_CLIENT_ID,default="`
 	OIDCClientSecret string `env:"OIDC_CLIENT_SECRET,default="`
 	OIDCRedirectURL  string `env:"OIDC_REDIRECT_URL,default="`
+	// CSRFSecret is the HMAC key used to derive per-session CSRF tokens. If
+	// empty at startup the server generates a random key — tokens will not
+	// survive a restart in that case. Set AUTH_CSRF_SECRET in production.
+	CSRFSecret string `env:"AUTH_CSRF_SECRET,default="`
 	// BcryptCost is the bcrypt work factor for password hashing.
 	BcryptCost int `env:"AUTH_BCRYPT_COST,default=12"`
 	// APIKeyTTL bounds API key lifetime; 0 means keys never expire.
 	APIKeyTTL time.Duration `env:"AUTH_APIKEY_TTL,default=0"`
 	// InviteTTL bounds how long an invitation token stays valid.
 	InviteTTL time.Duration `env:"AUTH_INVITE_TTL,default=168h"`
-	// SessionTTL bounds browser (scs) session lifetime.
+	// SessionTTL bounds cookie-session lifetime.
 	SessionTTL time.Duration `env:"AUTH_SESSION_TTL,default=720h"`
 	// SignupEnabled toggles self-service tenant signup.
 	SignupEnabled       bool `env:"SIGNUP_ENABLED,default=true"`
