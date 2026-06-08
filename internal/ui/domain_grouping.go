@@ -69,7 +69,10 @@ func groupDomainsByApex(rows []templates.DomainRowView) []templates.DomainGroupV
 	for i := range groups {
 		g := &groups[i]
 		g.SubCount = len(g.Children)
-		sort.Slice(g.Children, func(a, b int) bool { return g.Children[a].Name < g.Children[b].Name })
+		sort.Slice(
+			g.Children,
+			func(a, b int) bool { return g.Children[a].Name < g.Children[b].Name },
+		)
 
 		members := make([]templates.DomainRowView, 0, len(g.Children)+1)
 		if g.HasOwn {

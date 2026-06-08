@@ -70,7 +70,11 @@ func TestGroupDomainsByApex_GroupOrderIsFirstAppearance(t *testing.T) {
 	groups := groupDomainsByApex(rows)
 
 	if groups[0].Apex != "zeta.com" || groups[1].Apex != "alpha.com" {
-		t.Errorf("group order: want [zeta.com alpha.com], got [%s %s]", groups[0].Apex, groups[1].Apex)
+		t.Errorf(
+			"group order: want [zeta.com alpha.com], got [%s %s]",
+			groups[0].Apex,
+			groups[1].Apex,
+		)
 	}
 }
 
@@ -132,7 +136,11 @@ func TestGroupDomainsByApex_SyntheticHeaderWhenApexUntracked(t *testing.T) {
 		t.Errorf("synthetic header name: want untracked.com, got %q", g.Header.Name)
 	}
 	if g.Header.RecordCount != "—" || g.Header.LastScan != "—" {
-		t.Errorf("synthetic header placeholders: want —/—, got %s/%s", g.Header.RecordCount, g.Header.LastScan)
+		t.Errorf(
+			"synthetic header placeholders: want —/—, got %s/%s",
+			g.Header.RecordCount,
+			g.Header.LastScan,
+		)
 	}
 	// Rollup excludes the synthetic header (it has no own findings).
 	if g.RollupSeverity != "warn" {

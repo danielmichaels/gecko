@@ -29,7 +29,9 @@ func inviteSignals(token string) string {
 func toggleCollapse(apex string) string {
 	return fmt.Sprintf(
 		"$collapsed = $collapsed.includes('%s') ? $collapsed.filter(k => k !== '%s') : [...$collapsed, '%s']",
-		apex, apex, apex,
+		apex,
+		apex,
+		apex,
 	)
 }
 
@@ -119,15 +121,15 @@ type DomainsPageProps struct {
 // the apex header (real or synthetic) plus its subdomain children, with a
 // worst-child severity rollup.
 type DomainGroupView struct {
-	Apex             string
 	Header           DomainRowView
-	HasOwn           bool
+	Apex             string
+	RollupSeverity   string // worst severity across header+children
+	FindingsSeverity string // apex badge CSS class (crit|warn|ok|info)
+	FindingsLabel    string // apex badge text, e.g. "1 critical" / "clean"
 	Children         []DomainRowView
-	SubCount         int
-	RollupSeverity   string   // worst severity across header+children
 	Rollup           []string // distinct severities present, worst-first
-	FindingsSeverity string   // apex badge CSS class (crit|warn|ok|info)
-	FindingsLabel    string   // apex badge text, e.g. "1 critical" / "clean"
+	SubCount         int
+	HasOwn           bool
 }
 
 // DomainRowView is the presentation model for a single row in the domain table.
