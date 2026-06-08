@@ -97,9 +97,9 @@ func DomainsPage(props DomainsPageProps) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var7 string
-				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(postWithCSRF("/app/domains/rescan", props.Shell.CSRFToken))
+				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(postWithConfirm("Rescan all tracked domains?", "/app/domains/rescan", props.Shell.CSRFToken))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/domains.templ`, Line: 17, Col: 80}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/domains.templ`, Line: 17, Col: 114}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 				if templ_7745c5c3_Err != nil {

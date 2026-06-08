@@ -9,6 +9,17 @@ func postWithCSRF(url, token string) string {
 	return fmt.Sprintf("@post('%s', {headers: {'X-CSRF-Token': '%s'}})", url, token)
 }
 
+// postWithConfirm returns a data-on-click action that confirms before POSTing to
+// url with the CSRF token. Used for bulk/irreversible actions like rescan-all.
+func postWithConfirm(message, url, token string) string {
+	return fmt.Sprintf(
+		"if(!confirm('%s')) return; @post('%s', {headers: {'X-CSRF-Token': '%s'}})",
+		message,
+		url,
+		token,
+	)
+}
+
 // deleteRowWithConfirm returns a data-on-click action that confirms before deleting.
 func deleteRowWithConfirm(url, token string) string {
 	return fmt.Sprintf(

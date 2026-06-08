@@ -14,7 +14,7 @@ templ DomainsPage(props DomainsPageProps) {
 					<button
 						class="btn-ghost btn"
 						type="button"
-						data-on:click={ postWithCSRF("/app/domains/rescan", props.Shell.CSRFToken) }
+						data-on:click={ postWithConfirm("Rescan all tracked domains?", "/app/domains/rescan", props.Shell.CSRFToken) }
 					>⟳ Rescan all</button>
 				</div>
 				<div class="stats">

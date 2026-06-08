@@ -124,6 +124,12 @@ func TestDomainsPageRender(t *testing.T) {
 	if !strings.Contains(out, `data-on:input__debounce.300ms="$offset = 0; @get('/app/domains')"`) {
 		t.Error("expected debounced search binding (resetting offset) in DomainsPage output")
 	}
+	// Rescan-all re-scans every domain → guard behind a confirm dialog. templ
+	// HTML-escapes the expression attribute, so quotes render as &#39; (the
+	// browser decodes them back before datastar evaluates the action).
+	if !strings.Contains(out, "confirm(&#39;Rescan all tracked domains?&#39;)") {
+		t.Error("expected rescan-all confirm dialog in DomainsPage output")
+	}
 	// Add-domain demoted to a drawer toggled by the drawerOpen signal.
 	if !strings.Contains(out, `class="drawer"`) {
 		t.Error("expected add-domain drawer in DomainsPage output")
