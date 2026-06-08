@@ -28,6 +28,11 @@ import (
 // than a display page size. Tenants beyond it are logged, not silently dropped.
 const maxListDomains = 5000
 
+// flatPageSize is how many flat-mode rows render per "load more" request. Nested
+// mode is not paginated (a correct rollup needs the whole group), so this only
+// bounds the flat-list DOM, not the underlying fetch.
+const flatPageSize = 50
+
 // handleDomainsGet renders the full domains list page.
 func (h *Handlers) handleDomainsGet(w http.ResponseWriter, r *http.Request) {
 	p, ok := PrincipalFrom(r.Context())
@@ -43,11 +48,13 @@ func (h *Handlers) handleDomainsGet(w http.ResponseWriter, r *http.Request) {
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	layout := r.URL.Query().Get("layout")
 	tld := strings.TrimSpace(r.URL.Query().Get("tld"))
+	offset := 0
 	if isDatastar {
 		var sig struct {
 			Q      string `json:"q"`
 			Layout string `json:"layout"`
 			Tld    string `json:"tld"`
+			Offset int    `json:"offset"`
 		}
 		if err := datastar.ReadSignals(r, &sig); err == nil {
 			if query == "" {
@@ -59,6 +66,7 @@ func (h *Handlers) handleDomainsGet(w http.ResponseWriter, r *http.Request) {
 			if tld == "" {
 				tld = strings.TrimSpace(sig.Tld)
 			}
+			offset = sig.Offset
 		}
 	}
 	// Nested is the default layout; only an explicit "flat" opts out.
@@ -124,15 +132,54 @@ func (h *Handlers) handleDomainsGet(w http.ResponseWriter, r *http.Request) {
 
 	if isDatastar {
 		sse := datastar.NewSSE(w, r)
-		_ = sse.PatchElementTempl(
-			templates.DomainTableBody(templates.DomainsPageProps{
-				Layout:  layout,
-				Domains: rows,
-				Groups:  groups,
-			}, CSRFTokenFrom(r.Context())),
-			datastar.WithSelectorID("domains-rows"),
-			datastar.WithModeInner(),
-		)
+		csrf := CSRFTokenFrom(r.Context())
+		if layout == "flat" {
+			// DOM pagination over the in-memory filtered set: offset 0 replaces the
+			// list, a later offset appends the next page. The offset signal is
+			// advanced server-side so the load-more button stays stateless.
+			start := offset
+			if start < 0 {
+				start = 0
+			}
+			if start > len(rows) {
+				start = len(rows)
+			}
+			end := start + flatPageSize
+			if end > len(rows) {
+				end = len(rows)
+			}
+			page := rows[start:end]
+			mode := datastar.WithModeInner()
+			if start > 0 {
+				mode = datastar.WithModeAppend()
+			}
+			if start == 0 || len(page) > 0 {
+				_ = sse.PatchElementTempl(
+					templates.DomainRowsFragment(page, csrf),
+					datastar.WithSelectorID("domains-rows"),
+					mode,
+				)
+			}
+			_ = sse.PatchElementTempl(
+				templates.DomainsLoadMore(end < len(rows)),
+				datastar.WithSelectorID("domains-more"),
+			)
+			_ = sse.MarshalAndPatchSignals(map[string]any{"offset": end})
+		} else {
+			_ = sse.PatchElementTempl(
+				templates.DomainTableBody(templates.DomainsPageProps{
+					Layout:  layout,
+					Domains: rows,
+					Groups:  groups,
+				}, csrf),
+				datastar.WithSelectorID("domains-rows"),
+				datastar.WithModeInner(),
+			)
+			_ = sse.PatchElementTempl(
+				templates.DomainsLoadMore(false),
+				datastar.WithSelectorID("domains-more"),
+			)
+		}
 		_ = sse.PatchElements(
 			fmt.Sprintf(
 				`<div class="result-meta" id="result-meta">%s</div>`,
@@ -283,6 +330,12 @@ func (h *Handlers) handleDomainCreate(w http.ResponseWriter, r *http.Request) {
 		}, CSRFTokenFrom(r.Context())),
 		datastar.WithSelectorID("domains-rows"),
 		datastar.WithModeInner(),
+	)
+	// The grouped body is the full set; drop any flat load-more trigger left over
+	// from flat mode so it can't append a stale page on top of the groups.
+	_ = sse.PatchElementTempl(
+		templates.DomainsLoadMore(false),
+		datastar.WithSelectorID("domains-more"),
 	)
 	// Clear any prior error, then close the drawer and reset its input.
 	_ = sse.PatchElements(

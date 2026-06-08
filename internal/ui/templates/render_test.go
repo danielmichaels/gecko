@@ -121,8 +121,8 @@ func TestDomainsPageRender(t *testing.T) {
 		t.Error("expected 'domains-rows' container in DomainsPage output")
 	}
 	// Search promoted to primary: debounced datastar GET (colon-form binding).
-	if !strings.Contains(out, `data-on:input__debounce.300ms="@get('/app/domains')"`) {
-		t.Error("expected debounced search binding in DomainsPage output")
+	if !strings.Contains(out, `data-on:input__debounce.300ms="$offset = 0; @get('/app/domains')"`) {
+		t.Error("expected debounced search binding (resetting offset) in DomainsPage output")
 	}
 	// Add-domain demoted to a drawer toggled by the drawerOpen signal.
 	if !strings.Contains(out, `class="drawer"`) {

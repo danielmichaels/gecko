@@ -1158,6 +1158,54 @@ func TestDomainsGet_NestedGroupsOverFullTenantSet(t *testing.T) {
 	}
 }
 
+func TestDomainsGet_FlatLoadMorePaginates(t *testing.T) {
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+	cookie, _ := h.loginCookie(t, "flatpage@example.com", "pass1234")
+	tid := tenantIDFor(t, ctx, pc, "flatpage@example.com")
+
+	// 60 independent apex domains → flat mode shows 60 rows, exceeding one page.
+	for i := 0; i < 60; i++ {
+		seedDomainForTenant(t, ctx, pc, tid, fmt.Sprintf("d%02d.com", i))
+	}
+
+	// Page 1: fresh flat render (offset 0) shows the first page and a load-more
+	// trigger, and advances the offset signal to the page size.
+	p1 := h.datastarGet(t, "/app/domains", `{"layout":"flat","offset":0}`, cookie)
+	if p1.Code != http.StatusOK {
+		t.Fatalf("flat page 1: want 200, got %d", p1.Code)
+	}
+	b1 := p1.Body.String()
+	if !strings.Contains(b1, "Load more") {
+		t.Error("flat page 1: expected a 'Load more' trigger (60 rows > one page)")
+	}
+	if !strings.Contains(b1, `"offset":50`) {
+		t.Error("flat page 1: expected offset signal advanced to 50")
+	}
+
+	// Page 2: load-more (offset 50) appends the remainder and removes the trigger.
+	p2 := h.datastarGet(t, "/app/domains", `{"layout":"flat","offset":50}`, cookie)
+	if p2.Code != http.StatusOK {
+		t.Fatalf("flat page 2: want 200, got %d", p2.Code)
+	}
+	b2 := p2.Body.String()
+	if !strings.Contains(b2, "mode append") {
+		t.Error("flat page 2: expected append patch mode")
+	}
+	if !strings.Contains(b2, `"offset":60`) {
+		t.Error("flat page 2: expected offset signal advanced to 60")
+	}
+	if strings.Contains(b2, "Load more") {
+		t.Error("flat page 2: load-more trigger should be gone at the end of the list")
+	}
+}
+
 // min is a small helper to avoid panics when slicing body for error messages.
 func min(a, b int) int {
 	if a < b {

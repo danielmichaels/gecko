@@ -185,6 +185,10 @@ body{
 .child .n .lead b{color:var(--txt);font-weight:500}
 .child .sdot{width:6px;height:6px}
 
+/* flat-mode load-more trigger */
+.load-more{display:flex;justify-content:center;padding:14px 0 2px}
+.load-more:empty{padding:0}
+
 /* rollup mini-dots on apex */
 .rollup{display:inline-flex;gap:3px;align-items:center}
 .rollup i{width:5px;height:5px;border-radius:50%}

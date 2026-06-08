@@ -3,7 +3,7 @@ package templates
 templ DomainsPage(props DomainsPageProps) {
 	@Page("gecko · Domains") {
 		@AppShell(props.Shell) {
-			<div data-signals='{"q":"","newDomain":"","drawerOpen":false,"layout":"nested","tld":"","collapsed":[]}'>
+			<div data-signals='{"q":"","newDomain":"","drawerOpen":false,"layout":"nested","tld":"","collapsed":[],"offset":0}'>
 				<div class="page-head">
 					<div>
 						<h1>Domains</h1>
@@ -41,12 +41,12 @@ templ DomainsPage(props DomainsPageProps) {
 						<input
 							placeholder="Search domains…"
 							data-bind="q"
-							data-on:input__debounce.300ms="@get('/app/domains')"
+							data-on:input__debounce.300ms="$offset = 0; @get('/app/domains')"
 						/>
 						<span class="kbd">/</span>
 					</div>
 					<div class="tld-filter">
-						<select data-bind="tld" data-on:change="@get('/app/domains')">
+						<select data-bind="tld" data-on:change="$offset = 0; @get('/app/domains')">
 							<option value="">All top-level</option>
 							for _, t := range props.TLDOptions {
 								<option value={ t }>{ t }</option>
@@ -57,12 +57,12 @@ templ DomainsPage(props DomainsPageProps) {
 						<button
 							type="button"
 							data-class="{'on': $layout === 'nested'}"
-							data-on:click="$layout = 'nested'; @get('/app/domains')"
+							data-on:click="$layout = 'nested'; $offset = 0; @get('/app/domains')"
 						><span class="gly">⊟</span> Nested</button>
 						<button
 							type="button"
 							data-class="{'on': $layout === 'flat'}"
-							data-on:click="$layout = 'flat'; @get('/app/domains')"
+							data-on:click="$layout = 'flat'; $offset = 0; @get('/app/domains')"
 						><span class="gly">≡</span> Flat</button>
 					</div>
 					<button
@@ -85,6 +85,7 @@ templ DomainsPage(props DomainsPageProps) {
 						@DomainTableBody(props, props.Shell.CSRFToken)
 					</div>
 				</div>
+				@DomainsLoadMore(false)
 				<div class="scrim" data-class="{'open': $drawerOpen}" data-on:click="$drawerOpen = false"></div>
 				<aside class="drawer" data-class="{'open': $drawerOpen}">
 					<div class="drawer-h">
@@ -113,6 +114,18 @@ templ DomainsPage(props DomainsPageProps) {
 			</div>
 		}
 	}
+}
+
+// DomainsLoadMore renders the flat-mode pagination trigger below the table.
+// The button re-requests the list; the server reads the current $offset signal,
+// appends the next page, advances $offset, and re-patches this container without
+// a button when the list is exhausted. Nested mode renders it empty.
+templ DomainsLoadMore(show bool) {
+	<div id="domains-more" class="load-more">
+		if show {
+			<button type="button" class="btn-ghost btn" data-on:click="@get('/app/domains')">↓ Load more</button>
+		}
+	</div>
 }
 
 // DomainTableBody switches the #domains-rows content between flat and nested
