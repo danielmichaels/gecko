@@ -154,13 +154,17 @@ WITH ids AS (
     SELECT unnest(@domain_ids::int[]) AS domain_id
 ),
 open_findings AS (
-    SELECT domain_id, severity::text AS severity FROM spf_findings WHERE status = 'open'
+    SELECT domain_id, severity::text AS severity FROM spf_findings
+        WHERE status = 'open' AND domain_id = ANY(@domain_ids::int[])
     UNION ALL
-    SELECT domain_id, severity::text FROM dkim_findings WHERE status = 'open'
+    SELECT domain_id, severity::text FROM dkim_findings
+        WHERE status = 'open' AND domain_id = ANY(@domain_ids::int[])
     UNION ALL
-    SELECT domain_id, severity::text FROM dmarc_findings WHERE status = 'open'
+    SELECT domain_id, severity::text FROM dmarc_findings
+        WHERE status = 'open' AND domain_id = ANY(@domain_ids::int[])
     UNION ALL
-    SELECT domain_id, severity::text FROM zone_transfer_findings WHERE zone_transfer_possible = true
+    SELECT domain_id, severity::text FROM zone_transfer_findings
+        WHERE zone_transfer_possible = true AND domain_id = ANY(@domain_ids::int[])
 )
 SELECT
     ids.domain_id::int AS domain_id,
@@ -177,14 +181,17 @@ FROM ids
 LEFT JOIN open_findings f ON f.domain_id = ids.domain_id
 GROUP BY ids.domain_id;
 
--- name: DomainsTenantFindingStats :one
--- Tenant-wide counts of domains whose worst open finding is critical/high
--- (critical_count) versus medium/low (warning_count).
+-- name: TenantFindingStatsAll :many
+-- Per-tenant counts of domains whose worst open finding is critical/high
+-- (critical_count) versus medium/low (warning_count), in a single grouped pass
+-- over all tenants. Runs off the request path (periodic refresh job); the result
+-- is cached into tenant_stats.
 SELECT
+    agg.tenant_id AS tenant_id,
     COUNT(*) FILTER (WHERE sev_rank <= 2)::int AS critical_count,
     COUNT(*) FILTER (WHERE sev_rank BETWEEN 3 AND 4)::int AS warning_count
 FROM (
-    SELECT d.id,
+    SELECT d.tenant_id, d.id,
         MIN(CASE f.severity
             WHEN 'critical' THEN 1
             WHEN 'high'     THEN 2
@@ -203,6 +210,6 @@ FROM (
         UNION ALL
         SELECT domain_id, severity::text FROM zone_transfer_findings WHERE zone_transfer_possible = true
     ) f ON f.domain_id = d.id
-    WHERE d.tenant_id = $1
-    GROUP BY d.id
-) agg;
+    GROUP BY d.tenant_id, d.id
+) agg
+GROUP BY agg.tenant_id;

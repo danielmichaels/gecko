@@ -12,28 +12,24 @@ import (
 )
 
 const domainsListRecordCounts = `-- name: DomainsListRecordCounts :many
-WITH ids AS (
-    SELECT unnest($1::int[]) AS domain_id
-),
-     all_records AS (
-         SELECT domain_id FROM a_records
-         UNION ALL SELECT domain_id FROM aaaa_records
-         UNION ALL SELECT domain_id FROM caa_records
-         UNION ALL SELECT domain_id FROM cname_records
-         UNION ALL SELECT domain_id FROM dnskey_records
-         UNION ALL SELECT domain_id FROM ds_records
-         UNION ALL SELECT domain_id FROM mx_records
-         UNION ALL SELECT domain_id FROM ns_records
-         UNION ALL SELECT domain_id FROM ptr_records
-         UNION ALL SELECT domain_id FROM rrsig_records
-         UNION ALL SELECT domain_id FROM soa_records
-         UNION ALL SELECT domain_id FROM srv_records
-         UNION ALL SELECT domain_id FROM txt_records
-     )
-SELECT ids.domain_id::int AS domain_id, count(r.domain_id)::int AS record_count
-FROM ids
-         LEFT JOIN all_records r ON r.domain_id = ids.domain_id
-GROUP BY ids.domain_id
+WITH all_records AS (
+    SELECT domain_id FROM a_records WHERE domain_id = ANY($1::int[])
+    UNION ALL SELECT domain_id FROM aaaa_records WHERE domain_id = ANY($1::int[])
+    UNION ALL SELECT domain_id FROM caa_records WHERE domain_id = ANY($1::int[])
+    UNION ALL SELECT domain_id FROM cname_records WHERE domain_id = ANY($1::int[])
+    UNION ALL SELECT domain_id FROM dnskey_records WHERE domain_id = ANY($1::int[])
+    UNION ALL SELECT domain_id FROM ds_records WHERE domain_id = ANY($1::int[])
+    UNION ALL SELECT domain_id FROM mx_records WHERE domain_id = ANY($1::int[])
+    UNION ALL SELECT domain_id FROM ns_records WHERE domain_id = ANY($1::int[])
+    UNION ALL SELECT domain_id FROM ptr_records WHERE domain_id = ANY($1::int[])
+    UNION ALL SELECT domain_id FROM rrsig_records WHERE domain_id = ANY($1::int[])
+    UNION ALL SELECT domain_id FROM soa_records WHERE domain_id = ANY($1::int[])
+    UNION ALL SELECT domain_id FROM srv_records WHERE domain_id = ANY($1::int[])
+    UNION ALL SELECT domain_id FROM txt_records WHERE domain_id = ANY($1::int[])
+)
+SELECT domain_id::int AS domain_id, count(*)::int AS record_count
+FROM all_records
+GROUP BY domain_id
 `
 
 type DomainsListRecordCountsRow struct {
@@ -41,7 +37,10 @@ type DomainsListRecordCountsRow struct {
 	RecordCount int32 `json:"record_count"`
 }
 
-// Per-domain record counts for a page of domain IDs (one query, no N+1).
+// Per-domain record counts for a page of domain IDs (one query, no N+1). The
+// domain_id predicate is pushed into every UNION arm so each arm is an index
+// scan bounded to the visible page; domains with zero records are absent from
+// the result (callers treat a missing key as 0).
 func (q *Queries) DomainsListRecordCounts(ctx context.Context, domainIds []int32) ([]DomainsListRecordCountsRow, error) {
 	rows, err := q.db.Query(ctx, domainsListRecordCounts, domainIds)
 	if err != nil {
@@ -60,36 +59,6 @@ func (q *Queries) DomainsListRecordCounts(ctx context.Context, domainIds []int32
 		return nil, err
 	}
 	return items, nil
-}
-
-const domainsTenantRecordTotal = `-- name: DomainsTenantRecordTotal :one
-WITH all_records AS (
-    SELECT domain_id FROM a_records
-    UNION ALL SELECT domain_id FROM aaaa_records
-    UNION ALL SELECT domain_id FROM caa_records
-    UNION ALL SELECT domain_id FROM cname_records
-    UNION ALL SELECT domain_id FROM dnskey_records
-    UNION ALL SELECT domain_id FROM ds_records
-    UNION ALL SELECT domain_id FROM mx_records
-    UNION ALL SELECT domain_id FROM ns_records
-    UNION ALL SELECT domain_id FROM ptr_records
-    UNION ALL SELECT domain_id FROM rrsig_records
-    UNION ALL SELECT domain_id FROM soa_records
-    UNION ALL SELECT domain_id FROM srv_records
-    UNION ALL SELECT domain_id FROM txt_records
-)
-SELECT count(*)::bigint AS total
-FROM all_records r
-         JOIN domains d ON r.domain_id = d.id
-WHERE d.tenant_id = $1
-`
-
-// Total DNS records across every record table for a tenant's domains.
-func (q *Queries) DomainsTenantRecordTotal(ctx context.Context, tenantID pgtype.Int4) (int64, error) {
-	row := q.db.QueryRow(ctx, domainsTenantRecordTotal, tenantID)
-	var total int64
-	err := row.Scan(&total)
-	return total, err
 }
 
 const getNameserversForDomain = `-- name: GetNameserversForDomain :many
@@ -1528,6 +1497,56 @@ func (q *Queries) RecordsGetTXTByDomainID(ctx context.Context, domainID pgtype.I
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const tenantRecordTotalsAll = `-- name: TenantRecordTotalsAll :many
+WITH all_records AS (
+    SELECT domain_id FROM a_records
+    UNION ALL SELECT domain_id FROM aaaa_records
+    UNION ALL SELECT domain_id FROM caa_records
+    UNION ALL SELECT domain_id FROM cname_records
+    UNION ALL SELECT domain_id FROM dnskey_records
+    UNION ALL SELECT domain_id FROM ds_records
+    UNION ALL SELECT domain_id FROM mx_records
+    UNION ALL SELECT domain_id FROM ns_records
+    UNION ALL SELECT domain_id FROM ptr_records
+    UNION ALL SELECT domain_id FROM rrsig_records
+    UNION ALL SELECT domain_id FROM soa_records
+    UNION ALL SELECT domain_id FROM srv_records
+    UNION ALL SELECT domain_id FROM txt_records
+)
+SELECT d.tenant_id AS tenant_id, count(*)::bigint AS total
+FROM all_records r
+         JOIN domains d ON r.domain_id = d.id
+GROUP BY d.tenant_id
+`
+
+type TenantRecordTotalsAllRow struct {
+	TenantID pgtype.Int4 `json:"tenant_id"`
+	Total    int64       `json:"total"`
+}
+
+// Total DNS records per tenant across every record table, in a single grouped
+// pass over all tenants. Runs off the request path (periodic refresh job); the
+// result is cached into tenant_stats.
+func (q *Queries) TenantRecordTotalsAll(ctx context.Context) ([]TenantRecordTotalsAllRow, error) {
+	rows, err := q.db.Query(ctx, tenantRecordTotalsAll)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TenantRecordTotalsAllRow{}
+	for rows.Next() {
+		var i TenantRecordTotalsAllRow
+		if err := rows.Scan(&i.TenantID, &i.Total); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

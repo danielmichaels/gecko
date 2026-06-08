@@ -374,8 +374,34 @@ DELETE FROM rrsig_records WHERE domain_id = $1 AND type_covered = $2 AND signer_
 -- name: RecordsDeleteCAA :exec
 DELETE FROM caa_records WHERE domain_id = $1 AND tag = $2 AND value = $3;
 
--- name: DomainsTenantRecordTotal :one
--- Total DNS records across every record table for a tenant's domains.
+-- name: DomainsListRecordCounts :many
+-- Per-domain record counts for a page of domain IDs (one query, no N+1). The
+-- domain_id predicate is pushed into every UNION arm so each arm is an index
+-- scan bounded to the visible page; domains with zero records are absent from
+-- the result (callers treat a missing key as 0).
+WITH all_records AS (
+    SELECT domain_id FROM a_records WHERE domain_id = ANY(@domain_ids::int[])
+    UNION ALL SELECT domain_id FROM aaaa_records WHERE domain_id = ANY(@domain_ids::int[])
+    UNION ALL SELECT domain_id FROM caa_records WHERE domain_id = ANY(@domain_ids::int[])
+    UNION ALL SELECT domain_id FROM cname_records WHERE domain_id = ANY(@domain_ids::int[])
+    UNION ALL SELECT domain_id FROM dnskey_records WHERE domain_id = ANY(@domain_ids::int[])
+    UNION ALL SELECT domain_id FROM ds_records WHERE domain_id = ANY(@domain_ids::int[])
+    UNION ALL SELECT domain_id FROM mx_records WHERE domain_id = ANY(@domain_ids::int[])
+    UNION ALL SELECT domain_id FROM ns_records WHERE domain_id = ANY(@domain_ids::int[])
+    UNION ALL SELECT domain_id FROM ptr_records WHERE domain_id = ANY(@domain_ids::int[])
+    UNION ALL SELECT domain_id FROM rrsig_records WHERE domain_id = ANY(@domain_ids::int[])
+    UNION ALL SELECT domain_id FROM soa_records WHERE domain_id = ANY(@domain_ids::int[])
+    UNION ALL SELECT domain_id FROM srv_records WHERE domain_id = ANY(@domain_ids::int[])
+    UNION ALL SELECT domain_id FROM txt_records WHERE domain_id = ANY(@domain_ids::int[])
+)
+SELECT domain_id::int AS domain_id, count(*)::int AS record_count
+FROM all_records
+GROUP BY domain_id;
+
+-- name: TenantRecordTotalsAll :many
+-- Total DNS records per tenant across every record table, in a single grouped
+-- pass over all tenants. Runs off the request path (periodic refresh job); the
+-- result is cached into tenant_stats.
 WITH all_records AS (
     SELECT domain_id FROM a_records
     UNION ALL SELECT domain_id FROM aaaa_records
@@ -391,32 +417,7 @@ WITH all_records AS (
     UNION ALL SELECT domain_id FROM srv_records
     UNION ALL SELECT domain_id FROM txt_records
 )
-SELECT count(*)::bigint AS total
+SELECT d.tenant_id AS tenant_id, count(*)::bigint AS total
 FROM all_records r
          JOIN domains d ON r.domain_id = d.id
-WHERE d.tenant_id = $1;
-
--- name: DomainsListRecordCounts :many
--- Per-domain record counts for a page of domain IDs (one query, no N+1).
-WITH ids AS (
-    SELECT unnest(@domain_ids::int[]) AS domain_id
-),
-     all_records AS (
-         SELECT domain_id FROM a_records
-         UNION ALL SELECT domain_id FROM aaaa_records
-         UNION ALL SELECT domain_id FROM caa_records
-         UNION ALL SELECT domain_id FROM cname_records
-         UNION ALL SELECT domain_id FROM dnskey_records
-         UNION ALL SELECT domain_id FROM ds_records
-         UNION ALL SELECT domain_id FROM mx_records
-         UNION ALL SELECT domain_id FROM ns_records
-         UNION ALL SELECT domain_id FROM ptr_records
-         UNION ALL SELECT domain_id FROM rrsig_records
-         UNION ALL SELECT domain_id FROM soa_records
-         UNION ALL SELECT domain_id FROM srv_records
-         UNION ALL SELECT domain_id FROM txt_records
-     )
-SELECT ids.domain_id::int AS domain_id, count(r.domain_id)::int AS record_count
-FROM ids
-         LEFT JOIN all_records r ON r.domain_id = ids.domain_id
-GROUP BY ids.domain_id;
+GROUP BY d.tenant_id;

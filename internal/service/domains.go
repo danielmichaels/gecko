@@ -129,20 +129,37 @@ func (s *DomainsService) FindingsSummaryForPage(
 	return out, nil
 }
 
-// TenantFindingStats returns the tenant-wide counts of domains whose worst open
-// finding is critical/high (critical) versus medium/low (warnings).
-func (s *DomainsService) TenantFindingStats(
+// TenantStats holds the cached tenant-wide rollups shown in the Domains list
+// stat strip. Present is false when the refresh job has not yet written a row
+// for this tenant (e.g. a brand-new tenant, or before the worker's first run),
+// letting handlers fall back to placeholders instead of showing a stale zero.
+type TenantStats struct {
+	RecordTotal   int64
+	CriticalCount int32
+	WarningCount  int32
+	Present       bool
+}
+
+// TenantStats reads the cached stat-strip rollups for the caller's tenant. The
+// values are refreshed off the request path by the RefreshTenantStats periodic
+// job; a missing row is not an error (Present stays false).
+func (s *DomainsService) TenantStats(
 	ctx context.Context,
 	p *auth.Principal,
-) (critical, warnings int32, err error) {
-	row, err := s.DB.DomainsTenantFindingStats(
-		ctx,
-		pgtype.Int4{Int32: p.TenantID, Valid: true},
-	)
+) (TenantStats, error) {
+	row, err := s.DB.TenantStatsGet(ctx, p.TenantID)
 	if err != nil {
-		return 0, 0, fmt.Errorf("tenant finding stats: %w", err)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return TenantStats{}, nil
+		}
+		return TenantStats{}, fmt.Errorf("tenant stats: %w", err)
 	}
-	return row.CriticalCount, row.WarningCount, nil
+	return TenantStats{
+		RecordTotal:   row.RecordTotal,
+		CriticalCount: row.CriticalCount,
+		WarningCount:  row.WarningCount,
+		Present:       true,
+	}, nil
 }
 
 // RecordCountsForPage returns the DNS record count per domain for a page of
@@ -164,22 +181,6 @@ func (s *DomainsService) RecordCountsForPage(
 		out[row.DomainID] = row.RecordCount
 	}
 	return out, nil
-}
-
-// TenantRecordTotal returns the total DNS record count across all of the
-// tenant's domains (the Records stat on the list page).
-func (s *DomainsService) TenantRecordTotal(
-	ctx context.Context,
-	p *auth.Principal,
-) (int64, error) {
-	total, err := s.DB.DomainsTenantRecordTotal(
-		ctx,
-		pgtype.Int4{Int32: p.TenantID, Valid: true},
-	)
-	if err != nil {
-		return 0, fmt.Errorf("tenant record total: %w", err)
-	}
-	return total, nil
 }
 
 // Get returns the domain identified by uid, scoped to the caller's tenant.

@@ -61,10 +61,16 @@ func (h *Handlers) handleDomainsGet(w http.ResponseWriter, r *http.Request) {
 		h.log.Error("domains list: findings summary", "error", err)
 		summaries = nil
 	}
+	recordCounts, err := h.svc.DomainsService().RecordCountsForPage(r.Context(), p, ids)
+	if err != nil {
+		h.log.Error("domains list: record counts", "error", err)
+		recordCounts = nil
+	}
 
 	rows := make([]templates.DomainRowView, len(result.Domains))
 	for i, d := range result.Domains {
 		view := domainRowView(d)
+		view.RecordCount = strconv.Itoa(int(recordCounts[d.ID]))
 		if sum, ok := summaries[d.ID]; ok {
 			view.FindingsSeverity, view.FindingsLabel = findingBadge(sum)
 		}
@@ -88,16 +94,23 @@ func (h *Handlers) handleDomainsGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// RecordCount per-domain is still deferred (would need a separate aggregate).
-	critical, warnings, err := h.svc.DomainsService().TenantFindingStats(r.Context(), p)
+	// Tenant-wide rollups are served from the tenant_stats cache (refreshed off
+	// the request path by the RefreshTenantStats job). Before the job's first run
+	// the row is absent, so we fall back to placeholders.
+	tenantStats, err := h.svc.DomainsService().TenantStats(r.Context(), p)
 	if err != nil {
-		h.log.Error("domains list: tenant finding stats", "error", err)
+		h.log.Error("domains list: tenant stats", "error", err)
 	}
 	stats := templates.DomainsStats{
 		Tracked:  strconv.FormatInt(result.TotalCount, 10),
-		Critical: strconv.Itoa(int(critical)),
-		Warnings: strconv.Itoa(int(warnings)),
+		Critical: "0",
+		Warnings: "0",
 		Records:  "—",
+	}
+	if tenantStats.Present {
+		stats.Critical = strconv.Itoa(int(tenantStats.CriticalCount))
+		stats.Warnings = strconv.Itoa(int(tenantStats.WarningCount))
+		stats.Records = strconv.FormatInt(tenantStats.RecordTotal, 10)
 	}
 
 	shell, err := h.shell(r.Context(), "domains")
@@ -244,12 +257,20 @@ func (h *Handlers) handleDomainDetail(w http.ResponseWriter, r *http.Request) {
 		findingsSeverity, _ = findingBadge(sum)
 	}
 
+	var recordCount string
+	if counts, cErr := h.svc.DomainsService().RecordCountsForPage(r.Context(), p, []int32{d.ID}); cErr != nil {
+		h.log.Error("domain detail: record counts", "error", cErr, "uid", uid)
+		recordCount = "—"
+	} else {
+		recordCount = strconv.Itoa(int(counts[d.ID]))
+	}
+
 	renderPage(w, r, templates.DomainDetailPage(templates.DomainDetailPageProps{
 		Shell:            shell,
 		UID:              d.Uid,
 		Name:             d.Name,
 		Severity:         severityForStatus(d.Status),
-		RecordCount:      "—", // still deferred until a per-domain record-count aggregate
+		RecordCount:      recordCount,
 		FindingsCount:    findingsCount,
 		FindingsSeverity: findingsSeverity,
 		Type:             string(d.DomainType),
@@ -503,7 +524,8 @@ func domainRowView(d store.Domains) templates.DomainRowView {
 	return templates.DomainRowView{
 		UID:  d.Uid,
 		Name: d.Name,
-		// v1 placeholder: RecordCount is "—" to avoid N+1 per-domain queries.
+		// RecordCount defaults to "—"; list/detail handlers override it from the
+		// index-driven per-page record-count query.
 		RecordCount: "—",
 		Severity:    severityForStatus(d.Status),
 		// v1 placeholders: findings subsystem not yet implemented.
