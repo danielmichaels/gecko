@@ -32,13 +32,29 @@ func (h *Handlers) handleDomainsGet(w http.ResponseWriter, r *http.Request) {
 	isDatastar := r.Header.Get("Datastar-Request") == "true"
 
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
-	if query == "" && isDatastar {
+	layout := r.URL.Query().Get("layout")
+	tld := strings.TrimSpace(r.URL.Query().Get("tld"))
+	if isDatastar {
 		var sig struct {
-			Q string `json:"q"`
+			Q      string `json:"q"`
+			Layout string `json:"layout"`
+			Tld    string `json:"tld"`
 		}
 		if err := datastar.ReadSignals(r, &sig); err == nil {
-			query = strings.TrimSpace(sig.Q)
+			if query == "" {
+				query = strings.TrimSpace(sig.Q)
+			}
+			if layout == "" {
+				layout = sig.Layout
+			}
+			if tld == "" {
+				tld = strings.TrimSpace(sig.Tld)
+			}
 		}
+	}
+	// Nested is the default layout; only an explicit "flat" opts out.
+	if layout != "flat" {
+		layout = "nested"
 	}
 
 	result, err := h.svc.DomainsService().List(r.Context(), p, service.DomainsListParams{
@@ -77,10 +93,28 @@ func (h *Handlers) handleDomainsGet(w http.ResponseWriter, r *http.Request) {
 		rows[i] = view
 	}
 
+	// TLD options reflect every apex present (computed before the filter narrows
+	// rows). The active filter then scopes the rendered rows to one apex family.
+	tldOptions := distinctApexes(rows)
+	if tld != "" {
+		filtered := make([]templates.DomainRowView, 0, len(rows))
+		for _, row := range rows {
+			if apexOf(row.Name) == tld {
+				filtered = append(filtered, row)
+			}
+		}
+		rows = filtered
+	}
+	groups := groupDomainsByApex(rows)
+
 	if isDatastar {
 		sse := datastar.NewSSE(w, r)
 		_ = sse.PatchElementTempl(
-			templates.DomainRowsFragment(rows, CSRFTokenFrom(r.Context())),
+			templates.DomainTableBody(templates.DomainsPageProps{
+				Layout:  layout,
+				Domains: rows,
+				Groups:  groups,
+			}, CSRFTokenFrom(r.Context())),
 			datastar.WithSelectorID("domains-rows"),
 			datastar.WithModeInner(),
 		)
@@ -121,9 +155,12 @@ func (h *Handlers) handleDomainsGet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	renderPage(w, r, templates.DomainsPage(templates.DomainsPageProps{
-		Shell:   shell,
-		Stats:   stats,
-		Domains: rows,
+		Shell:      shell,
+		Stats:      stats,
+		Layout:     layout,
+		Domains:    rows,
+		Groups:     groups,
+		TLDOptions: tldOptions,
 	}))
 }
 

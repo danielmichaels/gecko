@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -411,9 +412,11 @@ func TestHandlerDomains_Authenticated(t *testing.T) {
 	if !strings.Contains(body, "Domains") {
 		t.Error("GET /app/domains authed: body should contain 'Domains'")
 	}
-	if !strings.Contains(body, "myseeded.example.com") {
+	// Default layout is nested: the subdomain renders under its apex as
+	// <b>myseeded</b>.example.com, so assert the label and apex separately.
+	if !strings.Contains(body, "myseeded") || !strings.Contains(body, "example.com") {
 		t.Errorf(
-			"GET /app/domains authed: body should contain seeded domain, got partial: %s",
+			"GET /app/domains authed: body should contain seeded domain (nested), got partial: %s",
 			body[:min(200, len(body))],
 		)
 	}
@@ -1038,6 +1041,56 @@ func TestHandlerRescanAll_RoutesCorrectly(t *testing.T) {
 	// Rescan-all returns 200 whether there are domains or not.
 	if rr.Code != http.StatusOK {
 		t.Fatalf("POST /app/domains/rescan: want 200, got %d\nbody: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// datastarGet issues a GET carrying datastar signals in the query param and the
+// Datastar-Request header, exercising the rows-only fragment path.
+func (h *uiHarness) datastarGet(
+	t *testing.T,
+	path, signals, cookieValue string,
+) *httptest.ResponseRecorder {
+	t.Helper()
+	u := path + "?datastar=" + url.QueryEscape(signals)
+	req := httptest.NewRequest(http.MethodGet, u, nil)
+	if cookieValue != "" {
+		req.AddCookie(&http.Cookie{Name: h.cookieCfg.Name, Value: cookieValue})
+	}
+	req.Header.Set("Datastar-Request", "true")
+	rr := httptest.NewRecorder()
+	h.handler.ServeHTTP(rr, req)
+	return rr
+}
+
+func TestDomainsGet_NestedLayoutGroupsByApex(t *testing.T) {
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+	cookie, _ := h.loginCookie(t, "nested@example.com", "pass1234")
+	tid := tenantIDFor(t, ctx, pc, "nested@example.com")
+	seedDomainForTenant(t, ctx, pc, tid, "example.com")
+	seedDomainForTenant(t, ctx, pc, tid, "api.example.com")
+	seedDomainForTenant(t, ctx, pc, tid, "other.com")
+
+	rr := h.datastarGet(t, "/app/domains", `{"layout":"nested","tld":"example.com"}`, cookie)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("nested fragment: want 200, got %d\nbody: %s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "example.com") {
+		t.Error("nested fragment: body should contain the filtered apex example.com")
+	}
+	if !strings.Contains(body, "apex") {
+		t.Error("nested fragment: body should render an apex group row")
+	}
+	if strings.Contains(body, "other.com") {
+		t.Error("nested fragment: tld filter should exclude other.com")
 	}
 }
 
