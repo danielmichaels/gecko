@@ -463,10 +463,13 @@ func TestHandlerDomains_AddDomain_WithCSRF(t *testing.T) {
 			rr.Body.String(),
 		)
 	}
-	if !strings.Contains(rr.Body.String(), "added-by-test.example.com") {
+	// Create re-renders the grouped (nested) body, so the new subdomain shows as
+	// <b>added-by-test</b>.example.com — assert the label and apex separately.
+	addBody := rr.Body.String()
+	if !strings.Contains(addBody, "added-by-test") || !strings.Contains(addBody, "example.com") {
 		t.Errorf(
 			"POST /app/domains add: SSE body should contain new domain name, got: %s",
-			rr.Body.String(),
+			addBody,
 		)
 	}
 }
@@ -1091,6 +1094,37 @@ func TestDomainsGet_NestedLayoutGroupsByApex(t *testing.T) {
 	}
 	if strings.Contains(body, "other.com") {
 		t.Error("nested fragment: tld filter should exclude other.com")
+	}
+}
+
+func TestDomainCreate_RerendersGroupedBody(t *testing.T) {
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+	cookie, csrf := h.loginCookie(t, "createnest@example.com", "pass1234")
+	tid := tenantIDFor(t, ctx, pc, "createnest@example.com")
+	seedDomainForTenant(t, ctx, pc, tid, "example.com")
+
+	body, _ := json.Marshal(map[string]string{"newDomain": "www.example.com"})
+	rr := h.do(t, http.MethodPost, "/app/domains", body, cookie, csrf)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("create: want 200 (SSE), got %d\nbody: %s", rr.Code, rr.Body.String())
+	}
+	out := rr.Body.String()
+	if !strings.Contains(out, "domains-rows") {
+		t.Error("create: should patch the #domains-rows body")
+	}
+	if !strings.Contains(out, "apex") {
+		t.Error("create: should re-render the grouped (apex) body")
+	}
+	if !strings.Contains(out, "<b>www</b>.example.com") {
+		t.Error("create: new subdomain should nest under its apex")
 	}
 }
 
