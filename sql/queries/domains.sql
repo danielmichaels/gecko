@@ -147,6 +147,14 @@ WHERE uid = $1
   AND tenant_id = $2
 RETURNING id, uid, tenant_id, name, domain_type, source, status, created_at, updated_at;
 
+-- name: DomainsIDsByTenantID :many
+-- All domain IDs owned by a tenant. Used by the per-tenant stats refresh to
+-- drive the index-driven record/finding aggregates; returns no rows when the
+-- tenant has no domains (the caller then caches zeros).
+SELECT id
+FROM domains
+WHERE tenant_id = $1;
+
 -- name: DomainsListByTenantID :many
 -- List all domains for a tenant with pagination (no auth)
 SELECT id,

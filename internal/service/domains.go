@@ -389,6 +389,23 @@ func (s *DomainsService) Delete(
 		}
 		return fmt.Errorf("delete domain: %w", err)
 	}
+
+	// The delete cascaded away this domain's records/findings, so the tenant's
+	// cached counts (possibly now zero) are stale. Enqueue an immediate per-tenant
+	// refresh — this is the one change the periodic recompute can't self-heal. A
+	// failure here is non-fatal: the periodic job is the backstop.
+	if s.statsRefresher != nil {
+		if rErr := s.statsRefresher.RefreshTenantStats(ctx, p.TenantID); rErr != nil {
+			s.Log.WarnContext(
+				ctx,
+				"enqueue tenant stats refresh",
+				"error",
+				rErr,
+				"tenant",
+				p.TenantID,
+			)
+		}
+	}
 	return nil
 }
 

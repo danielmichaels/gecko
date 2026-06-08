@@ -42,14 +42,24 @@ type DomainScanScheduler interface {
 	) (int64, error)
 }
 
+// TenantStatsRefresher enqueues an out-of-band recompute of a single tenant's
+// cached stat strip. The seam lets handlers trigger an immediate refresh (e.g.
+// after a delete drops a tenant's counts) without coupling the service to a live
+// River queue; a nil refresher just skips the enqueue and lets the periodic job
+// catch up.
+type TenantStatsRefresher interface {
+	RefreshTenantStats(ctx context.Context, tenantID int32) error
+}
+
 // Service holds the shared dependencies used across all domain service methods.
 type Service struct {
-	Conf         *config.Conf
-	Log          *slog.Logger
-	DB           *store.Queries
-	Pool         *pgxpool.Pool
-	AuthProvider auth.Provider
-	scheduler    DomainScanScheduler
+	Conf           *config.Conf
+	Log            *slog.Logger
+	DB             *store.Queries
+	Pool           *pgxpool.Pool
+	AuthProvider   auth.Provider
+	scheduler      DomainScanScheduler
+	statsRefresher TenantStatsRefresher
 }
 
 // New constructs a Service with all required dependencies wired. The production
@@ -62,13 +72,15 @@ func New(
 	rc *river.Client[pgx.Tx],
 	authProvider auth.Provider,
 ) *Service {
+	sched := &riverScheduler{rc: rc, conf: conf}
 	return &Service{
-		Conf:         conf,
-		Log:          log,
-		DB:           db,
-		Pool:         pool,
-		AuthProvider: authProvider,
-		scheduler:    &riverScheduler{rc: rc, conf: conf},
+		Conf:           conf,
+		Log:            log,
+		DB:             db,
+		Pool:           pool,
+		AuthProvider:   authProvider,
+		scheduler:      sched,
+		statsRefresher: sched,
 	}
 }
 
@@ -88,6 +100,11 @@ func NewWithScheduler(
 		DB:        db,
 		Pool:      pool,
 		scheduler: scheduler,
+	}
+	// A fake that also implements TenantStatsRefresher (the production scheduler
+	// does) gets wired as the refresher too; otherwise the enqueue is skipped.
+	if r, ok := scheduler.(TenantStatsRefresher); ok {
+		svc.statsRefresher = r
 	}
 	if len(authProvider) > 0 {
 		svc.AuthProvider = authProvider[0]
@@ -151,4 +168,12 @@ func (r *riverScheduler) Schedule(
 		RecencyWindow:       r.conf.AppConf.ScanRecencyWindow,
 		Concurrency:         r.conf.AppConf.EnumerationConcurrencyLimit,
 	})
+}
+
+// RefreshTenantStats enqueues a single-tenant stat-strip recompute. The job's
+// InsertOpts make it unique by args, so concurrent enqueues for the same tenant
+// coalesce into one pending refresh.
+func (r *riverScheduler) RefreshTenantStats(ctx context.Context, tenantID int32) error {
+	_, err := r.rc.Insert(ctx, jobs.RefreshTenantStatsArgs{TenantID: tenantID}, nil)
+	return err
 }

@@ -171,9 +171,13 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 			// reserved for assessors
 			queueAssessor: {MaxWorkers: cfg.WorkerCount},
 		}
+		// Safety-net recompute of every tenant's stat strip. Deletes (the only
+		// change the recompute can't self-heal, because a tenant can drop to zero)
+		// are handled promptly by an event-driven per-tenant refresh enqueued from
+		// the delete path, so this full pass can run on a relaxed interval.
 		riverConfig.PeriodicJobs = []*river.PeriodicJob{
 			river.NewPeriodicJob(
-				river.PeriodicInterval(30*time.Second),
+				river.PeriodicInterval(5*time.Minute),
 				func() (river.JobArgs, *river.InsertOpts) {
 					return RefreshTenantStatsArgs{}, nil
 				},

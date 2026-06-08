@@ -153,3 +153,65 @@ func TestRefreshTenantStatsWorker_ComputesAndIsolatesTenants(t *testing.T) {
 		t.Errorf("tenant 1 record_total after rerun = %d, want 4", s1again.RecordTotal)
 	}
 }
+
+// TestRefreshTenantStatsWorker_SingleTenant verifies the event-driven path: a
+// refresh scoped to one tenant computes that tenant's rollups, and once the
+// tenant's domains are deleted, a re-run overwrites the cached row with zeros
+// (the drop-to-zero case the periodic full pass can't self-heal).
+func TestRefreshTenantStatsWorker_SingleTenant(t *testing.T) {
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create postgres container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	q := pc.Queries
+	w := &RefreshTenantStatsWorker{Logger: *testhelpers.TestLogger, Store: q}
+	run := func(tenantID int32) {
+		t.Helper()
+		if err := w.Work(ctx, &river.Job[RefreshTenantStatsArgs]{
+			Args: RefreshTenantStatsArgs{TenantID: tenantID},
+		}); err != nil {
+			t.Fatalf("worker Work (tenant %d): %v", tenantID, err)
+		}
+	}
+
+	tid := seedStatsTenant(t, ctx, q, "single@stats.test")
+	d := seedStatsDomain(t, ctx, q, tid, "d.single.test")
+	seedStatsARecord(t, ctx, q, d, "192.0.2.10")
+	seedStatsARecord(t, ctx, q, d, "192.0.2.11")
+	seedStatsSPF(t, ctx, q, d, store.FindingSeverityCritical)
+
+	run(tid)
+
+	s, err := q.TenantStatsGet(ctx, tid)
+	if err != nil {
+		t.Fatalf("get tenant stats: %v", err)
+	}
+	if s.RecordTotal != 2 || s.CriticalCount != 1 || s.WarningCount != 0 {
+		t.Errorf(
+			"stats = (records %d, crit %d, warn %d), want (2, 1, 0)",
+			s.RecordTotal, s.CriticalCount, s.WarningCount,
+		)
+	}
+
+	// Delete the tenant's domains (cascading records/findings), then refresh just
+	// this tenant: the cached row must drop to zeros.
+	if _, err := pc.Pool.Exec(ctx, "DELETE FROM domains WHERE tenant_id = $1", tid); err != nil {
+		t.Fatalf("delete domains: %v", err)
+	}
+
+	run(tid)
+
+	z, err := q.TenantStatsGet(ctx, tid)
+	if err != nil {
+		t.Fatalf("get tenant stats (after delete): %v", err)
+	}
+	if z.RecordTotal != 0 || z.CriticalCount != 0 || z.WarningCount != 0 {
+		t.Errorf(
+			"stats after delete-to-zero = (records %d, crit %d, warn %d), want (0, 0, 0)",
+			z.RecordTotal, z.CriticalCount, z.WarningCount,
+		)
+	}
+}
