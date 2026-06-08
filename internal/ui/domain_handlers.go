@@ -250,10 +250,16 @@ func (h *Handlers) listDomainRows(
 		h.log.Error("domains list: findings summary", "error", err)
 		summaries = nil
 	}
+	recordCounts, err := h.svc.DomainsService().RecordCountsForPage(ctx, p, ids)
+	if err != nil {
+		h.log.Error("domains list: record counts", "error", err)
+		recordCounts = nil
+	}
 
 	rows := make([]templates.DomainRowView, len(result.Domains))
 	for i, d := range result.Domains {
 		view := domainRowView(d)
+		view.RecordCount = strconv.Itoa(int(recordCounts[d.ID]))
 		if sum, ok := summaries[d.ID]; ok {
 			view.FindingsSeverity, view.FindingsLabel = findingBadge(sum)
 		}
