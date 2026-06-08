@@ -21,6 +21,13 @@ import (
 	datastar "github.com/starfederation/datastar-go/datastar"
 )
 
+// maxListDomains bounds how many of a tenant's domains the list page fetches.
+// Nested grouping, the worst-child rollups, and the TLD-filter options must be
+// computed over the whole tenant set to be correct (an apex and its children can
+// otherwise straddle a page boundary), so this is a generous safety bound rather
+// than a display page size. Tenants beyond it are logged, not silently dropped.
+const maxListDomains = 5000
+
 // handleDomainsGet renders the full domains list page.
 func (h *Handlers) handleDomainsGet(w http.ResponseWriter, r *http.Request) {
 	p, ok := PrincipalFrom(r.Context())
@@ -61,13 +68,19 @@ func (h *Handlers) handleDomainsGet(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.svc.DomainsService().List(r.Context(), p, service.DomainsListParams{
 		FilterName: query,
-		PageSize:   100,
+		PageSize:   maxListDomains,
 		Offset:     0,
 	})
 	if err != nil {
 		h.log.Error("domains list", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
+	}
+	if result.TotalCount > maxListDomains {
+		h.log.Warn(
+			"domains list truncated: grouping/rollups cover only the fetched subset",
+			"tenant", p.TenantID, "total", result.TotalCount, "cap", maxListDomains,
+		)
 	}
 
 	ids := make([]int32, len(result.Domains))
@@ -174,7 +187,7 @@ func (h *Handlers) listDomainRows(
 	p *auth.Principal,
 ) ([]templates.DomainRowView, error) {
 	result, err := h.svc.DomainsService().List(ctx, p, service.DomainsListParams{
-		PageSize: 100,
+		PageSize: maxListDomains,
 		Offset:   0,
 	})
 	if err != nil {

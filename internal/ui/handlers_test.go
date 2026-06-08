@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -1125,6 +1126,35 @@ func TestDomainCreate_RerendersGroupedBody(t *testing.T) {
 	}
 	if !strings.Contains(out, "<b>www</b>.example.com") {
 		t.Error("create: new subdomain should nest under its apex")
+	}
+}
+
+func TestDomainsGet_NestedGroupsOverFullTenantSet(t *testing.T) {
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+	cookie, _ := h.loginCookie(t, "bigtenant@example.com", "pass1234")
+	tid := tenantIDFor(t, ctx, pc, "bigtenant@example.com")
+
+	// One apex with 104 children = 105 domains, exceeding the prior 100-row cap.
+	seedDomainForTenant(t, ctx, pc, tid, "bigapex.com")
+	for i := 0; i < 104; i++ {
+		seedDomainForTenant(t, ctx, pc, tid, fmt.Sprintf("sub%03d.bigapex.com", i))
+	}
+
+	rr := h.datastarGet(t, "/app/domains", `{"layout":"nested"}`, cookie)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("nested over full set: want 200, got %d", rr.Code)
+	}
+	// Grouping over the full tenant set: all 104 children nest under the apex.
+	// A 104-child count is unreachable under a 100-row page cap.
+	if !strings.Contains(rr.Body.String(), "104 sub") {
+		t.Error("nested groups should cover all 104 children across the full tenant set")
 	}
 }
 
