@@ -147,6 +147,49 @@ body{
 .trow:hover .chev{color:var(--brand)}
 .trow-empty{padding:26px 16px;text-align:center;color:var(--txt-faint);font-family:var(--mono);font-size:12.5px}
 
+/* ---------- Domains toolbar: TLD filter + layout toggle ---------- */
+.tld-filter{position:relative;display:flex;align-items:center}
+.tld-filter select{appearance:none;font-family:var(--mono);font-size:12px;color:var(--txt-dim);
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:10px 30px 10px 13px;cursor:pointer;outline:none}
+.tld-filter select:hover{border-color:var(--brand-dim);color:var(--txt)}
+.tld-filter::after{content:"▾";position:absolute;right:11px;color:var(--txt-faint);font-size:10px;pointer-events:none}
+
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--panel)}
+.seg button{font-family:var(--hud);font-weight:600;font-size:12px;letter-spacing:.5px;padding:9px 14px;border:0;background:transparent;color:var(--txt-dim);cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+.seg button + button{border-left:1px solid var(--line)}
+.seg button .gly{font-family:var(--mono);font-size:13px;opacity:.7}
+.seg button.on{background:var(--brand-soft);color:var(--txt)}
+.seg button.on .gly{color:var(--brand);opacity:1}
+
+/* ---------- Domains nested layout: apex groups + children ---------- */
+/* apex (group) row */
+.trow.apex{background:var(--bg-elev)}
+.trow.apex:hover{background:var(--panel-2)}
+.apex .dname{gap:9px}
+.disc{width:16px;height:16px;flex:none;display:grid;place-items:center;border-radius:4px;color:var(--txt-faint);
+  font-family:var(--mono);font-size:9px;transition:transform .15s,color .15s;border:1px solid transparent}
+.trow.apex:hover .disc{color:var(--brand);border-color:var(--line)}
+.trow.apex.collapsed .disc{transform:rotate(-90deg)}
+.apex .n{font-size:13.5px;font-weight:500;color:var(--txt)}
+.apex .n b{color:var(--txt)}
+.subcount{font-family:var(--mono);font-size:10px;color:var(--txt-faint);border:1px solid var(--line);border-radius:999px;padding:1px 8px;margin-left:2px}
+
+/* child rows: indentation + tree connector */
+.trow.child{--indent:34px}
+.child .dname{padding-left:var(--indent);position:relative}
+.child .dname::before{content:"";position:absolute;left:18px;top:-13px;bottom:50%;width:1px;background:var(--line)}
+.child .dname::after{content:"";position:absolute;left:18px;top:50%;width:9px;height:1px;background:var(--line)}
+.child.last .dname::before{bottom:50%}
+.child .n{font-size:12.5px;color:var(--txt-dim)}
+.child .n .lead{color:var(--txt-faint)}
+.child .n .lead b{color:var(--txt);font-weight:500}
+.child .sdot{width:6px;height:6px}
+
+/* rollup mini-dots on apex */
+.rollup{display:inline-flex;gap:3px;align-items:center}
+.rollup i{width:5px;height:5px;border-radius:50%}
+.rollup .c{background:var(--crit)} .rollup .w{background:var(--warn)} .rollup .o{background:var(--ok)} .rollup .s{background:var(--info)}
+
 /* ---------- Auth screens ---------- */
 .auth{display:grid;grid-template-columns:1.05fr .95fr;min-height:100dvh}
 .auth-aside{padding:40px;border-right:1px solid var(--line);background:
