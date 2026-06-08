@@ -3,6 +3,7 @@ package ui
 import (
 	"errors"
 	"fmt"
+	"html"
 	"math"
 	"net/http"
 	"strconv"
@@ -26,9 +27,24 @@ func (h *Handlers) handleDomainsGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The same route serves the full page (browser nav) and a rows-only fragment
+	// (datastar search/refresh). Datastar tags its fetches with this header.
+	isDatastar := r.Header.Get("Datastar-Request") == "true"
+
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if query == "" && isDatastar {
+		var sig struct {
+			Q string `json:"q"`
+		}
+		if err := datastar.ReadSignals(r, &sig); err == nil {
+			query = strings.TrimSpace(sig.Q)
+		}
+	}
+
 	result, err := h.svc.DomainsService().List(r.Context(), p, service.DomainsListParams{
-		PageSize: 100,
-		Offset:   0,
+		FilterName: query,
+		PageSize:   100,
+		Offset:     0,
 	})
 	if err != nil {
 		h.log.Error("domains list", "error", err)
@@ -36,17 +52,51 @@ func (h *Handlers) handleDomainsGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows := make([]templates.DomainRowView, len(result.Domains))
+	ids := make([]int32, len(result.Domains))
 	for i, d := range result.Domains {
-		rows[i] = domainRowView(d)
+		ids[i] = d.ID
+	}
+	summaries, err := h.svc.DomainsService().FindingsSummaryForPage(r.Context(), p, ids)
+	if err != nil {
+		h.log.Error("domains list: findings summary", "error", err)
+		summaries = nil
 	}
 
-	// v1 placeholders: per-domain record counts and findings are not retrieved
-	// here to avoid N+1 queries; deferred until a dedicated aggregate query lands.
+	rows := make([]templates.DomainRowView, len(result.Domains))
+	for i, d := range result.Domains {
+		view := domainRowView(d)
+		if sum, ok := summaries[d.ID]; ok {
+			view.FindingsSeverity, view.FindingsLabel = findingBadge(sum)
+		}
+		rows[i] = view
+	}
+
+	if isDatastar {
+		sse := datastar.NewSSE(w, r)
+		_ = sse.PatchElementTempl(
+			templates.DomainRowsFragment(rows, CSRFTokenFrom(r.Context())),
+			datastar.WithSelectorID("domains-rows"),
+			datastar.WithModeInner(),
+		)
+		_ = sse.PatchElements(
+			fmt.Sprintf(
+				`<div class="result-meta" id="result-meta">%s</div>`,
+				resultMeta(int(result.TotalCount), query),
+			),
+			datastar.WithSelectorID("result-meta"),
+		)
+		return
+	}
+
+	// RecordCount per-domain is still deferred (would need a separate aggregate).
+	critical, warnings, err := h.svc.DomainsService().TenantFindingStats(r.Context(), p)
+	if err != nil {
+		h.log.Error("domains list: tenant finding stats", "error", err)
+	}
 	stats := templates.DomainsStats{
 		Tracked:  strconv.FormatInt(result.TotalCount, 10),
-		Critical: "0",
-		Warnings: "0",
+		Critical: strconv.Itoa(int(critical)),
+		Warnings: strconv.Itoa(int(warnings)),
 		Records:  "—",
 	}
 
@@ -62,6 +112,15 @@ func (h *Handlers) handleDomainsGet(w http.ResponseWriter, r *http.Request) {
 		Stats:   stats,
 		Domains: rows,
 	}))
+}
+
+// resultMeta renders the count line under the search bar: the tenant total, or
+// the match count for an active query (query echoed back, HTML-escaped).
+func resultMeta(total int, query string) string {
+	if query == "" {
+		return fmt.Sprintf("%d domains", total)
+	}
+	return fmt.Sprintf("%d matching “%s”", total, html.EscapeString(query))
 }
 
 // handleDomainCreate adds a new domain via a datastar SSE POST.
@@ -114,6 +173,12 @@ func (h *Handlers) handleDomainCreate(w http.ResponseWriter, r *http.Request) {
 		datastar.WithSelectorID("domains-rows"),
 		datastar.WithModeAppend(),
 	)
+	// Clear any prior error, then close the drawer and reset its input.
+	_ = sse.PatchElements(
+		`<div id="domain-add-error"></div>`,
+		datastar.WithSelectorID("domain-add-error"),
+	)
+	_ = sse.MarshalAndPatchSignals(map[string]any{"drawerOpen": false, "newDomain": ""})
 }
 
 // handleDomainDelete removes a domain via a datastar SSE DELETE.
@@ -170,17 +235,27 @@ func (h *Handlers) handleDomainDetail(w http.ResponseWriter, r *http.Request) {
 		added = d.CreatedAt.Time.Format("2006-01-02")
 	}
 
+	findingsCount := "0"
+	findingsSeverity := "ok"
+	if sums, sErr := h.svc.DomainsService().FindingsSummaryForPage(r.Context(), p, []int32{d.ID}); sErr != nil {
+		h.log.Error("domain detail: findings summary", "error", sErr, "uid", uid)
+	} else if sum, ok := sums[d.ID]; ok && sum.Count > 0 {
+		findingsCount = strconv.Itoa(int(sum.Count))
+		findingsSeverity, _ = findingBadge(sum)
+	}
+
 	renderPage(w, r, templates.DomainDetailPage(templates.DomainDetailPageProps{
-		Shell:         shell,
-		UID:           d.Uid,
-		Name:          d.Name,
-		Severity:      severityForStatus(d.Status),
-		RecordCount:   "—", // v1 placeholder: deferred until aggregate query
-		FindingsCount: "0", // v1 placeholder: findings subsystem not yet implemented
-		Type:          string(d.DomainType),
-		Source:        string(d.Source),
-		Added:         added,
-		Scanned:       relativeTime(d.UpdatedAt),
+		Shell:            shell,
+		UID:              d.Uid,
+		Name:             d.Name,
+		Severity:         severityForStatus(d.Status),
+		RecordCount:      "—", // still deferred until a per-domain record-count aggregate
+		FindingsCount:    findingsCount,
+		FindingsSeverity: findingsSeverity,
+		Type:             string(d.DomainType),
+		Source:           string(d.Source),
+		Added:            added,
+		Scanned:          relativeTime(d.UpdatedAt),
 	}))
 }
 
@@ -263,6 +338,77 @@ func (h *Handlers) handleTimelineFragment(w http.ResponseWriter, r *http.Request
 	_ = sse.PatchElementTempl(
 		templates.Timeline(templates.TimelineView{Groups: items}),
 		datastar.WithSelectorID("timeline-content"),
+		datastar.WithModeInner(),
+	)
+}
+
+// handleTimelineFullFragment lazy-loads the full-width Timeline tab (loaded on
+// first click of the tab). Reuses the same scan-grouped data as the side panel.
+func (h *Handlers) handleTimelineFullFragment(w http.ResponseWriter, r *http.Request) {
+	p, ok := PrincipalFrom(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	uid := chi.URLParam(r, "uid")
+	sse := datastar.NewSSE(w, r)
+
+	result, err := h.svc.RecordsService().Timeline(r.Context(), p, uid)
+	if err != nil {
+		msg := "failed to load timeline"
+		if errors.Is(err, service.ErrNotFound) {
+			msg = "domain not found"
+		}
+		_ = sse.PatchElementTempl(
+			templates.ContentError(templates.ContentErrorProps{
+				Message:  msg,
+				RetryURL: fmt.Sprintf("/app/domains/%s/timeline/full", uid),
+			}),
+			datastar.WithSelectorID("timeline-full-content"),
+			datastar.WithModeInner(),
+		)
+		return
+	}
+
+	_ = sse.PatchElementTempl(
+		templates.TimelineFull(timelineFullView(result.Scans)),
+		datastar.WithSelectorID("timeline-full-content"),
+		datastar.WithModeInner(),
+	)
+}
+
+// handleFindingsFragment lazy-loads the Findings tab (loaded on first click).
+func (h *Handlers) handleFindingsFragment(w http.ResponseWriter, r *http.Request) {
+	p, ok := PrincipalFrom(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	uid := chi.URLParam(r, "uid")
+	sse := datastar.NewSSE(w, r)
+
+	result, err := h.svc.FindingsService().ListByDomain(r.Context(), p, uid)
+	if err != nil {
+		msg := "failed to load findings"
+		if errors.Is(err, service.ErrNotFound) {
+			msg = "domain not found"
+		}
+		_ = sse.PatchElementTempl(
+			templates.ContentError(templates.ContentErrorProps{
+				Message:  msg,
+				RetryURL: fmt.Sprintf("/app/domains/%s/findings", uid),
+			}),
+			datastar.WithSelectorID("findings-content"),
+			datastar.WithModeInner(),
+		)
+		return
+	}
+
+	_ = sse.PatchElementTempl(
+		templates.FindingsPanel(toFindingsView(result)),
+		datastar.WithSelectorID("findings-content"),
 		datastar.WithModeInner(),
 	)
 }
@@ -364,6 +510,19 @@ func domainRowView(d store.Domains) templates.DomainRowView {
 		FindingsLabel:    "healthy",
 		FindingsSeverity: "ok",
 		LastScan:         relativeTime(d.UpdatedAt),
+	}
+}
+
+// findingBadge maps an open-findings aggregate to a row badge (CSS class + label).
+// Worst severity drives the colour; info-only and no-findings both read "healthy".
+func findingBadge(sum service.DomainFindingSummary) (severity, label string) {
+	switch {
+	case sum.SeverityRank <= 2:
+		return "crit", "critical"
+	case sum.SeverityRank == 3 || sum.SeverityRank == 4:
+		return "warn", "warning"
+	default:
+		return "ok", "healthy"
 	}
 }
 
@@ -556,4 +715,78 @@ func timelineItems(scans []dto.ScanDiff) []templates.TimelineItemView {
 	}
 
 	return items
+}
+
+// changeGlyph maps an observation change_type to a diff glyph + CSS kind.
+func changeGlyph(changeType string) (op, kind string) {
+	switch changeType {
+	case "created":
+		return "+", "add"
+	case "deleted":
+		return "−", "del"
+	default:
+		return "~", "chg"
+	}
+}
+
+// timelineFullView maps []dto.ScanDiff into the full-width Timeline tab model.
+func timelineFullView(scans []dto.ScanDiff) templates.TimelineFullView {
+	groups := make([]templates.ScanGroupView, 0, len(scans))
+	totalChanges := 0
+
+	for _, scan := range scans {
+		when := scan.StartedAt
+		if t, err := time.Parse(time.RFC3339, scan.StartedAt); err == nil {
+			when = t.Format("2006-01-02 15:04")
+		}
+
+		changes := make([]templates.ChangeView, len(scan.Changes))
+		for i, ch := range scan.Changes {
+			op, kind := changeGlyph(ch.ChangeType)
+			changes[i] = templates.ChangeView{
+				Kind:   kind,
+				Op:     op,
+				Entity: ch.EntityType,
+				Value:  ch.EntityKey,
+			}
+		}
+		totalChanges += len(scan.Changes)
+
+		groups = append(groups, templates.ScanGroupView{
+			ScanID:      scan.ScanUID,
+			When:        when,
+			Meta:        scan.Source,
+			ChangeCount: len(scan.Changes),
+			Changes:     changes,
+		})
+	}
+
+	return templates.TimelineFullView{
+		ScanCount:   len(scans),
+		ChangeCount: totalChanges,
+		Groups:      groups,
+	}
+}
+
+// toFindingsView maps a service.FindingsResult into the Findings tab model.
+func toFindingsView(r service.FindingsResult) templates.FindingsView {
+	cards := make([]templates.FindingCardView, len(r.Findings))
+	for i, f := range r.Findings {
+		cards[i] = templates.FindingCardView{
+			SevClass:    f.SevClass,
+			Severity:    f.Severity,
+			Icon:        f.Icon,
+			Title:       f.Title,
+			Description: f.Description,
+			Evidence:    f.Evidence,
+			FixHint:     f.FixHint,
+		}
+	}
+	return templates.FindingsView{
+		TotalCount:    r.TotalCount,
+		CriticalCount: r.CriticalCount,
+		WarningCount:  r.WarningCount,
+		HealthyCount:  r.HealthyCount,
+		Findings:      cards,
+	}
 }

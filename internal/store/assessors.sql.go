@@ -518,6 +518,108 @@ func (q *Queries) AssessGetZoneTransferFindingsByDomainUID(ctx context.Context, 
 	return items, nil
 }
 
+const domainsListFindingsSummary = `-- name: DomainsListFindingsSummary :many
+WITH ids AS (
+    SELECT unnest($1::int[]) AS domain_id
+),
+open_findings AS (
+    SELECT domain_id, severity::text AS severity FROM spf_findings WHERE status = 'open'
+    UNION ALL
+    SELECT domain_id, severity::text FROM dkim_findings WHERE status = 'open'
+    UNION ALL
+    SELECT domain_id, severity::text FROM dmarc_findings WHERE status = 'open'
+    UNION ALL
+    SELECT domain_id, severity::text FROM zone_transfer_findings WHERE zone_transfer_possible = true
+)
+SELECT
+    ids.domain_id::int AS domain_id,
+    MIN(CASE f.severity
+        WHEN 'critical' THEN 1
+        WHEN 'high'     THEN 2
+        WHEN 'medium'   THEN 3
+        WHEN 'low'      THEN 4
+        WHEN 'info'     THEN 5
+        ELSE 6
+    END)::int AS severity_rank,
+    COUNT(f.severity)::int AS finding_count
+FROM ids
+LEFT JOIN open_findings f ON f.domain_id = ids.domain_id
+GROUP BY ids.domain_id
+`
+
+type DomainsListFindingsSummaryRow struct {
+	DomainID     int32 `json:"domain_id"`
+	SeverityRank int32 `json:"severity_rank"`
+	FindingCount int32 `json:"finding_count"`
+}
+
+// Worst open-finding severity + open-finding count per domain, for a page of
+// domain IDs. One round-trip for the whole page (no N+1). Only actionable
+// findings count: status='open' for email findings, zone_transfer_possible for
+// AXFR. severity_rank: critical=1 high=2 medium=3 low=4 info=5 none=6.
+func (q *Queries) DomainsListFindingsSummary(ctx context.Context, domainIds []int32) ([]DomainsListFindingsSummaryRow, error) {
+	rows, err := q.db.Query(ctx, domainsListFindingsSummary, domainIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DomainsListFindingsSummaryRow{}
+	for rows.Next() {
+		var i DomainsListFindingsSummaryRow
+		if err := rows.Scan(&i.DomainID, &i.SeverityRank, &i.FindingCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const domainsTenantFindingStats = `-- name: DomainsTenantFindingStats :one
+SELECT
+    COUNT(*) FILTER (WHERE sev_rank <= 2)::int AS critical_count,
+    COUNT(*) FILTER (WHERE sev_rank BETWEEN 3 AND 4)::int AS warning_count
+FROM (
+    SELECT d.id,
+        MIN(CASE f.severity
+            WHEN 'critical' THEN 1
+            WHEN 'high'     THEN 2
+            WHEN 'medium'   THEN 3
+            WHEN 'low'      THEN 4
+            WHEN 'info'     THEN 5
+            ELSE 6
+        END) AS sev_rank
+    FROM domains d
+    JOIN (
+        SELECT domain_id, severity::text AS severity FROM spf_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM dkim_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM dmarc_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM zone_transfer_findings WHERE zone_transfer_possible = true
+    ) f ON f.domain_id = d.id
+    WHERE d.tenant_id = $1
+    GROUP BY d.id
+) agg
+`
+
+type DomainsTenantFindingStatsRow struct {
+	CriticalCount int32 `json:"critical_count"`
+	WarningCount  int32 `json:"warning_count"`
+}
+
+// Tenant-wide counts of domains whose worst open finding is critical/high
+// (critical_count) versus medium/low (warning_count).
+func (q *Queries) DomainsTenantFindingStats(ctx context.Context, tenantID pgtype.Int4) (DomainsTenantFindingStatsRow, error) {
+	row := q.db.QueryRow(ctx, domainsTenantFindingStats, tenantID)
+	var i DomainsTenantFindingStatsRow
+	err := row.Scan(&i.CriticalCount, &i.WarningCount)
+	return i, err
+}
+
 const storeZoneTransferFinding = `-- name: StoreZoneTransferFinding :one
 INSERT INTO zone_transfer_findings (domain_id,
                                     ns_record_id,

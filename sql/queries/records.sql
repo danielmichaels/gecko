@@ -373,3 +373,50 @@ DELETE FROM rrsig_records WHERE domain_id = $1 AND type_covered = $2 AND signer_
 
 -- name: RecordsDeleteCAA :exec
 DELETE FROM caa_records WHERE domain_id = $1 AND tag = $2 AND value = $3;
+
+-- name: DomainsTenantRecordTotal :one
+-- Total DNS records across every record table for a tenant's domains.
+WITH all_records AS (
+    SELECT domain_id FROM a_records
+    UNION ALL SELECT domain_id FROM aaaa_records
+    UNION ALL SELECT domain_id FROM caa_records
+    UNION ALL SELECT domain_id FROM cname_records
+    UNION ALL SELECT domain_id FROM dnskey_records
+    UNION ALL SELECT domain_id FROM ds_records
+    UNION ALL SELECT domain_id FROM mx_records
+    UNION ALL SELECT domain_id FROM ns_records
+    UNION ALL SELECT domain_id FROM ptr_records
+    UNION ALL SELECT domain_id FROM rrsig_records
+    UNION ALL SELECT domain_id FROM soa_records
+    UNION ALL SELECT domain_id FROM srv_records
+    UNION ALL SELECT domain_id FROM txt_records
+)
+SELECT count(*)::bigint AS total
+FROM all_records r
+         JOIN domains d ON r.domain_id = d.id
+WHERE d.tenant_id = $1;
+
+-- name: DomainsListRecordCounts :many
+-- Per-domain record counts for a page of domain IDs (one query, no N+1).
+WITH ids AS (
+    SELECT unnest(@domain_ids::int[]) AS domain_id
+),
+     all_records AS (
+         SELECT domain_id FROM a_records
+         UNION ALL SELECT domain_id FROM aaaa_records
+         UNION ALL SELECT domain_id FROM caa_records
+         UNION ALL SELECT domain_id FROM cname_records
+         UNION ALL SELECT domain_id FROM dnskey_records
+         UNION ALL SELECT domain_id FROM ds_records
+         UNION ALL SELECT domain_id FROM mx_records
+         UNION ALL SELECT domain_id FROM ns_records
+         UNION ALL SELECT domain_id FROM ptr_records
+         UNION ALL SELECT domain_id FROM rrsig_records
+         UNION ALL SELECT domain_id FROM soa_records
+         UNION ALL SELECT domain_id FROM srv_records
+         UNION ALL SELECT domain_id FROM txt_records
+     )
+SELECT ids.domain_id::int AS domain_id, count(r.domain_id)::int AS record_count
+FROM ids
+         LEFT JOIN all_records r ON r.domain_id = ids.domain_id
+GROUP BY ids.domain_id;

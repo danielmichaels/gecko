@@ -122,6 +122,8 @@ func (h *Handlers) Routes() http.Handler {
 		r.Post("/domains/{uid}/rescan", h.handleDomainRescan)
 		r.Get("/domains/{uid}/records", h.handleRecordsFragment)
 		r.Get("/domains/{uid}/timeline", h.handleTimelineFragment)
+		r.Get("/domains/{uid}/timeline/full", h.handleTimelineFullFragment)
+		r.Get("/domains/{uid}/findings", h.handleFindingsFragment)
 	})
 
 	return r

@@ -95,6 +95,93 @@ func (s *DomainsService) List(
 	}, nil
 }
 
+// DomainFindingSummary is the per-domain aggregate of open security findings,
+// used for list-row badges and the detail findings count. SeverityRank encodes
+// the worst open severity: critical=1 high=2 medium=3 low=4 info=5 none=6.
+type DomainFindingSummary struct {
+	SeverityRank int32
+	Count        int32
+}
+
+// FindingsSummaryForPage returns the open-findings aggregate keyed by domain ID
+// for a whole page of domains in a single query (no N+1). Callers must pass IDs
+// they own; the IDs here come from a tenant-scoped List, so results are already
+// tenant-bounded.
+func (s *DomainsService) FindingsSummaryForPage(
+	ctx context.Context,
+	_ *auth.Principal,
+	domainIDs []int32,
+) (map[int32]DomainFindingSummary, error) {
+	out := make(map[int32]DomainFindingSummary, len(domainIDs))
+	if len(domainIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.DB.DomainsListFindingsSummary(ctx, domainIDs)
+	if err != nil {
+		return nil, fmt.Errorf("findings summary: %w", err)
+	}
+	for _, row := range rows {
+		out[row.DomainID] = DomainFindingSummary{
+			SeverityRank: row.SeverityRank,
+			Count:        row.FindingCount,
+		}
+	}
+	return out, nil
+}
+
+// TenantFindingStats returns the tenant-wide counts of domains whose worst open
+// finding is critical/high (critical) versus medium/low (warnings).
+func (s *DomainsService) TenantFindingStats(
+	ctx context.Context,
+	p *auth.Principal,
+) (critical, warnings int32, err error) {
+	row, err := s.DB.DomainsTenantFindingStats(
+		ctx,
+		pgtype.Int4{Int32: p.TenantID, Valid: true},
+	)
+	if err != nil {
+		return 0, 0, fmt.Errorf("tenant finding stats: %w", err)
+	}
+	return row.CriticalCount, row.WarningCount, nil
+}
+
+// RecordCountsForPage returns the DNS record count per domain for a page of
+// domain IDs, in a single query (no N+1).
+func (s *DomainsService) RecordCountsForPage(
+	ctx context.Context,
+	_ *auth.Principal,
+	domainIDs []int32,
+) (map[int32]int32, error) {
+	out := make(map[int32]int32, len(domainIDs))
+	if len(domainIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.DB.DomainsListRecordCounts(ctx, domainIDs)
+	if err != nil {
+		return nil, fmt.Errorf("record counts: %w", err)
+	}
+	for _, row := range rows {
+		out[row.DomainID] = row.RecordCount
+	}
+	return out, nil
+}
+
+// TenantRecordTotal returns the total DNS record count across all of the
+// tenant's domains (the Records stat on the list page).
+func (s *DomainsService) TenantRecordTotal(
+	ctx context.Context,
+	p *auth.Principal,
+) (int64, error) {
+	total, err := s.DB.DomainsTenantRecordTotal(
+		ctx,
+		pgtype.Int4{Int32: p.TenantID, Valid: true},
+	)
+	if err != nil {
+		return 0, fmt.Errorf("tenant record total: %w", err)
+	}
+	return total, nil
+}
+
 // Get returns the domain identified by uid, scoped to the caller's tenant.
 // Returns ErrNotFound when the UID does not exist or belongs to another tenant.
 func (s *DomainsService) Get(

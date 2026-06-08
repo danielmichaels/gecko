@@ -81,16 +81,17 @@ type DomainRowView struct {
 
 // DomainDetailPageProps holds data for the domain detail page.
 type DomainDetailPageProps struct {
-	UID           string
-	Name          string
-	Severity      string
-	RecordCount   string
-	FindingsCount string
-	Type          string
-	Source        string
-	Added         string
-	Scanned       string
-	Shell         AppShellProps
+	UID              string
+	Name             string
+	Severity         string
+	RecordCount      string
+	FindingsCount    string
+	FindingsSeverity string // crit | warn | ok — colours the findings badge/tab
+	Type             string
+	Source           string
+	Added            string
+	Scanned          string
+	Shell            AppShellProps
 }
 
 // RecordRowView is the presentation model for one DNS record row.
@@ -118,6 +119,50 @@ type TimelineItemView struct {
 // TimelineView is the lazy-loaded fragment for the timeline panel.
 type TimelineView struct {
 	Groups []TimelineItemView
+}
+
+// ChangeView is one add/remove/change row in the full Timeline tab.
+type ChangeView struct {
+	Kind   string // add | del | chg
+	Op     string // + | − | ~
+	Entity string
+	Value  string
+}
+
+// ScanGroupView groups one scan's changes in the full Timeline tab.
+type ScanGroupView struct {
+	ScanID      string
+	When        string
+	Meta        string
+	Changes     []ChangeView
+	ChangeCount int
+}
+
+// TimelineFullView is the lazy-loaded fragment for the full-width Timeline tab.
+type TimelineFullView struct {
+	Groups      []ScanGroupView
+	ScanCount   int
+	ChangeCount int
+}
+
+// FindingCardView is one security finding rendered as a card.
+type FindingCardView struct {
+	SevClass    string
+	Severity    string
+	Icon        string
+	Title       string
+	Description string
+	Evidence    string
+	FixHint     string
+}
+
+// FindingsView is the lazy-loaded fragment for the Findings tab.
+type FindingsView struct {
+	Findings      []FindingCardView
+	TotalCount    int
+	CriticalCount int
+	WarningCount  int
+	HealthyCount  int
 }
 
 // ComingSoonProps holds data for the coming-soon placeholder page.

@@ -105,6 +105,11 @@ func (s *Service) RecordsService() *RecordsService {
 	return &RecordsService{s}
 }
 
+// FindingsService returns the Findings sub-service.
+func (s *Service) FindingsService() *FindingsService {
+	return &FindingsService{s}
+}
+
 // AuthService returns the Auth sub-service.
 func (s *Service) AuthService() *AuthService {
 	return &AuthService{s}

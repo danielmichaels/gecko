@@ -1,54 +1,77 @@
 package templates
 
+import "fmt"
+
 templ DomainDetailPage(props DomainDetailPageProps) {
 	@Page("gecko · " + props.Name) {
 		@AppShell(props.Shell) {
-			<div class="detail-head">
-				<a class="back" href="/app/domains">← domains</a>
-			</div>
-			<div class="detail-title">
-				<span class="sdot" style={ "background:var(--" + props.Severity + ");box-shadow:0 0 12px var(--" + props.Severity + ")" }></span>
-				<h1>{ props.Name }</h1>
-				if props.FindingsCount != "" && props.FindingsCount != "0" {
-					<span class="badge crit">{ props.FindingsCount } critical</span>
-				}
-				<span class="badge info">{ props.RecordCount } records</span>
-			</div>
-			<div class="page-head" style="margin-top:-6px">
-				<div class="sub">{ props.Type } · { props.Source } · added { props.Added } · scanned { props.Scanned }</div>
-				<button
-					class="btn"
-					type="button"
-					data-on:click={ postWithCSRF("/app/domains/"+props.UID+"/rescan", props.Shell.CSRFToken) }
-				>⟳ Rescan</button>
-			</div>
-			<div class="tabs">
-				<a class="active" href={ templ.SafeURL("/app/domains/" + props.UID + "#records") }>Records</a>
-				<a href={ templ.SafeURL("/app/domains/" + props.UID + "#timeline") }>Timeline</a>
-				<a href={ templ.SafeURL("/app/domains/" + props.UID + "#findings") }>
-					Findings
+			<div data-signals='{"tab":"records","tlLoaded":false,"fnLoaded":false}'>
+				<div class="detail-head">
+					<a class="back" href="/app/domains">← domains</a>
+				</div>
+				<div class="detail-title">
+					<span class="sdot" style={ "background:var(--" + props.Severity + ")" }></span>
+					<h1>{ props.Name }</h1>
 					if props.FindingsCount != "" && props.FindingsCount != "0" {
-						<span style="color:var(--crit)">·{ props.FindingsCount }</span>
+						<span class={ "badge", props.FindingsSeverity }>{ props.FindingsCount } findings</span>
 					}
-				</a>
-			</div>
-			<div class="detail-grid">
-				<div class="panel" id="records-panel">
-					<div
-						id="records-content"
-						data-on-intersect__once={ "@get('/app/domains/" + props.UID + "/records')" }
+					<span class="badge info">{ props.RecordCount } records</span>
+				</div>
+				<div class="page-head" style="margin-top:-6px">
+					<div class="sub">{ props.Type } · { props.Source } · added { props.Added } · scanned { props.Scanned }</div>
+					<button
+						class="btn"
+						type="button"
+						data-on:click={ postWithCSRF("/app/domains/"+props.UID+"/rescan", props.Shell.CSRFToken) }
+					>⟳ Rescan</button>
+				</div>
+				<div class="tabs">
+					<a data-on:click__prevent="$tab = 'records'" data-class="{'active': $tab === 'records'}">Records</a>
+					<a
+						data-on:click__prevent={ "$tab='timeline'; if(!$tlLoaded){$tlLoaded=true; @get('/app/domains/" + props.UID + "/timeline/full')}" }
+						data-class="{'active': $tab === 'timeline'}"
+					>Timeline</a>
+					<a
+						data-on:click__prevent={ "$tab='findings'; if(!$fnLoaded){$fnLoaded=true; @get('/app/domains/" + props.UID + "/findings')}" }
+						data-class="{'active': $tab === 'findings'}"
 					>
-						<div class="panel-h">DNS records <span class="count">loading…</span></div>
-						@recordsSkeleton()
+						Findings
+						if props.FindingsCount != "" && props.FindingsCount != "0" {
+							<span style={ "color:var(--" + props.FindingsSeverity + ")" }>·{ props.FindingsCount }</span>
+						}
+					</a>
+				</div>
+				<div class="detail-grid" style="display:none" data-show="$tab === 'records'">
+					<div class="panel" id="records-panel">
+						<div
+							id="records-content"
+							data-on-intersect__once={ "@get('/app/domains/" + props.UID + "/records')" }
+						>
+							<div class="panel-h">DNS records <span class="count">loading…</span></div>
+							@recordsSkeleton()
+						</div>
+					</div>
+					<div class="panel" id="timeline-panel">
+						<div
+							id="timeline-content"
+							data-on-intersect__once={ "@get('/app/domains/" + props.UID + "/timeline')" }
+						>
+							<div class="panel-h">Change timeline <span class="count">loading…</span></div>
+							@timelineSkeleton()
+						</div>
 					</div>
 				</div>
-				<div class="panel" id="timeline-panel">
-					<div
-						id="timeline-content"
-						data-on-intersect__once={ "@get('/app/domains/" + props.UID + "/timeline')" }
-					>
-						<div class="panel-h">Change timeline <span class="count">loading…</span></div>
-						@timelineSkeleton()
+				<div style="display:none" data-show="$tab === 'timeline'">
+					<div class="panel" id="timeline-full-panel">
+						<div id="timeline-full-content">
+							<div class="panel-h">Change timeline <span class="count">loading…</span></div>
+							@timelineSkeleton()
+						</div>
+					</div>
+				</div>
+				<div style="display:none" data-show="$tab === 'findings'">
+					<div id="findings-content">
+						@recordsSkeleton()
 					</div>
 				</div>
 			</div>
@@ -101,4 +124,80 @@ templ Timeline(v TimelineView) {
 			</div>
 		}
 	</div>
+}
+
+// TimelineFull is the full-width "Timeline" tab: each scan with its add/remove/
+// change rows. Same data as the compact Timeline, rendered with diff glyphs.
+templ TimelineFull(v TimelineFullView) {
+	<div class="panel-h">
+		Change timeline <span class="count">{ fmt.Sprintf("%d scans · %d changes", v.ScanCount, v.ChangeCount) }</span>
+	</div>
+	if len(v.Groups) == 0 {
+		<div class="trow-empty">no changes recorded yet</div>
+	} else {
+		<div class="tlx">
+			for _, g := range v.Groups {
+				<div class="scan-grp">
+					<div class="scan-hd">
+						<span class="m"></span>
+						<div>
+							<div class="nm">{ g.ScanID }</div>
+							<div class="mt">{ g.When } · { g.Meta }</div>
+						</div>
+						<span class="cb">{ fmt.Sprintf("%d changes", g.ChangeCount) }</span>
+					</div>
+					for _, ch := range g.Changes {
+						<div class={ "chg", ch.Kind }>
+							<span class="op">{ ch.Op }</span>
+							<span class="ent">{ ch.Entity }</span>
+							<span class="cv">{ ch.Value }</span>
+						</div>
+					}
+				</div>
+			}
+		</div>
+	}
+}
+
+// FindingsPanel is the "Findings" tab: a severity summary strip and one card per
+// finding (SPF/DKIM/DMARC/zone-transfer).
+templ FindingsPanel(v FindingsView) {
+	if v.TotalCount == 0 {
+		<div class="trow-empty">no findings yet — run a scan to assess this domain</div>
+	} else {
+		<div class="f-assessed">
+			{ fmt.Sprintf("%d checks · %d critical · %d warnings · %d healthy", v.TotalCount, v.CriticalCount, v.WarningCount, v.HealthyCount) }
+		</div>
+		<div class="find-sum">
+			if v.CriticalCount > 0 {
+				<div class="s c"><i></i> <b>{ fmt.Sprintf("%d", v.CriticalCount) }</b> critical</div>
+			}
+			if v.WarningCount > 0 {
+				<div class="s w"><i></i> <b>{ fmt.Sprintf("%d", v.WarningCount) }</b> warnings</div>
+			}
+			if v.HealthyCount > 0 {
+				<div class="s o"><i></i> <b>{ fmt.Sprintf("%d", v.HealthyCount) }</b> healthy</div>
+			}
+		</div>
+		for _, f := range v.Findings {
+			<div class={ "finding", "f-" + f.SevClass }>
+				<div class="f-ico">{ f.Icon }</div>
+				<div>
+					<div class="f-top">
+						<span class={ "badge", f.SevClass }>{ f.Severity }</span>
+						<h4>{ f.Title }</h4>
+					</div>
+					if f.Description != "" {
+						<p>{ f.Description }</p>
+					}
+					if f.Evidence != "" {
+						<div class="f-ev">{ f.Evidence }</div>
+					}
+					if f.FixHint != "" {
+						<div class="f-fix">→ <b>Fix:</b> { f.FixHint }</div>
+					}
+				</div>
+			</div>
+		}
+	}
 }

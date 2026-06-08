@@ -119,6 +119,46 @@ func TestDomainsPageRender(t *testing.T) {
 	if !strings.Contains(out, "domains-rows") {
 		t.Error("expected 'domains-rows' container in DomainsPage output")
 	}
+	// Search promoted to primary: debounced datastar GET (colon-form binding).
+	if !strings.Contains(out, `data-on:input__debounce.300ms="@get('/app/domains')"`) {
+		t.Error("expected debounced search binding in DomainsPage output")
+	}
+	// Add-domain demoted to a drawer toggled by the drawerOpen signal.
+	if !strings.Contains(out, `class="drawer"`) {
+		t.Error("expected add-domain drawer in DomainsPage output")
+	}
+	if !strings.Contains(out, "$drawerOpen = true") {
+		t.Error("expected drawer-open trigger in DomainsPage output")
+	}
+}
+
+func TestDomainRowsFragmentRender(t *testing.T) {
+	var buf bytes.Buffer
+	rows := []templates.DomainRowView{
+		{
+			UID:              "dom_1",
+			Name:             "a.example.com",
+			Severity:         "ok",
+			RecordCount:      "—",
+			FindingsLabel:    "healthy",
+			FindingsSeverity: "ok",
+			LastScan:         "1h ago",
+		},
+	}
+	if err := templates.DomainRowsFragment(rows, "tok").Render(context.Background(), &buf); err != nil {
+		t.Fatalf("DomainRowsFragment render error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "a.example.com") {
+		t.Error("expected domain name in populated fragment")
+	}
+
+	var empty bytes.Buffer
+	if err := templates.DomainRowsFragment(nil, "tok").Render(context.Background(), &empty); err != nil {
+		t.Fatalf("DomainRowsFragment empty render error: %v", err)
+	}
+	if !strings.Contains(empty.String(), "trow-empty") {
+		t.Error("expected empty-state row in empty DomainRowsFragment output")
+	}
 }
 
 func TestDomainRowRender(t *testing.T) {
@@ -157,15 +197,16 @@ func TestDomainDetailPageRender(t *testing.T) {
 			ResolverOK:   true,
 			CSRFToken:    "tok",
 		},
-		UID:           "dom_001",
-		Name:          "example.com",
-		Severity:      "crit",
-		RecordCount:   "14",
-		FindingsCount: "2",
-		Type:          "tld",
-		Source:        "user-supplied",
-		Added:         "2026-05-12",
-		Scanned:       "2h ago",
+		UID:              "dom_001",
+		Name:             "example.com",
+		Severity:         "crit",
+		RecordCount:      "14",
+		FindingsCount:    "2",
+		FindingsSeverity: "crit",
+		Type:             "tld",
+		Source:           "user-supplied",
+		Added:            "2026-05-12",
+		Scanned:          "2h ago",
 	}
 	err := templates.DomainDetailPage(props).Render(context.Background(), &buf)
 	if err != nil {
@@ -181,8 +222,105 @@ func TestDomainDetailPageRender(t *testing.T) {
 	if !strings.Contains(out, "timeline-content") {
 		t.Error("expected timeline-content lazy panel in DomainDetailPage output")
 	}
+	if !strings.Contains(out, "timeline-full-content") {
+		t.Error("expected timeline-full-content panel in DomainDetailPage output")
+	}
+	if !strings.Contains(out, "findings-content") {
+		t.Error("expected findings-content panel in DomainDetailPage output")
+	}
+	// Tabs are signal-driven (colon-form on:click), not dead hash anchors.
+	if !strings.Contains(out, "$tab = 'records'") {
+		t.Error("expected signal-driven Records tab in DomainDetailPage output")
+	}
+	if !strings.Contains(out, "/timeline/full") {
+		t.Error("expected lazy timeline-full fetch in DomainDetailPage output")
+	}
 	if !strings.Contains(out, "domains") {
 		t.Error("expected back link in DomainDetailPage output")
+	}
+}
+
+func TestTimelineFullRender(t *testing.T) {
+	var buf bytes.Buffer
+	v := templates.TimelineFullView{
+		ScanCount:   1,
+		ChangeCount: 2,
+		Groups: []templates.ScanGroupView{
+			{
+				ScanID:      "scan_abc123",
+				When:        "2026-06-07 21:52",
+				Meta:        "user_supplied",
+				ChangeCount: 2,
+				Changes: []templates.ChangeView{
+					{Kind: "add", Op: "+", Entity: "a_record", Value: "66.241.125.84"},
+					{Kind: "del", Op: "−", Entity: "txt_record", Value: "old-value"},
+				},
+			},
+		},
+	}
+	if err := templates.TimelineFull(v).Render(context.Background(), &buf); err != nil {
+		t.Fatalf("TimelineFull render error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "scan_abc123") {
+		t.Error("expected scan id in TimelineFull output")
+	}
+	if !strings.Contains(out, "chg add") {
+		t.Error("expected add-change class in TimelineFull output")
+	}
+	if !strings.Contains(out, "a_record") {
+		t.Error("expected entity in TimelineFull output")
+	}
+}
+
+func TestFindingsPanelRender(t *testing.T) {
+	var buf bytes.Buffer
+	v := templates.FindingsView{
+		TotalCount:    2,
+		CriticalCount: 1,
+		WarningCount:  1,
+		Findings: []templates.FindingCardView{
+			{
+				SevClass:    "crit",
+				Severity:    "critical",
+				Icon:        "!",
+				Title:       "No DMARC policy published",
+				Description: "No _dmarc record was found.",
+				Evidence:    "dig _dmarc.example.com TXT → NXDOMAIN",
+				FixHint:     "publish v=DMARC1; p=none",
+			},
+			{
+				SevClass:    "warn",
+				Severity:    "medium",
+				Icon:        "▲",
+				Title:       "SPF uses soft-fail (~all)",
+				Description: "Soft fail.",
+				Evidence:    "v=spf1 ~all",
+			},
+		},
+	}
+	if err := templates.FindingsPanel(v).Render(context.Background(), &buf); err != nil {
+		t.Fatalf("FindingsPanel render error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "No DMARC policy published") {
+		t.Error("expected finding title in FindingsPanel output")
+	}
+	if !strings.Contains(out, "finding f-crit") {
+		t.Error("expected severity class in FindingsPanel output")
+	}
+	if !strings.Contains(out, "Fix:") {
+		t.Error("expected fix line in FindingsPanel output")
+	}
+}
+
+func TestFindingsPanelEmptyRender(t *testing.T) {
+	var buf bytes.Buffer
+	if err := templates.FindingsPanel(templates.FindingsView{}).Render(context.Background(), &buf); err != nil {
+		t.Fatalf("FindingsPanel empty render error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "no findings") {
+		t.Error("expected empty-state message in FindingsPanel output")
 	}
 }
 
