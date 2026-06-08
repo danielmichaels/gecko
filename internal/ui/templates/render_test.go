@@ -175,6 +175,11 @@ func TestDomainTableBodyNestedRender(t *testing.T) {
 	if !strings.Contains(out, "<b>example.com</b>") {
 		t.Error("expected bold apex name in nested body output")
 	}
+	// Tracked apex (HasOwn) name links to its detail page so its own findings
+	// are reachable from nested mode.
+	if !strings.Contains(out, `href="/app/domains/dom_1"`) {
+		t.Error("expected tracked apex name to link to its detail page")
+	}
 	if !strings.Contains(out, "<b>api</b>.example.com") {
 		t.Error("expected child FQDN (label + apex) in nested body output")
 	}

@@ -81,7 +81,17 @@ func groupDomainsByApex(rows []templates.DomainRowView) []templates.DomainGroupV
 		members = append(members, g.Children...)
 
 		g.RollupSeverity, g.Rollup = rollup(members)
-		g.FindingsSeverity, g.FindingsLabel = apexBadge(g.RollupSeverity, members)
+		if g.HasOwn {
+			// Tracked apex: the badge shows its OWN findings. The group spread is
+			// carried by the accent (RollupSeverity) and the rollup dots, so a
+			// critical apex with clean children reads "critical", not "1 critical".
+			g.FindingsSeverity = g.Header.FindingsSeverity
+			g.FindingsLabel = g.Header.FindingsLabel
+		} else {
+			// Synthetic apex (only subdomains tracked, no own row): summarise the
+			// children, since there is no own status to show.
+			g.FindingsSeverity, g.FindingsLabel = apexBadge(g.RollupSeverity, members)
+		}
 	}
 	return groups
 }

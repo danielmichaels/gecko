@@ -87,19 +87,47 @@ func TestGroupDomainsByApex_RollupUsesWorstChildFindings(t *testing.T) {
 
 	g := groupDomainsByApex(rows)[0]
 
+	// The accent reflects the worst severity across the apex and its children.
 	if g.RollupSeverity != "crit" {
 		t.Errorf("RollupSeverity: want crit, got %q", g.RollupSeverity)
-	}
-	if g.FindingsSeverity != "crit" {
-		t.Errorf("apex badge class: want crit, got %q", g.FindingsSeverity)
-	}
-	if g.FindingsLabel != "1 critical" {
-		t.Errorf("apex badge label: want '1 critical', got %q", g.FindingsLabel)
 	}
 	// Distinct severities, worst-first: crit, warn, ok.
 	want := []string{"crit", "warn", "ok"}
 	if !reflect.DeepEqual(g.Rollup, want) {
 		t.Errorf("Rollup: want %v, got %v", want, g.Rollup)
+	}
+}
+
+func TestGroupDomainsByApex_TrackedApexBadgeShowsOwnFindings(t *testing.T) {
+	// Apex itself is critical; every child is clean. The badge must reflect the
+	// apex's OWN status, not a child-count rollup.
+	apex := templates.DomainRowView{
+		UID:              "dom_1",
+		Name:             "example.com",
+		FindingsSeverity: "crit",
+		FindingsLabel:    "critical",
+	}
+	rows := []templates.DomainRowView{
+		apex,
+		row("dom_2", "www.example.com", "ok", "ok"),
+		row("dom_3", "api.example.com", "ok", "ok"),
+	}
+
+	g := groupDomainsByApex(rows)[0]
+
+	if g.FindingsSeverity != "crit" || g.FindingsLabel != "critical" {
+		t.Errorf(
+			"apex badge: want crit/critical (own), got %s/%s",
+			g.FindingsSeverity,
+			g.FindingsLabel,
+		)
+	}
+	if g.RollupSeverity != "crit" {
+		t.Errorf("RollupSeverity: want crit, got %q", g.RollupSeverity)
+	}
+	// Spread present in the dots: crit (apex) + ok (children).
+	if !reflect.DeepEqual(g.Rollup, []string{"crit", "ok"}) {
+		t.Errorf("Rollup dots: want [crit ok], got %v", g.Rollup)
 	}
 }
 
@@ -111,11 +139,13 @@ func TestGroupDomainsByApex_ScanningChildDrivesScanRollup(t *testing.T) {
 
 	g := groupDomainsByApex(rows)[0]
 
+	// A scanning child drives the group accent to "scan" even though the tracked
+	// apex's own status is clean.
 	if g.RollupSeverity != "scan" {
 		t.Errorf("RollupSeverity: want scan, got %q", g.RollupSeverity)
 	}
-	if g.FindingsSeverity != "info" || g.FindingsLabel != "scanning" {
-		t.Errorf("apex badge: want info/scanning, got %s/%s", g.FindingsSeverity, g.FindingsLabel)
+	if !reflect.DeepEqual(g.Rollup, []string{"scan", "ok"}) {
+		t.Errorf("Rollup dots: want [scan ok], got %v", g.Rollup)
 	}
 }
 
@@ -146,6 +176,14 @@ func TestGroupDomainsByApex_SyntheticHeaderWhenApexUntracked(t *testing.T) {
 	if g.RollupSeverity != "warn" {
 		t.Errorf("RollupSeverity: want warn, got %q", g.RollupSeverity)
 	}
+	// With no own status, the synthetic apex badge summarises the children.
+	if g.FindingsSeverity != "warn" || g.FindingsLabel != "1 warning" {
+		t.Errorf(
+			"synthetic apex badge: want warn/'1 warning', got %s/%s",
+			g.FindingsSeverity,
+			g.FindingsLabel,
+		)
+	}
 }
 
 func TestGroupDomainsByApex_MultiLabelPSL(t *testing.T) {
@@ -167,9 +205,9 @@ func TestGroupDomainsByApex_MultiLabelPSL(t *testing.T) {
 	}
 }
 
-func TestGroupDomainsByApex_CleanGroupBadge(t *testing.T) {
+func TestGroupDomainsByApex_CleanTrackedApexShowsOwnBadge(t *testing.T) {
 	rows := []templates.DomainRowView{
-		row("dom_1", "corp.net", "ok", "ok"),
+		{UID: "dom_1", Name: "corp.net", FindingsSeverity: "ok", FindingsLabel: "healthy"},
 	}
 
 	g := groupDomainsByApex(rows)[0]
@@ -177,8 +215,33 @@ func TestGroupDomainsByApex_CleanGroupBadge(t *testing.T) {
 	if g.RollupSeverity != "ok" {
 		t.Errorf("RollupSeverity: want ok, got %q", g.RollupSeverity)
 	}
+	// Tracked apex with no children shows its own healthy badge.
+	if g.FindingsSeverity != "ok" || g.FindingsLabel != "healthy" {
+		t.Errorf(
+			"apex badge: want ok/healthy (own), got %s/%s",
+			g.FindingsSeverity,
+			g.FindingsLabel,
+		)
+	}
+}
+
+func TestGroupDomainsByApex_SyntheticCleanGroupBadge(t *testing.T) {
+	// Untracked apex with only clean children: rollup badge reads "clean".
+	rows := []templates.DomainRowView{
+		row("dom_1", "www.corp.net", "ok", "ok"),
+	}
+
+	g := groupDomainsByApex(rows)[0]
+
+	if g.HasOwn {
+		t.Fatal("HasOwn: want false (apex untracked)")
+	}
 	if g.FindingsSeverity != "ok" || g.FindingsLabel != "clean" {
-		t.Errorf("apex badge: want ok/clean, got %s/%s", g.FindingsSeverity, g.FindingsLabel)
+		t.Errorf(
+			"synthetic apex badge: want ok/clean, got %s/%s",
+			g.FindingsSeverity,
+			g.FindingsLabel,
+		)
 	}
 }
 

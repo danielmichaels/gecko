@@ -143,7 +143,16 @@ templ DomainGroupRow(g DomainGroupView, csrfToken string) {
 		<div class="dname">
 			<span class="disc">▾</span>
 			<span class="sdot"></span>
-			<span class="n"><b>{ g.Apex }</b></span>
+			if g.HasOwn {
+				<a
+					href={ templ.SafeURL("/app/domains/" + g.Header.UID) }
+					class="n"
+					data-on:click="evt.stopPropagation()"
+					style="text-decoration:none;color:inherit"
+				><b>{ g.Apex }</b></a>
+			} else {
+				<span class="n"><b>{ g.Apex }</b></span>
+			}
 			if g.SubCount > 0 {
 				<span class="subcount">{ subLabel(g.SubCount) }</span>
 				@RollupDots(g.Rollup)
