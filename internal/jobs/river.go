@@ -152,6 +152,7 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 		)
 		// maintenance
 		river.AddWorker(rw, &PurgeDNSCacheWorker{Logger: *cfg.Logger, Store: cfg.Store})
+		river.AddWorker(rw, &RefreshTenantStatsWorker{Logger: *cfg.Logger, Store: cfg.Store})
 		riverConfig.Workers = rw
 		riverConfig.Middleware = []rivertype.Middleware{
 			&CorrelationMiddleware{},
@@ -170,8 +171,22 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 			// reserved for assessors
 			queueAssessor: {MaxWorkers: cfg.WorkerCount},
 		}
+		// Safety-net recompute of every tenant's stat strip. Deletes (the only
+		// change the recompute can't self-heal, because a tenant can drop to zero)
+		// are handled promptly by an event-driven per-tenant refresh enqueued from
+		// the delete path, so this full pass can run on a relaxed interval.
+		riverConfig.PeriodicJobs = []*river.PeriodicJob{
+			river.NewPeriodicJob(
+				river.PeriodicInterval(5*time.Minute),
+				func() (river.JobArgs, *river.InsertOpts) {
+					return RefreshTenantStatsArgs{}, nil
+				},
+				&river.PeriodicJobOpts{RunOnStart: true},
+			),
+		}
 		if config.AppConfig().AppConf.DNSCacheEnabled {
-			riverConfig.PeriodicJobs = []*river.PeriodicJob{
+			riverConfig.PeriodicJobs = append(
+				riverConfig.PeriodicJobs,
 				river.NewPeriodicJob(
 					river.PeriodicInterval(15*time.Minute),
 					func() (river.JobArgs, *river.InsertOpts) {
@@ -179,7 +194,7 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 					},
 					&river.PeriodicJobOpts{RunOnStart: true},
 				),
-			}
+			)
 		}
 	}
 

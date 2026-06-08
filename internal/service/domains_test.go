@@ -17,10 +17,13 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// fakeScheduler records Schedule calls for assertion; safe for concurrent use.
+// fakeScheduler records Schedule calls and per-tenant stat-refresh enqueues for
+// assertion; safe for concurrent use. It implements both DomainScanScheduler and
+// TenantStatsRefresher so the service wires it as the refresher too.
 type fakeScheduler struct {
-	mu    sync.Mutex
-	calls int
+	mu             sync.Mutex
+	calls          int
+	statsRefreshes []int32
 }
 
 func (f *fakeScheduler) Schedule(
@@ -40,6 +43,19 @@ func (f *fakeScheduler) Called() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.calls
+}
+
+func (f *fakeScheduler) RefreshTenantStats(_ context.Context, tenantID int32) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.statsRefreshes = append(f.statsRefreshes, tenantID)
+	return nil
+}
+
+func (f *fakeScheduler) StatsRefreshes() []int32 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]int32(nil), f.statsRefreshes...)
 }
 
 // ownerPrincipal returns a synthetic owner principal for the given tenant.
@@ -357,9 +373,17 @@ func TestDomainsService_Delete_HappyPath(t *testing.T) {
 	if err := ds.Delete(ctx, ownerPrincipal(tenantA), d.Uid); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
+	// A successful delete enqueues a per-tenant stats refresh for that tenant.
+	if got := sched.StatsRefreshes(); len(got) != 1 || got[0] != tenantA {
+		t.Errorf("stats refreshes = %v, want [%d]", got, tenantA)
+	}
 	// Confirm it is gone.
 	if err := ds.Delete(ctx, ownerPrincipal(tenantA), d.Uid); !errors.Is(err, service.ErrNotFound) {
 		t.Errorf("second Delete = %v, want ErrNotFound", err)
+	}
+	// A no-op delete (already gone) does not enqueue another refresh.
+	if got := sched.StatsRefreshes(); len(got) != 1 {
+		t.Errorf("stats refreshes after no-op delete = %v, want 1", got)
 	}
 }
 

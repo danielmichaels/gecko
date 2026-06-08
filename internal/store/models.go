@@ -861,6 +861,14 @@ type SrvRecords struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
+type TenantStats struct {
+	TenantID      int32              `json:"tenant_id"`
+	RecordTotal   int64              `json:"record_total"`
+	CriticalCount int32              `json:"critical_count"`
+	WarningCount  int32              `json:"warning_count"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Tenants struct {
 	ID        int32              `json:"id"`
 	Uid       string             `json:"uid"`

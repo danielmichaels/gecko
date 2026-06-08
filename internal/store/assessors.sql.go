@@ -523,13 +523,17 @@ WITH ids AS (
     SELECT unnest($1::int[]) AS domain_id
 ),
 open_findings AS (
-    SELECT domain_id, severity::text AS severity FROM spf_findings WHERE status = 'open'
+    SELECT domain_id, severity::text AS severity FROM spf_findings
+        WHERE status = 'open' AND domain_id = ANY($1::int[])
     UNION ALL
-    SELECT domain_id, severity::text FROM dkim_findings WHERE status = 'open'
+    SELECT domain_id, severity::text FROM dkim_findings
+        WHERE status = 'open' AND domain_id = ANY($1::int[])
     UNION ALL
-    SELECT domain_id, severity::text FROM dmarc_findings WHERE status = 'open'
+    SELECT domain_id, severity::text FROM dmarc_findings
+        WHERE status = 'open' AND domain_id = ANY($1::int[])
     UNION ALL
-    SELECT domain_id, severity::text FROM zone_transfer_findings WHERE zone_transfer_possible = true
+    SELECT domain_id, severity::text FROM zone_transfer_findings
+        WHERE zone_transfer_possible = true AND domain_id = ANY($1::int[])
 )
 SELECT
     ids.domain_id::int AS domain_id,
@@ -575,49 +579,6 @@ func (q *Queries) DomainsListFindingsSummary(ctx context.Context, domainIds []in
 		return nil, err
 	}
 	return items, nil
-}
-
-const domainsTenantFindingStats = `-- name: DomainsTenantFindingStats :one
-SELECT
-    COUNT(*) FILTER (WHERE sev_rank <= 2)::int AS critical_count,
-    COUNT(*) FILTER (WHERE sev_rank BETWEEN 3 AND 4)::int AS warning_count
-FROM (
-    SELECT d.id,
-        MIN(CASE f.severity
-            WHEN 'critical' THEN 1
-            WHEN 'high'     THEN 2
-            WHEN 'medium'   THEN 3
-            WHEN 'low'      THEN 4
-            WHEN 'info'     THEN 5
-            ELSE 6
-        END) AS sev_rank
-    FROM domains d
-    JOIN (
-        SELECT domain_id, severity::text AS severity FROM spf_findings WHERE status = 'open'
-        UNION ALL
-        SELECT domain_id, severity::text FROM dkim_findings WHERE status = 'open'
-        UNION ALL
-        SELECT domain_id, severity::text FROM dmarc_findings WHERE status = 'open'
-        UNION ALL
-        SELECT domain_id, severity::text FROM zone_transfer_findings WHERE zone_transfer_possible = true
-    ) f ON f.domain_id = d.id
-    WHERE d.tenant_id = $1
-    GROUP BY d.id
-) agg
-`
-
-type DomainsTenantFindingStatsRow struct {
-	CriticalCount int32 `json:"critical_count"`
-	WarningCount  int32 `json:"warning_count"`
-}
-
-// Tenant-wide counts of domains whose worst open finding is critical/high
-// (critical_count) versus medium/low (warning_count).
-func (q *Queries) DomainsTenantFindingStats(ctx context.Context, tenantID pgtype.Int4) (DomainsTenantFindingStatsRow, error) {
-	row := q.db.QueryRow(ctx, domainsTenantFindingStats, tenantID)
-	var i DomainsTenantFindingStatsRow
-	err := row.Scan(&i.CriticalCount, &i.WarningCount)
-	return i, err
 }
 
 const storeZoneTransferFinding = `-- name: StoreZoneTransferFinding :one
@@ -669,4 +630,64 @@ func (q *Queries) StoreZoneTransferFinding(ctx context.Context, arg StoreZoneTra
 	var inserted bool
 	err := row.Scan(&inserted)
 	return inserted, err
+}
+
+const tenantFindingStatsAll = `-- name: TenantFindingStatsAll :many
+SELECT
+    agg.tenant_id AS tenant_id,
+    COUNT(*) FILTER (WHERE sev_rank <= 2)::int AS critical_count,
+    COUNT(*) FILTER (WHERE sev_rank BETWEEN 3 AND 4)::int AS warning_count
+FROM (
+    SELECT d.tenant_id, d.id,
+        MIN(CASE f.severity
+            WHEN 'critical' THEN 1
+            WHEN 'high'     THEN 2
+            WHEN 'medium'   THEN 3
+            WHEN 'low'      THEN 4
+            WHEN 'info'     THEN 5
+            ELSE 6
+        END) AS sev_rank
+    FROM domains d
+    JOIN (
+        SELECT domain_id, severity::text AS severity FROM spf_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM dkim_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM dmarc_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM zone_transfer_findings WHERE zone_transfer_possible = true
+    ) f ON f.domain_id = d.id
+    GROUP BY d.tenant_id, d.id
+) agg
+GROUP BY agg.tenant_id
+`
+
+type TenantFindingStatsAllRow struct {
+	TenantID      pgtype.Int4 `json:"tenant_id"`
+	CriticalCount int32       `json:"critical_count"`
+	WarningCount  int32       `json:"warning_count"`
+}
+
+// Per-tenant counts of domains whose worst open finding is critical/high
+// (critical_count) versus medium/low (warning_count), in a single grouped pass
+// over all tenants. Runs off the request path (periodic refresh job); the result
+// is cached into tenant_stats.
+func (q *Queries) TenantFindingStatsAll(ctx context.Context) ([]TenantFindingStatsAllRow, error) {
+	rows, err := q.db.Query(ctx, tenantFindingStatsAll)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TenantFindingStatsAllRow{}
+	for rows.Next() {
+		var i TenantFindingStatsAllRow
+		if err := rows.Scan(&i.TenantID, &i.CriticalCount, &i.WarningCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

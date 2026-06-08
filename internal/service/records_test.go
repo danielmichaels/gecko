@@ -264,3 +264,75 @@ func TestRecordsService_Timeline_CrossTenantReturnsNotFound(t *testing.T) {
 		t.Errorf("cross-tenant Timeline = %v, want ErrNotFound", err)
 	}
 }
+
+// TestDomainsService_RecordCountsForPage verifies the index-driven per-page
+// record-count aggregate sums across record tables and that a domain with no
+// records is absent from the result (callers read a missing key as 0).
+func TestDomainsService_RecordCountsForPage(t *testing.T) {
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc := newTestService(pc, &fakeScheduler{})
+	ds := svc.DomainsService()
+
+	tenantID := createTenant(t, ctx, pc, "owner@rc.test")
+	p := ownerPrincipal(tenantID)
+
+	dMixed := seedDomain(t, ctx, pc, tenantID, "mixed.rc.test")
+	dEmpty := seedDomain(t, ctx, pc, tenantID, "empty.rc.test")
+
+	// dMixed: 2 A records + 1 AAAA + 1 MX across three tables → 4 total.
+	if _, err := pc.Queries.RecordsCreateA(ctx, store.RecordsCreateAParams{
+		DomainID:    pgtype.Int4{Int32: dMixed.ID, Valid: true},
+		Ipv4Address: "192.0.2.1",
+	}); err != nil {
+		t.Fatalf("create a record: %v", err)
+	}
+	if _, err := pc.Queries.RecordsCreateA(ctx, store.RecordsCreateAParams{
+		DomainID:    pgtype.Int4{Int32: dMixed.ID, Valid: true},
+		Ipv4Address: "192.0.2.2",
+	}); err != nil {
+		t.Fatalf("create a record: %v", err)
+	}
+	if _, err := pc.Queries.RecordsCreateAAAA(ctx, store.RecordsCreateAAAAParams{
+		DomainID:    pgtype.Int4{Int32: dMixed.ID, Valid: true},
+		Ipv6Address: "2001:db8::1",
+	}); err != nil {
+		t.Fatalf("create aaaa record: %v", err)
+	}
+	if _, err := pc.Queries.RecordsCreateMX(ctx, store.RecordsCreateMXParams{
+		DomainID:   pgtype.Int4{Int32: dMixed.ID, Valid: true},
+		Preference: 10,
+		Target:     "mail.rc.test",
+	}); err != nil {
+		t.Fatalf("create mx record: %v", err)
+	}
+
+	counts, err := ds.RecordCountsForPage(ctx, p, []int32{dMixed.ID, dEmpty.ID})
+	if err != nil {
+		t.Fatalf("RecordCountsForPage: %v", err)
+	}
+	if got := counts[dMixed.ID]; got != 4 {
+		t.Errorf("mixed domain record count = %d, want 4", got)
+	}
+	if _, present := counts[dEmpty.ID]; present {
+		t.Errorf("empty domain should be absent from result, got count %d", counts[dEmpty.ID])
+	}
+	if got := counts[dEmpty.ID]; got != 0 {
+		t.Errorf("absent key should read as 0, got %d", got)
+	}
+
+	t.Run("empty input", func(t *testing.T) {
+		got, err := ds.RecordCountsForPage(ctx, p, nil)
+		if err != nil {
+			t.Fatalf("empty: %v", err)
+		}
+		if len(got) != 0 {
+			t.Errorf("len = %d, want 0", len(got))
+		}
+	})
+}

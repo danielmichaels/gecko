@@ -463,6 +463,35 @@ func (q *Queries) DomainsGetByName(ctx context.Context, arg DomainsGetByNamePara
 	return i, err
 }
 
+const domainsIDsByTenantID = `-- name: DomainsIDsByTenantID :many
+SELECT id
+FROM domains
+WHERE tenant_id = $1
+`
+
+// All domain IDs owned by a tenant. Used by the per-tenant stats refresh to
+// drive the index-driven record/finding aggregates; returns no rows when the
+// tenant has no domains (the caller then caches zeros).
+func (q *Queries) DomainsIDsByTenantID(ctx context.Context, tenantID pgtype.Int4) ([]int32, error) {
+	rows, err := q.db.Query(ctx, domainsIDsByTenantID, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int32{}
+	for rows.Next() {
+		var id int32
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const domainsInsert = `-- name: DomainsInsert :one
 INSERT INTO domains (tenant_id, name, domain_type, source, status)
 VALUES ($1, $2, $3, $4, $5)
