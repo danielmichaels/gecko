@@ -166,7 +166,12 @@ type DomainDetailPageProps struct {
 	Source           string
 	Added            string
 	Scanned          string
-	Shell            AppShellProps
+	// InitialTab/InitialScan drive deep-links from the Scans feed: opening the
+	// page at ?tab=timeline&scan=… auto-selects the Timeline tab and highlights
+	// the targeted scan. InitialTab defaults to "records".
+	InitialTab  string
+	InitialScan string
+	Shell       AppShellProps
 }
 
 // RecordRowView is the presentation model for one DNS record row.
@@ -204,13 +209,16 @@ type ChangeView struct {
 	Value  string
 }
 
-// ScanGroupView groups one scan's changes in the full Timeline tab.
+// ScanGroupView groups one scan's changes in the full Timeline tab. Highlighted
+// marks the scan that a /app/scans deep-link (?scan=) targeted, so it renders with
+// an accent border.
 type ScanGroupView struct {
 	ScanID      string
 	When        string
 	Meta        string
 	Changes     []ChangeView
 	ChangeCount int
+	Highlighted bool
 }
 
 // TimelineFullView is the lazy-loaded fragment for the full-width Timeline tab.
@@ -330,6 +338,129 @@ func sevToggle(sev string) string {
 
 // sevChipClass marks a severity chip active when it is the selected tier.
 func sevChipClass(sev string) string { return fmt.Sprintf("{'on': $sev === '%s'}", sev) }
+
+// ScansPageProps holds data for the tenant-wide Scans page.
+type ScansPageProps struct {
+	Shell AppShellProps
+	View  TenantScansView
+}
+
+// TenantScansView is the presentation model for the whole Scans screen: the stat
+// strip, the data-driven source chips, and the day-grouped feed. It is re-rendered
+// as a fragment (#scans-list) on every filter change.
+type TenantScansView struct {
+	SourceOptions []ScanSourceOption
+	Days          []ScanDayGroupView
+	ScanCount     int
+	DomainCount   int
+	ChangeCount   int
+	CleanCount    int
+}
+
+// ScanSourceOption is one source chip, data-driven from the faceted SourceCounts.
+type ScanSourceOption struct {
+	Value string // user_supplied | discovered (filter value)
+	Class string // user | disc (CSS dot/badge class)
+	Label string // User | Discovered
+	Count int
+}
+
+// ScanDayGroupView is one day divider plus the scan rows under it.
+type ScanDayGroupView struct {
+	Label string // Today | Yesterday | weekday
+	Date  string // dimmed date, e.g. "09 Jun"
+	Scans []ScanRowView
+}
+
+// ScanRowView is one scan run: a collapsed line plus an inline-expanding diff.
+// All time/diff text is precomputed by the handler so the template stays dumb.
+type ScanRowView struct {
+	ScanUID       string
+	DomainUID     string
+	Label         string // bold leading label
+	ApexSuffix    string // dimmed apex suffix, empty for an apex
+	SourceClass   string // user | disc
+	SourceLabel   string // user | discovered
+	State         string // changed | clean | baseline (node-dot + summary cell)
+	AbsoluteTime  string // "14:38"
+	RelativeTime  string // "4m ago"
+	ParentScanUID string
+	ParentURL     string // timeline deep-link to the parent scan (empty for baseline)
+	DeltaHead     string // "3 changes since scan_x" / "baseline — 14 records first observed"
+	DeltaMeta     string // "scan_x · 2026-06-09 14:38:02 UTC[ · no parent]"
+	CleanMessage  string // clean-state body text
+	TimelineURL   string
+	Segments      []ScanSegment
+	Pills         []ScanPill
+	Changes       []ScanChangeView
+	IsBaseline    bool
+}
+
+// ScanSegment is one proportional slice of a scan row's change seg-bar.
+type ScanSegment struct {
+	Class string // c | u | d
+	Width string // e.g. "34%"
+}
+
+// ScanPill is one per-change-kind count chip on a scan row.
+type ScanPill struct {
+	Class string // c | u | d
+	Glyph string // + | ~ | −
+	Count int
+}
+
+// ScanChangeView is one entity-type diff row in the expanded detail grid.
+type ScanChangeView struct {
+	Class      string // c | u | d
+	Op         string // + | ~ | −
+	EntityType string
+	CountLabel string // "1 created"
+}
+
+// scanOpen returns the datastar expression that flips a scan's membership in the
+// $open array (inline expand, zero round-trip).
+func scanOpen(uid string) string {
+	return fmt.Sprintf(
+		"$open = $open.includes('%s') ? $open.filter(k => k !== '%s') : [...$open, '%s']",
+		uid, uid, uid,
+	)
+}
+
+// scanOpenClass toggles the 'open' class on a scan row when it is expanded.
+func scanOpenClass(uid string) string {
+	return fmt.Sprintf("{'open': $open.includes('%s')}", uid)
+}
+
+// srcToggle single-selects a source: clicking the active chip clears it, then
+// re-fetches so the server applies the new filter.
+func srcToggle(src string) string {
+	return fmt.Sprintf("$src = $src === '%s' ? '' : '%s'; @get('/app/scans')", src, src)
+}
+
+// srcChipClass marks a source chip active when it is the selected source.
+func srcChipClass(src string) string { return fmt.Sprintf("{'on': $src === '%s'}", src) }
+
+// detailSignals builds the domain-detail signal object, defaulting the open tab
+// to InitialTab. When the page is deep-linked to the Timeline tab, tlLoaded starts
+// true so the timeline content loads once via intersect and the tab-click handler
+// does not re-fetch it (which would drop the deep-link's scan highlight).
+func detailSignals(initialTab string) string {
+	tlLoaded := "false"
+	if initialTab == "timeline" {
+		tlLoaded = "true"
+	}
+	return fmt.Sprintf(`{"tab":"%s","tlLoaded":%s,"fnLoaded":false}`, initialTab, tlLoaded)
+}
+
+// timelineFullLoad returns the datastar @get that loads the full Timeline tab,
+// carrying the deep-link scan uid so the targeted scan renders highlighted.
+func timelineFullLoad(uid, scan string) string {
+	url := "/app/domains/" + uid + "/timeline/full"
+	if scan != "" {
+		url += "?scan=" + scan
+	}
+	return fmt.Sprintf("@get('%s')", url)
+}
 
 // ComingSoonProps holds data for the coming-soon placeholder page.
 type ComingSoonProps struct {

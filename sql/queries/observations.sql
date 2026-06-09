@@ -38,6 +38,57 @@ WHERE tenant_id = $1
   AND domain_name = $2
 ORDER BY started_at DESC, id DESC;
 
+-- name: ScansListByTenant :many
+-- Tenant-wide reverse-chronological scan feed with per-scan change aggregates.
+-- Observation aggregation is bounded to the windowed page (target_scans, capped
+-- by @row_limit) so it never full-scans a growing domain_observations: the
+-- change_counts CTE keys on scan_id from target_scans and rides idx_obs_scan.
+-- Clean scans (no observations) survive via LEFT JOIN per_scan -> all-zero counts
+-- + '[]' breakdown. Baseline scans (parent_scan_id IS NULL) yield a NULL
+-- parent_scan_uid. @since is nullable: NULL means all-time.
+WITH target_scans AS (
+    SELECT s.id, s.uid, s.domain_uid, s.domain_name, s.source,
+           s.started_at, s.parent_scan_id
+    FROM scans s
+    WHERE s.tenant_id = @tenant_id
+      AND (sqlc.narg(since)::timestamptz IS NULL
+           OR s.started_at >= sqlc.narg(since))
+    ORDER BY s.started_at DESC, s.id DESC
+    LIMIT sqlc.arg(row_limit)
+),
+change_counts AS (
+    SELECT o.scan_id, o.entity_type, o.change_type, count(*) AS n
+    FROM domain_observations o
+    WHERE o.scan_id IN (SELECT id FROM target_scans)
+    GROUP BY o.scan_id, o.entity_type, o.change_type
+),
+per_scan AS (
+    SELECT scan_id,
+           COALESCE(sum(n) FILTER (WHERE change_type = 'created'), 0) AS created,
+           COALESCE(sum(n) FILTER (WHERE change_type = 'updated'), 0) AS updated,
+           COALESCE(sum(n) FILTER (WHERE change_type = 'deleted'), 0) AS deleted,
+           jsonb_agg(jsonb_build_object(
+               'entity_type', entity_type,
+               'change_type', change_type,
+               'count', n) ORDER BY entity_type, change_type) AS breakdown
+    FROM change_counts
+    GROUP BY scan_id
+)
+SELECT t.uid                          AS scan_uid,
+       t.domain_uid,
+       t.domain_name,
+       t.source,
+       t.started_at,
+       p.uid                          AS parent_scan_uid,
+       COALESCE(ps.created, 0)::int   AS created_count,
+       COALESCE(ps.updated, 0)::int   AS updated_count,
+       COALESCE(ps.deleted, 0)::int   AS deleted_count,
+       COALESCE(ps.breakdown, '[]'::jsonb) AS breakdown
+FROM target_scans t
+         LEFT JOIN scans p ON p.id = t.parent_scan_id
+         LEFT JOIN per_scan ps ON ps.scan_id = t.id
+ORDER BY t.started_at DESC, t.id DESC;
+
 -- name: ObservationsCreate :one
 -- Append one change to the observation log.
 INSERT INTO domain_observations (tenant_id, domain_id, domain_uid, domain_name, scan_id, entity_type, entity_key,

@@ -1,0 +1,195 @@
+package templates
+
+import (
+	"fmt"
+	"strconv"
+)
+
+// ScansPage is the tenant-wide reverse-chronological scan feed. The filter bar is
+// static (signal-bound) so inputs keep focus; only #scans-list is patched on each
+// filter change. $src is single-select; $open is a client-only expand array.
+templ ScansPage(props ScansPageProps) {
+	@Page("gecko · Scans") {
+		@AppShell(props.Shell) {
+			<div data-signals='{"src":"","q":"","win":"7","changedOnly":false,"open":[]}'>
+				<div class="page-head">
+					<div>
+						<h1 class="page-title">◎ Scans</h1>
+						<p class="page-sub">Every scan run across your fleet, newest first. Each run records what changed since the last.</p>
+					</div>
+				</div>
+				@ScansFilterBar(props.View)
+				<div id="scans-list">
+					@ScansListFragment(props.View)
+				</div>
+			</div>
+		}
+	}
+}
+
+// ScansFilterBar renders the source chips (data-driven from SourceOptions), the
+// time-window select, the domain search, and the changed-only toggle.
+templ ScansFilterBar(v TenantScansView) {
+	<div class="filters">
+		<div class="chips">
+			for _, s := range v.SourceOptions {
+				@srcChip(s)
+			}
+		</div>
+		<select class="sel" data-bind="win" data-on:change="@get('/app/scans')">
+			<option value="7">Last 7 days</option>
+			<option value="1">Last 24 hours</option>
+			<option value="30">Last 30 days</option>
+			<option value="0">All time</option>
+		</select>
+		<input
+			class="search"
+			placeholder="filter domain…"
+			data-bind="q"
+			data-on:input__debounce.300ms="@get('/app/scans')"
+		/>
+		<div
+			class="toggle"
+			data-class="{'on': $changedOnly}"
+			data-on:click="$changedOnly = !$changedOnly; @get('/app/scans')"
+		><span class="sw"></span> only with changes</div>
+	</div>
+}
+
+templ srcChip(s ScanSourceOption) {
+	<button
+		class={ "chip", s.Class }
+		type="button"
+		data-class={ srcChipClass(s.Value) }
+		data-on:click={ srcToggle(s.Value) }
+	>
+		<i></i> { s.Label }
+		if s.Count > 0 {
+			<span class="ct">{ strconv.Itoa(s.Count) }</span>
+		}
+	</button>
+}
+
+// ScansListFragment is the patched region: the stat strip plus the day-grouped
+// feed on its timeline spine, or the empty state when filters match nothing.
+templ ScansListFragment(v TenantScansView) {
+	<div class="stats">
+		<div class="stat">
+			<div class="k">Scans</div>
+			<div class="v">
+				{ strconv.Itoa(v.ScanCount) }
+				<small>{ fmt.Sprintf("/ %d domains", v.DomainCount) }</small>
+			</div>
+		</div>
+		<div class="stat changed">
+			<div class="k">Changes detected</div>
+			<div class="v">{ strconv.Itoa(v.ChangeCount) }</div>
+		</div>
+		<div class="stat">
+			<div class="k">Domains scanned</div>
+			<div class="v">{ strconv.Itoa(v.DomainCount) }</div>
+		</div>
+		<div class="stat clean">
+			<div class="k">Clean scans</div>
+			<div class="v">{ strconv.Itoa(v.CleanCount) }</div>
+		</div>
+	</div>
+	if len(v.Days) == 0 {
+		<div class="empty show">
+			<div class="ico">◎</div>
+			<div class="big">No scans match these filters</div>
+			<div>Try widening the time window or clearing a source chip.</div>
+		</div>
+	} else {
+		<div class="feed">
+			for _, d := range v.Days {
+				<div class="daydiv">
+					<span class="lbl"><b>{ d.Label }</b> · { d.Date }</span>
+					<span class="rule"></span>
+				</div>
+				<div class="scans">
+					for _, s := range d.Scans {
+						@ScanRow(s)
+					}
+				</div>
+			}
+		</div>
+	}
+}
+
+// ScanRow is one collapsed scan line plus its inline-expanding diff detail.
+templ ScanRow(s ScanRowView) {
+	<div class={ "srow", s.State } data-class={ scanOpenClass(s.ScanUID) }>
+		<div class="sline" data-on:click={ scanOpen(s.ScanUID) }>
+			<span class="stime"><b>{ s.AbsoluteTime }</b>{ s.RelativeTime }</span>
+			<span class="sdomwrap">
+				<span class="sdom">{ s.Label }<span class="apex">{ s.ApexSuffix }</span></span>
+				<span class={ "src", s.SourceClass }>{ s.SourceLabel }</span>
+				@scanChain(s)
+			</span>
+			<span class="summary">
+				@scanSummary(s)
+			</span>
+			<span class="sexp">▾</span>
+		</div>
+		<div class="sdetail">
+			<div class="delta">
+				if s.State == "clean" {
+					<div class="clean-detail"><span class="ic">✓</span> { s.CleanMessage }</div>
+				} else {
+					<div class="delta-head">{ s.DeltaHead }</div>
+					<div class="delta-grid">
+						for _, c := range s.Changes {
+							<div class={ "dchange", c.Class }>
+								<span class="op">{ c.Op }</span>
+								<span class="ent">{ c.EntityType }</span>
+								<span class="cnt">{ c.CountLabel }</span>
+							</div>
+						}
+					</div>
+				}
+				<div class="delta-foot">
+					<span class="delta-meta">{ s.DeltaMeta }</span>
+					<a class="viewlink" href={ templ.SafeURL(s.TimelineURL) }>View on timeline →</a>
+				</div>
+			</div>
+		</div>
+	</div>
+}
+
+// scanChain renders the parent-scan lineage: a deep-link to the prior scan, or a
+// plain "baseline scan" tag for a first observation.
+templ scanChain(s ScanRowView) {
+	if s.IsBaseline {
+		<span class="chain">baseline scan</span>
+	} else {
+		<span class="chain">⟸ vs <a href={ templ.SafeURL(s.ParentURL) }>{ s.ParentScanUID }</a></span>
+	}
+}
+
+// scanSummary renders the row's change summary cell: a seg-bar + pills for a
+// changed scan, the baseline tag + pills for a baseline, or a "no changes" chip.
+templ scanSummary(s ScanRowView) {
+	switch s.State {
+		case "clean":
+			<span class="nochange">no changes</span>
+		case "baseline":
+			<span class="baseline-tag">first observation</span>
+			@scanPills(s.Pills)
+		default:
+			<span class="seg-bar">
+				for _, seg := range s.Segments {
+					<span class={ "dseg", seg.Class } style={ "width:" + seg.Width }></span>
+				}
+			</span>
+			@scanPills(s.Pills)
+	}
+}
+
+templ scanPills(pills []ScanPill) {
+	<span class="pills">
+		for _, p := range pills {
+			<span class={ "dpill", p.Class }>{ p.Glyph }{ strconv.Itoa(p.Count) }</span>
+		}
+	</span>
+}

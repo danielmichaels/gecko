@@ -132,6 +132,11 @@ func (s *Service) AuthService() *AuthService {
 	return &AuthService{s}
 }
 
+// ScansService returns the Scans sub-service.
+func (s *Service) ScansService() *ScansService {
+	return &ScansService{s}
+}
+
 // UsersService returns the Users sub-service.
 func (s *Service) UsersService() *UsersService {
 	return &UsersService{s}
