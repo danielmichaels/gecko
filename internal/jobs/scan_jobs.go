@@ -45,13 +45,24 @@ func (w *ScanCertificateWorker) Work(
 
 	s := scanner.NewScanner(scanner.Config{Logger: &w.Logger, Store: w.Store, Resolver: w.Resolver})
 	result := s.ScanCertificate(job.Args.DomainName)
+	if result == nil {
+		w.Logger.WarnContext(
+			ctx,
+			"certificate scan returned no certificate",
+			"domain", job.Args.DomainName,
+			"duration", time.Since(start),
+		)
+		return nil
+	}
 	w.Logger.InfoContext(
 		ctx,
 		"certificate scan complete",
 		"domain", job.Args.DomainName,
 		"duration", time.Since(start),
+		"issuer", result.Issuer,
+		"not_after", result.NotAfter,
+		"tls_version", result.TLSVersion,
 	)
-	fmt.Printf("Certificate scan complete for: %q\n%+v\n", job.Args.DomainName, result)
 	return nil
 }
 
