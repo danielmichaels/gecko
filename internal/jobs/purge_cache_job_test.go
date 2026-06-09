@@ -25,6 +25,7 @@ func seedCacheRow(t *testing.T, q *store.Queries, fqdn string, expiresAt time.Ti
 }
 
 func TestPurgeDNSCacheWorker_DeletesOnlyExpiredRows(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {

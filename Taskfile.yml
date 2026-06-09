@@ -155,7 +155,8 @@ tasks:
   test:
     desc: Run all tests
     cmds:
-      - go test -race -v -cover ./...
+      - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} up --wait -d {{.DATABASE_CONTAINER_NAME}}
+      - TEST_DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:${POSTGRES_PORT}/postgres?sslmode=${POSTGRES_SSL_MODE}" go test -race -v -cover ./...
 
   verify:auth:
     desc: 'End-to-end check of the auth/role guards: boots DB, migrates, runs the server, executes scripts/verify-auth.sh, tears down.'
@@ -248,4 +249,3 @@ tasks:
     cmds:
       - |
         curlie :9090/domains/"{{.ARG_1}}" -H "X-API-Key: changeme" -v
-

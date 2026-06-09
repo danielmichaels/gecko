@@ -141,6 +141,7 @@ func TestDNSClient_ShedsBeforeWire(t *testing.T) {
 }
 
 func TestPgRateLimiter_PostgresTokenBucket(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {

@@ -127,6 +127,7 @@ func createTenant(
 }
 
 func TestDomainsService_List_TenantScoped(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -160,6 +161,7 @@ func TestDomainsService_List_TenantScoped(t *testing.T) {
 }
 
 func TestDomainsService_List_Search(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -193,6 +195,7 @@ func TestDomainsService_List_Search(t *testing.T) {
 }
 
 func TestDomainsService_Get_HappyPath(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -217,6 +220,7 @@ func TestDomainsService_Get_HappyPath(t *testing.T) {
 }
 
 func TestDomainsService_Get_CrossTenantReturnsNotFound(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -239,6 +243,7 @@ func TestDomainsService_Get_CrossTenantReturnsNotFound(t *testing.T) {
 }
 
 func TestDomainsService_Create_SchedulesCalled(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -266,6 +271,7 @@ func TestDomainsService_Create_SchedulesCalled(t *testing.T) {
 }
 
 func TestDomainsService_Create_DuplicateReturnsConflict(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -297,6 +303,7 @@ func TestDomainsService_Create_DuplicateReturnsConflict(t *testing.T) {
 }
 
 func TestDomainsService_Update_HappyPath(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -329,6 +336,7 @@ func TestDomainsService_Update_HappyPath(t *testing.T) {
 }
 
 func TestDomainsService_Update_CrossTenantReturnsNotFound(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -356,6 +364,7 @@ func TestDomainsService_Update_CrossTenantReturnsNotFound(t *testing.T) {
 }
 
 func TestDomainsService_Delete_HappyPath(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -388,6 +397,7 @@ func TestDomainsService_Delete_HappyPath(t *testing.T) {
 }
 
 func TestDomainsService_Delete_CrossTenantReturnsNotFound(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -409,6 +419,7 @@ func TestDomainsService_Delete_CrossTenantReturnsNotFound(t *testing.T) {
 }
 
 func TestDomainsService_DeletionImpact_HappyPath(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -433,6 +444,7 @@ func TestDomainsService_DeletionImpact_HappyPath(t *testing.T) {
 }
 
 func TestDomainsService_DeletionImpact_CrossTenantReturnsNotFound(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {

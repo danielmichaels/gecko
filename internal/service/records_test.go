@@ -53,6 +53,7 @@ func recordAObservation(
 }
 
 func TestRecordsService_List_HappyPath(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -77,6 +78,7 @@ func TestRecordsService_List_HappyPath(t *testing.T) {
 }
 
 func TestRecordsService_List_CrossTenantReturnsNotFound(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -98,6 +100,7 @@ func TestRecordsService_List_CrossTenantReturnsNotFound(t *testing.T) {
 }
 
 func TestRecordsService_List_InvalidQTypeReturnsInvalidInput(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -118,6 +121,7 @@ func TestRecordsService_List_InvalidQTypeReturnsInvalidInput(t *testing.T) {
 }
 
 func TestRecordsService_History_HappyPath(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -145,6 +149,7 @@ func TestRecordsService_History_HappyPath(t *testing.T) {
 }
 
 func TestRecordsService_History_CrossTenantReturnsNotFound(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -166,6 +171,7 @@ func TestRecordsService_History_CrossTenantReturnsNotFound(t *testing.T) {
 }
 
 func TestRecordsService_History_InvalidQTypeReturnsInvalidInput(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -186,6 +192,7 @@ func TestRecordsService_History_InvalidQTypeReturnsInvalidInput(t *testing.T) {
 }
 
 func TestRecordsService_History_QtypeFilter(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -220,6 +227,7 @@ func TestRecordsService_History_QtypeFilter(t *testing.T) {
 }
 
 func TestRecordsService_Timeline_HappyPath(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -245,6 +253,7 @@ func TestRecordsService_Timeline_HappyPath(t *testing.T) {
 }
 
 func TestRecordsService_Timeline_CrossTenantReturnsNotFound(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -269,6 +278,7 @@ func TestRecordsService_Timeline_CrossTenantReturnsNotFound(t *testing.T) {
 // record-count aggregate sums across record tables and that a domain with no
 // records is absent from the result (callers read a missing key as 0).
 func TestDomainsService_RecordCountsForPage(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {

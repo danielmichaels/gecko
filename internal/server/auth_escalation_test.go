@@ -34,6 +34,7 @@ func inviteAccept(t *testing.T, base, inviterKey, email, role string) tokenResp 
 // must not be able to mint owners or promote anyone (including themselves) to owner;
 // an owner still may.
 func TestAuth_RoleEscalation(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -89,6 +90,7 @@ func TestAuth_RoleEscalation(t *testing.T) {
 // closes the lateral takeover — a manager demoting/rewriting/deleting an owner — that
 // the grant-rank check alone does not catch.
 func TestAuth_RoleProtection(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -139,6 +141,7 @@ func TestAuth_RoleProtection(t *testing.T) {
 // TestAuth_LastOwnerProtected ensures a tenant cannot be orphaned: the sole owner
 // can neither delete nor demote themselves out of the owner role.
 func TestAuth_LastOwnerProtected(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -170,6 +173,7 @@ func TestAuth_LastOwnerProtected(t *testing.T) {
 // them so exactly one succeeds and the tenant always retains an owner — without it,
 // both could read "2 owners" and both delete, orphaning the tenant.
 func TestAuth_LastOwnerConcurrentDelete(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {

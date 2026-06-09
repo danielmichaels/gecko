@@ -15,6 +15,7 @@ import (
 // active-status gate (Force never bypasses it), the leaf-job fan-out, and the
 // recency dedup for discovered scans (which Force does bypass).
 func TestEnqueueDomainScan(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
