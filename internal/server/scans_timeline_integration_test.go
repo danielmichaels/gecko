@@ -18,6 +18,7 @@ import (
 // same domain produce two timeline entries, newest first, each carrying only the
 // changes recorded during that scan.
 func TestDomainTimelineHandler(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -120,6 +121,7 @@ func TestDomainTimelineHandler(t *testing.T) {
 // TestDomainTimeline_ParentScanUID proves the timeline resolves a child scan's
 // parent to the parent's opaque uid (not the internal numeric id).
 func TestDomainTimeline_ParentScanUID(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {

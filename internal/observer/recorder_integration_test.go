@@ -15,6 +15,7 @@ import (
 // the projection stays in sync, observations are emitted with the right
 // change_type, and — critically — an indeterminate resolution never deletes.
 func TestRecorderRecordA(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -156,6 +157,7 @@ func TestRecorderRecordA(t *testing.T) {
 // decommissioned: after all migrations (incl. 00008 + 00009) no *_history table
 // survives, while the live projection tables and updated_at_trigger do.
 func TestNoLegacyHistoryTablesRemain(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -202,6 +204,7 @@ func TestNoLegacyHistoryTablesRemain(t *testing.T) {
 // excludes a mutable field (weight): a weight change behind the same key must be
 // an "updated", not a delete+create.
 func TestRecorderRecordSRV(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -304,6 +307,7 @@ func TestRecorderRecordSRV(t *testing.T) {
 // observation, only a genuine change does. This is what keeps the append-only
 // log free of per-scan noise.
 func TestRecordFindingChange_SuppressesNoOpObservations(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {

@@ -243,6 +243,7 @@ func TestEncodeDecodeDNSKEYRRSIG(t *testing.T) {
 }
 
 func TestDNSCache_CrossInstancePostgres(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {

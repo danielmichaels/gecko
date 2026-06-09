@@ -100,6 +100,7 @@ func seedZoneTransferFinding(
 // reflects worst severity, ignores compliant/closed findings, and only counts an
 // AXFR finding when the transfer is actually possible.
 func TestDomainsService_FindingsSummaryForPage(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -198,6 +199,7 @@ func TestDomainsService_FindingsSummaryForPage(t *testing.T) {
 // TestFindingsService_ListByDomain verifies findings are aggregated across types,
 // sorted worst-first, bucketed for the summary strip, and tenant-scoped.
 func TestFindingsService_ListByDomain(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
