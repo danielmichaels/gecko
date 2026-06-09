@@ -413,6 +413,14 @@ func (h *Handlers) handleDomainDetail(w http.ResponseWriter, r *http.Request) {
 		recordCount = strconv.Itoa(int(counts[d.ID]))
 	}
 
+	// Deep-link target from the Scans feed: ?tab=timeline&scan=… opens the
+	// Timeline tab and highlights the targeted scan. Only "timeline" is honored;
+	// any other value falls back to the default Records tab.
+	initialTab := "records"
+	if r.URL.Query().Get("tab") == "timeline" {
+		initialTab = "timeline"
+	}
+
 	renderPage(w, r, templates.DomainDetailPage(templates.DomainDetailPageProps{
 		Shell:            shell,
 		UID:              d.Uid,
@@ -425,6 +433,8 @@ func (h *Handlers) handleDomainDetail(w http.ResponseWriter, r *http.Request) {
 		Source:           string(d.Source),
 		Added:            added,
 		Scanned:          relativeTime(d.UpdatedAt),
+		InitialTab:       initialTab,
+		InitialScan:      strings.TrimSpace(r.URL.Query().Get("scan")),
 	}))
 }
 
@@ -540,8 +550,9 @@ func (h *Handlers) handleTimelineFullFragment(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	highlightScan := strings.TrimSpace(r.URL.Query().Get("scan"))
 	_ = sse.PatchElementTempl(
-		templates.TimelineFull(timelineFullView(result.Scans)),
+		templates.TimelineFull(timelineFullView(result.Scans, highlightScan)),
 		datastar.WithSelectorID("timeline-full-content"),
 		datastar.WithModeInner(),
 	)
@@ -902,7 +913,8 @@ func changeGlyph(changeType string) (op, kind string) {
 }
 
 // timelineFullView maps []dto.ScanDiff into the full-width Timeline tab model.
-func timelineFullView(scans []dto.ScanDiff) templates.TimelineFullView {
+// highlightUID marks the scan a /app/scans deep-link targeted (empty = none).
+func timelineFullView(scans []dto.ScanDiff, highlightUID string) templates.TimelineFullView {
 	groups := make([]templates.ScanGroupView, 0, len(scans))
 	totalChanges := 0
 
@@ -930,6 +942,7 @@ func timelineFullView(scans []dto.ScanDiff) templates.TimelineFullView {
 			Meta:        scan.Source,
 			ChangeCount: len(scan.Changes),
 			Changes:     changes,
+			Highlighted: highlightUID != "" && scan.ScanUID == highlightUID,
 		})
 	}
 

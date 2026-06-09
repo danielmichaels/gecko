@@ -483,6 +483,108 @@ func (q *Queries) ScansListByParent(ctx context.Context, parentScanID pgtype.Int
 	return items, nil
 }
 
+const scansListByTenant = `-- name: ScansListByTenant :many
+WITH target_scans AS (
+    SELECT s.id, s.uid, s.domain_uid, s.domain_name, s.source,
+           s.started_at, s.parent_scan_id
+    FROM scans s
+    WHERE s.tenant_id = $1
+      AND ($2::timestamptz IS NULL
+           OR s.started_at >= $2)
+    ORDER BY s.started_at DESC, s.id DESC
+    LIMIT $3
+),
+change_counts AS (
+    SELECT o.scan_id, o.entity_type, o.change_type, count(*) AS n
+    FROM domain_observations o
+    WHERE o.scan_id IN (SELECT id FROM target_scans)
+    GROUP BY o.scan_id, o.entity_type, o.change_type
+),
+per_scan AS (
+    SELECT scan_id,
+           COALESCE(sum(n) FILTER (WHERE change_type = 'created'), 0) AS created,
+           COALESCE(sum(n) FILTER (WHERE change_type = 'updated'), 0) AS updated,
+           COALESCE(sum(n) FILTER (WHERE change_type = 'deleted'), 0) AS deleted,
+           jsonb_agg(jsonb_build_object(
+               'entity_type', entity_type,
+               'change_type', change_type,
+               'count', n) ORDER BY entity_type, change_type) AS breakdown
+    FROM change_counts
+    GROUP BY scan_id
+)
+SELECT t.uid                          AS scan_uid,
+       t.domain_uid,
+       t.domain_name,
+       t.source,
+       t.started_at,
+       p.uid                          AS parent_scan_uid,
+       COALESCE(ps.created, 0)::int   AS created_count,
+       COALESCE(ps.updated, 0)::int   AS updated_count,
+       COALESCE(ps.deleted, 0)::int   AS deleted_count,
+       COALESCE(ps.breakdown, '[]'::jsonb) AS breakdown
+FROM target_scans t
+         LEFT JOIN scans p ON p.id = t.parent_scan_id
+         LEFT JOIN per_scan ps ON ps.scan_id = t.id
+ORDER BY t.started_at DESC, t.id DESC
+`
+
+type ScansListByTenantParams struct {
+	TenantID int32              `json:"tenant_id"`
+	Since    pgtype.Timestamptz `json:"since"`
+	RowLimit int32              `json:"row_limit"`
+}
+
+type ScansListByTenantRow struct {
+	ScanUid       string             `json:"scan_uid"`
+	DomainUid     string             `json:"domain_uid"`
+	DomainName    string             `json:"domain_name"`
+	Source        DomainSource       `json:"source"`
+	StartedAt     pgtype.Timestamptz `json:"started_at"`
+	ParentScanUid pgtype.Text        `json:"parent_scan_uid"`
+	CreatedCount  int32              `json:"created_count"`
+	UpdatedCount  int32              `json:"updated_count"`
+	DeletedCount  int32              `json:"deleted_count"`
+	Breakdown     []byte             `json:"breakdown"`
+}
+
+// Tenant-wide reverse-chronological scan feed with per-scan change aggregates.
+// Observation aggregation is bounded to the windowed page (target_scans, capped
+// by @row_limit) so it never full-scans a growing domain_observations: the
+// change_counts CTE keys on scan_id from target_scans and rides idx_obs_scan.
+// Clean scans (no observations) survive via LEFT JOIN per_scan -> all-zero counts
+// + '[]' breakdown. Baseline scans (parent_scan_id IS NULL) yield a NULL
+// parent_scan_uid. @since is nullable: NULL means all-time.
+func (q *Queries) ScansListByTenant(ctx context.Context, arg ScansListByTenantParams) ([]ScansListByTenantRow, error) {
+	rows, err := q.db.Query(ctx, scansListByTenant, arg.TenantID, arg.Since, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ScansListByTenantRow{}
+	for rows.Next() {
+		var i ScansListByTenantRow
+		if err := rows.Scan(
+			&i.ScanUid,
+			&i.DomainUid,
+			&i.DomainName,
+			&i.Source,
+			&i.StartedAt,
+			&i.ParentScanUid,
+			&i.CreatedCount,
+			&i.UpdatedCount,
+			&i.DeletedCount,
+			&i.Breakdown,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const scansListByTenantDomainName = `-- name: ScansListByTenantDomainName :many
 SELECT id, uid, tenant_id, domain_id, domain_uid, domain_name, parent_scan_id, source, started_at
 FROM scans

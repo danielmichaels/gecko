@@ -5,7 +5,7 @@ import "fmt"
 templ DomainDetailPage(props DomainDetailPageProps) {
 	@Page("gecko · " + props.Name) {
 		@AppShell(props.Shell) {
-			<div data-signals='{"tab":"records","tlLoaded":false,"fnLoaded":false}'>
+			<div data-signals={ detailSignals(props.InitialTab) }>
 				<div class="detail-head">
 					<a class="back" href="/app/domains">← domains</a>
 				</div>
@@ -63,10 +63,20 @@ templ DomainDetailPage(props DomainDetailPageProps) {
 				</div>
 				<div style="display:none" data-show="$tab === 'timeline'">
 					<div class="panel" id="timeline-full-panel">
-						<div id="timeline-full-content">
-							<div class="panel-h">Change timeline <span class="count">loading…</span></div>
-							@timelineSkeleton()
-						</div>
+						if props.InitialTab == "timeline" {
+							<div
+								id="timeline-full-content"
+								data-on-intersect__once={ timelineFullLoad(props.UID, props.InitialScan) }
+							>
+								<div class="panel-h">Change timeline <span class="count">loading…</span></div>
+								@timelineSkeleton()
+							</div>
+						} else {
+							<div id="timeline-full-content">
+								<div class="panel-h">Change timeline <span class="count">loading…</span></div>
+								@timelineSkeleton()
+							</div>
+						}
 					</div>
 				</div>
 				<div style="display:none" data-show="$tab === 'findings'">
@@ -137,7 +147,7 @@ templ TimelineFull(v TimelineFullView) {
 	} else {
 		<div class="tlx">
 			for _, g := range v.Groups {
-				<div class="scan-grp">
+				<div class={ "scan-grp", templ.KV("highlight", g.Highlighted) }>
 					<div class="scan-hd">
 						<span class="m"></span>
 						<div>
