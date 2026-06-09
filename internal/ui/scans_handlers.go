@@ -167,14 +167,16 @@ func toScanRowView(s service.ScanRunView) templates.ScanRowView {
 	}
 	if !s.IsBaseline && s.ParentScanUID != "" {
 		row.ParentURL = fmt.Sprintf(
-			"/app/domains/%s?tab=timeline&scan=%s", s.DomainUID, s.ParentScanUID)
+			"/app/domains/%s?tab=timeline&scan=%s", s.DomainUID, s.ParentScanUID,
+		)
 	}
 
 	switch s.State {
 	case "clean":
 		row.CleanMessage = fmt.Sprintf(
 			"Nothing changed since the previous scan — all records and findings match %s.",
-			s.ParentScanUID)
+			s.ParentScanUID,
+		)
 	case "baseline":
 		row.DeltaHead = fmt.Sprintf("baseline — %d records first observed", s.TotalChanges)
 	default:
