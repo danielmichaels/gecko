@@ -240,6 +240,97 @@ type FindingsView struct {
 	HealthyCount  int
 }
 
+// FindingsPageProps holds data for the tenant-wide Findings page.
+type FindingsPageProps struct {
+	Shell AppShellProps
+	View  TenantFindingsView
+}
+
+// TenantFindingsView is the presentation model for the whole Findings screen:
+// the stat strip, the data-driven filter controls, and the grouped rows. It is
+// re-rendered as a fragment (#findings-list) on every filter change.
+type TenantFindingsView struct {
+	SevCounts   map[string]int // tier (crit|high|med|low) -> faceted chip count
+	Groups      []FindingGroupView
+	KindOptions []FindingKindOption
+	OpenCount   int
+	DomainCount int
+	CritCount   int
+	HighCount   int
+	MedCount    int
+}
+
+// FindingKindOption is one entry in the data-driven type dropdown.
+type FindingKindOption struct {
+	Value string // SPF | DKIM | DMARC | ZONE
+	Label string
+	Count int
+}
+
+// FindingGroupView is one domain's collapsible group: a dimmed-apex name, a
+// rollup seg-bar + pills, and its finding rows.
+type FindingGroupView struct {
+	DomainUID  string
+	Name       string // full domain name, used as the collapse key
+	Label      string // bold leading label
+	ApexSuffix string // dimmed apex suffix (".example.org"), empty for an apex
+	CountLabel string // "3 findings"
+	Segments   []FindingSegment
+	Pills      []FindingPill
+	Findings   []FindingRowView
+}
+
+// FindingSegment is one proportional slice of a group's rollup bar.
+type FindingSegment struct {
+	Class string // c | h | m | l
+	Width string // e.g. "66%"
+}
+
+// FindingPill is one per-tier count chip on a group header.
+type FindingPill struct {
+	Class string // c | h | m | l
+	Glyph string // ● | ▲
+	Count int
+}
+
+// FindingRowView is one finding: a collapsed line plus an expandable detail card.
+type FindingRowView struct {
+	FindingUID  string
+	DomainUID   string
+	Tier        string // crit | high | med | low | ok (CSS class)
+	Severity    string // "critical" | "high" | ... (label text)
+	Kind        string
+	Icon        string
+	Title       string
+	Description string
+	Evidence    string
+	FixHint     string
+	FirstSeen   string
+}
+
+// findingOpen returns the datastar expression that flips a finding's membership
+// in the $open array (inline expand, zero round-trip).
+func findingOpen(uid string) string {
+	return fmt.Sprintf(
+		"$open = $open.includes('%s') ? $open.filter(k => k !== '%s') : [...$open, '%s']",
+		uid, uid, uid,
+	)
+}
+
+// findingOpenClass toggles the 'open' class on a finding row when it is expanded.
+func findingOpenClass(uid string) string {
+	return fmt.Sprintf("{'open': $open.includes('%s')}", uid)
+}
+
+// sevToggle single-selects a severity tier: clicking the active chip clears it.
+// Re-fetches the list so the server applies the new filter.
+func sevToggle(sev string) string {
+	return fmt.Sprintf("$sev = $sev === '%s' ? '' : '%s'; @get('/app/findings')", sev, sev)
+}
+
+// sevChipClass marks a severity chip active when it is the selected tier.
+func sevChipClass(sev string) string { return fmt.Sprintf("{'on': $sev === '%s'}", sev) }
+
 // ComingSoonProps holds data for the coming-soon placeholder page.
 type ComingSoonProps struct {
 	Glyph string

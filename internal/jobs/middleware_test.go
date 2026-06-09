@@ -36,7 +36,7 @@ func newTimingMiddleware() (*TimingMiddleware, *captureHandler) {
 	return &TimingMiddleware{Logger: slog.New(h)}, h
 }
 
-func TestTimingMiddleware_LogsSuccessAtInfo(t *testing.T) {
+func TestTimingMiddleware_LogsSuccessAtDebug(t *testing.T) {
 	mw, h := newTimingMiddleware()
 	job := &rivertype.JobRow{
 		ID:          42,
@@ -55,8 +55,10 @@ func TestTimingMiddleware_LogsSuccessAtInfo(t *testing.T) {
 		t.Fatalf("expected exactly 1 log record, got %d", len(h.records))
 	}
 	rec := h.records[0]
-	if rec.Level != slog.LevelInfo {
-		t.Errorf("expected level INFO, got %v", rec.Level)
+	// Successful completions are noise at info during bulk scans; they log at
+	// DEBUG so the duration/identity is there when needed but quiet by default.
+	if rec.Level != slog.LevelDebug {
+		t.Errorf("expected level DEBUG, got %v", rec.Level)
 	}
 	if rec.Message != "job worked" {
 		t.Errorf("expected message %q, got %q", "job worked", rec.Message)
@@ -86,45 +88,51 @@ func TestTimingMiddleware_LogsSuccessAtInfo(t *testing.T) {
 	}
 }
 
-func TestTimingMiddleware_QuietKindSuccessLogsAtDebug(t *testing.T) {
+func TestTimingMiddleware_EnrichesWithDomainIdentity(t *testing.T) {
 	mw, h := newTimingMiddleware()
 	job := &rivertype.JobRow{
-		Kind:        PurgeDNSCacheArgs{}.Kind(),
-		Queue:       river.QueueDefault,
+		Kind:        "resolve_domain",
+		Queue:       queueResolver,
 		Attempt:     1,
 		MaxAttempts: 5,
+		EncodedArgs: []byte(
+			`{"domain_uid":"domain_abc","domain_name":"foo.com","scan_id":91,"tenant_id":1,"domain_id":2}`,
+		),
 	}
 
 	if err := mw.Work(context.Background(), job, func(context.Context) error { return nil }); err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
 
-	if len(h.records) != 1 {
-		t.Fatalf("expected exactly 1 log record, got %d", len(h.records))
+	attrs := attrsOf(h.records[0])
+	if got := attrs["domain"].String(); got != "foo.com" {
+		t.Errorf("domain: expected foo.com, got %q", got)
 	}
-	if got := h.records[0].Level; got != slog.LevelDebug {
-		t.Errorf("expected quiet-kind success at DEBUG, got %v", got)
+	if got := attrs["domain_uid"].String(); got != "domain_abc" {
+		t.Errorf("domain_uid: expected domain_abc, got %q", got)
+	}
+	if got := attrs["scan_id"].Int64(); got != 91 {
+		t.Errorf("scan_id: expected 91, got %d", got)
 	}
 }
 
-func TestTimingMiddleware_QuietKindErrorStillLogsAtError(t *testing.T) {
+func TestTimingMiddleware_OmitsDomainWhenArgsHaveNone(t *testing.T) {
 	mw, h := newTimingMiddleware()
 	job := &rivertype.JobRow{
 		Kind:        PurgeDNSCacheArgs{}.Kind(),
 		Queue:       river.QueueDefault,
 		Attempt:     1,
 		MaxAttempts: 5,
+		EncodedArgs: []byte(`{}`),
 	}
-	sentinel := errors.New("purge failed")
 
-	if err := mw.Work(context.Background(), job, func(context.Context) error { return sentinel }); !errors.Is(
-		err,
-		sentinel,
-	) {
-		t.Fatalf("expected sentinel error to propagate, got %v", err)
+	if err := mw.Work(context.Background(), job, func(context.Context) error { return nil }); err != nil {
+		t.Fatalf("expected nil error, got %v", err)
 	}
-	if got := h.records[0].Level; got != slog.LevelError {
-		t.Errorf("expected quiet-kind failure at ERROR, got %v", got)
+
+	attrs := attrsOf(h.records[0])
+	if _, ok := attrs["domain"]; ok {
+		t.Error("did not expect a domain attr for a job without domain args")
 	}
 }
 

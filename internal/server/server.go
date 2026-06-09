@@ -127,6 +127,8 @@ func httpLogger(cfg *config.Conf) *httplog.Logger {
 			"/",
 			"/ping",
 			"/healthz",
+			"/static/app.css",
+			"/static/datastar.js",
 		},
 		QuietDownPeriod: 10 * time.Second,
 		Writer:          output,

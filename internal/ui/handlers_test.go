@@ -631,7 +631,7 @@ func TestHandlerTimelineFragment(t *testing.T) {
 	}
 }
 
-func TestHandlerComingSoon_Findings(t *testing.T) {
+func TestHandlerFindingsPage(t *testing.T) {
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -647,11 +647,16 @@ func TestHandlerComingSoon_Findings(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("GET /app/findings: want 200, got %d", rr.Code)
 	}
-	if !strings.Contains(rr.Body.String(), "On the roadmap") {
+	body := rr.Body.String()
+	if !strings.Contains(body, "Every open security issue across your domains") {
 		t.Errorf(
-			"GET /app/findings: body should contain 'On the roadmap', got partial: %s",
-			rr.Body.String()[:min(300, len(rr.Body.String()))],
+			"GET /app/findings: want findings page sub-heading, got partial: %s",
+			body[:min(300, len(body))],
 		)
+	}
+	// A fresh tenant has no findings, so the empty state renders.
+	if !strings.Contains(body, "No findings match these filters") {
+		t.Errorf("GET /app/findings: want empty state for a tenant with no findings")
 	}
 }
 

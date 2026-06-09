@@ -137,6 +137,12 @@ func TestDomainsPageRender(t *testing.T) {
 	if !strings.Contains(out, "$drawerOpen = true") {
 		t.Error("expected drawer-open trigger in DomainsPage output")
 	}
+	// Findings is a shipped page: its inactive nav link must be a normal link,
+	// not the greyed "SOON" treatment, even from another active page.
+	if strings.Contains(out, `href="/app/findings"`) &&
+		strings.Contains(out, `<a class="soon" href="/app/findings"`) {
+		t.Error("Findings nav must not render the SOON treatment")
+	}
 }
 
 func TestDomainTableBodyNestedRender(t *testing.T) {

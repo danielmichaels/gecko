@@ -23,8 +23,9 @@ func (app *Server) routes() http.Handler {
 	router.Use(middleware.Recoverer)
 	router.Use(middleware.RealIP)
 	router.Use(traceMiddleware)
-	router.Use(middleware.Compress(5))
+	router.Use(compressExceptSSE(5))
 	router.Use(httplog.RequestLogger(httpLogger(app.Conf)))
+	router.Use(recordSSEStatus)
 
 	cfg := huma.DefaultConfig("gecko", version.Get())
 	cfg.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
