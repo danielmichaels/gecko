@@ -473,6 +473,10 @@ func TestHandlerDomains_AddDomain_WithCSRF(t *testing.T) {
 			addBody,
 		)
 	}
+	// A success toast confirms the action landed on the backend.
+	if !strings.Contains(addBody, `id="toast-`) || !strings.Contains(addBody, "Domain added") {
+		t.Errorf("POST /app/domains add: SSE body should append a success toast, got: %s", addBody)
+	}
 }
 
 func TestHandlerDomains_DeleteDomain(t *testing.T) {
@@ -1023,13 +1027,38 @@ func TestHandlerDomainRescan_NotFound(t *testing.T) {
 		)
 	}
 	body := rr.Body.String()
-	// Should contain the rescan-status error patch (not-found text).
-	if !strings.Contains(body, "rescan-status") {
+	// A not-found rescan surfaces a toast rather than an inline status span.
+	if !strings.Contains(body, `id="toast-`) || !strings.Contains(body, "not found") {
 		t.Errorf(
-			"POST /app/domains/%s/rescan: SSE body should contain rescan-status error, got: %s",
+			"POST /app/domains/%s/rescan: SSE body should append a not-found toast, got: %s",
 			nonExistentUID,
 			body,
 		)
+	}
+}
+
+func TestHandlerDomainRescan_Success(t *testing.T) {
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+	cookie, csrf := h.loginCookie(t, "rescanok@example.com", "pass1234")
+
+	tid := tenantIDFor(t, ctx, pc, "rescanok@example.com")
+	d := seedDomainForTenant(t, ctx, pc, tid, "rescan-me.example.com")
+
+	rr := h.do(t, http.MethodPost, "/app/domains/"+d.Uid+"/rescan", nil, cookie, csrf)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("POST rescan: want 200, got %d\nbody: %s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, `id="toast-`) || !strings.Contains(body, "Rescan queued") {
+		t.Errorf("POST rescan: SSE body should append a success toast, got: %s", body)
 	}
 }
 
