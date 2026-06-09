@@ -1,0 +1,43 @@
+package templates
+
+// ToastStack is the fixed container the action handlers append toasts into.
+// It lives in the app shell so every authenticated page can receive toasts.
+templ ToastStack() {
+	<div class="toast-stack" id="toast-stack" aria-live="polite" aria-atomic="false"></div>
+}
+
+// Toast renders one telemetry-style notification. Auto-dismiss and hover-pause
+// are CSS-driven (see app.css): the progress bar runs a 5s animation, and
+// data-on:animationend removes the toast only when that specific keyframe ends
+// — the shorter entrance animation is filtered out by name.
+templ Toast(v ToastView) {
+	<div
+		id={ "toast-" + v.ID }
+		class={ "toast " + v.Variant }
+		role="status"
+		data-on:animationend="evt.animationName === 'toast-progress' && el.remove()"
+	>
+		<div class="toast-icon">{ toastIcon(v.Variant) }</div>
+		<div class="toast-body">
+			<div class="toast-top">
+				if v.Tag != "" {
+					<span class="toast-tag">{ v.Tag }</span>
+				}
+				if v.Timestamp != "" {
+					<span class="toast-ts">{ v.Timestamp }</span>
+				}
+			</div>
+			<div class="toast-title">{ v.Title }</div>
+			if v.Desc != "" {
+				<div class="toast-desc">{ v.Desc }</div>
+			}
+		</div>
+		<button
+			class="toast-close"
+			type="button"
+			aria-label="Dismiss"
+			data-on:click="el.closest('.toast').remove()"
+		>✕</button>
+		<div class="toast-progress"></div>
+	</div>
+}
