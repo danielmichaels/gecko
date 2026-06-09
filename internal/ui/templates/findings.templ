@@ -1,0 +1,178 @@
+package templates
+
+import (
+	"fmt"
+	"strconv"
+)
+
+// FindingsPage is the tenant-wide Findings roll-up. The filter bar is static
+// (signal-bound) so inputs keep focus; only #findings-list is patched on each
+// filter change. $sev is single-select; $collapsed/$open are client-only arrays.
+templ FindingsPage(props FindingsPageProps) {
+	@Page("gecko · Findings") {
+		@AppShell(props.Shell) {
+			<div data-signals='{"sev":"","kind":"","q":"","showCompliant":false,"collapsed":[],"open":[]}'>
+				<div class="page-head">
+					<div>
+						<h1 class="page-title">⚠ Findings</h1>
+						<p class="page-sub">Every open security issue across your domains, worst first.</p>
+					</div>
+				</div>
+				@FindingsFilterBar(props.View)
+				<div id="findings-list">
+					@FindingsListFragment(props.View)
+				</div>
+			</div>
+		}
+	}
+}
+
+// FindingsFilterBar renders the severity chips, the data-driven type dropdown,
+// the domain search, and the compliant toggle. Counts come from the initial
+// (unfiltered) view, mirroring the static TLD dropdown on the domains page.
+templ FindingsFilterBar(v TenantFindingsView) {
+	<div class="filters">
+		<div class="chips">
+			@sevChip("crit", "Critical", v.SevCounts["crit"])
+			@sevChip("high", "High", v.SevCounts["high"])
+			@sevChip("med", "Medium", v.SevCounts["med"])
+			@sevChip("low", "Low", v.SevCounts["low"])
+		</div>
+		<select class="sel" data-bind="kind" data-on:change="@get('/app/findings')">
+			<option value="">All types</option>
+			for _, k := range v.KindOptions {
+				<option value={ k.Value }>{ k.Label }</option>
+			}
+		</select>
+		<input
+			class="search"
+			placeholder="filter domain…"
+			data-bind="q"
+			data-on:input__debounce.300ms="@get('/app/findings')"
+		/>
+		<div
+			class="toggle"
+			data-class="{'on': $showCompliant}"
+			data-on:click="$showCompliant = !$showCompliant; @get('/app/findings')"
+		><span class="sw"></span> show compliant</div>
+	</div>
+}
+
+templ sevChip(sev, label string, count int) {
+	<button
+		class={ "chip", sev }
+		type="button"
+		data-class={ sevChipClass(sev) }
+		data-on:click={ sevToggle(sev) }
+	>
+		<i></i> { label }
+		if count > 0 {
+			<span class="ct">{ strconv.Itoa(count) }</span>
+		}
+	</button>
+}
+
+// FindingsListFragment is the patched region: the stat strip plus the grouped
+// rows, or the empty state when filters match nothing.
+templ FindingsListFragment(v TenantFindingsView) {
+	<div class="stats">
+		<div class="stat">
+			<div class="k">Open findings</div>
+			<div class="v">
+				{ strconv.Itoa(v.OpenCount) }
+				<small>{ fmt.Sprintf("/ %d domains", v.DomainCount) }</small>
+			</div>
+		</div>
+		<div class="stat crit">
+			<div class="k">Critical</div>
+			<div class="v">{ strconv.Itoa(v.CritCount) }</div>
+		</div>
+		<div class="stat high">
+			<div class="k">High</div>
+			<div class="v">{ strconv.Itoa(v.HighCount) }</div>
+		</div>
+		<div class="stat warn">
+			<div class="k">Medium</div>
+			<div class="v">{ strconv.Itoa(v.MedCount) }</div>
+		</div>
+	</div>
+	if len(v.Groups) == 0 {
+		<div class="empty show">
+			<div class="ico">✓</div>
+			<div class="big">No findings match these filters</div>
+			<div>Try clearing a severity chip or the type filter.</div>
+		</div>
+	} else {
+		<div class="groups">
+			for _, g := range v.Groups {
+				@FindingDomainGroup(g)
+			}
+		</div>
+	}
+}
+
+// FindingDomainGroup is one collapsible domain group with a severity rollup bar.
+templ FindingDomainGroup(g FindingGroupView) {
+	<section class="group" data-class={ collapsedClass(g.Name) }>
+		<div class="ghead" data-on:click={ toggleCollapse(g.Name) }>
+			<span class="caret">▼</span>
+			<span class="gname">{ g.Label }<span class="apex">{ g.ApexSuffix }</span></span>
+			<span class="gcount">{ g.CountLabel }</span>
+			<div class="rollup">
+				<span class="seg-bar">
+					for _, s := range g.Segments {
+						<span class={ "seg", s.Class } style={ "width:" + s.Width }></span>
+					}
+				</span>
+				<span class="pills">
+					for _, p := range g.Pills {
+						<span class={ "pill", p.Class }>{ p.Glyph } { strconv.Itoa(p.Count) }</span>
+					}
+				</span>
+			</div>
+		</div>
+		<div class="gbody">
+			for _, f := range g.Findings {
+				@FindingRow(f)
+			}
+		</div>
+	</section>
+}
+
+// FindingRow is a collapsed finding line plus its inline-expanding detail card.
+templ FindingRow(f FindingRowView) {
+	<div class={ "frow", f.Tier } data-class={ findingOpenClass(f.FindingUID) }>
+		<div class="fline" data-on:click={ findingOpen(f.FindingUID) }>
+			<span class={ "badge", f.Tier }>{ f.Severity }</span>
+			<span class="kind">{ f.Kind }</span>
+			<span class="ftitle">{ f.Title }</span>
+			<span class="fexp">▾</span>
+		</div>
+		<div class="fdetail">
+			<div class="finding">
+				<div class="f-ico">{ f.Icon }</div>
+				<div style="flex:1">
+					if f.Description != "" {
+						<p>{ f.Description }</p>
+					}
+					if f.Evidence != "" {
+						<div class="f-ev"><span class="lbl">Evidence</span>{ f.Evidence }</div>
+					}
+					if f.FixHint != "" {
+						<div class="f-fix">→ <b>Fix:</b> { f.FixHint }</div>
+					}
+					<div class="f-foot">
+						<span class="f-meta">
+							if f.FirstSeen != "" {
+								{ "first seen " + f.FirstSeen + " · " + f.FindingUID }
+							} else {
+								{ f.FindingUID }
+							}
+						</span>
+						<a class="viewlink" href={ templ.SafeURL("/app/domains/" + f.DomainUID) }>View domain →</a>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+}

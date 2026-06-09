@@ -181,6 +181,79 @@ FROM ids
 LEFT JOIN open_findings f ON f.domain_id = ids.domain_id
 GROUP BY ids.domain_id;
 
+-- name: FindingsListByTenant :many
+-- Every finding across SPF/DKIM/DMARC/zone-transfer for one tenant, in a single
+-- UNION ALL. Tenant scope is enforced transitively by the domains.tenant_id join
+-- (the finding tables have no tenant_id) — this join IS the security boundary.
+-- When @include_compliant is false, email findings are restricted to status='open'
+-- and zone-transfer to actually-possible AXFRs. Ordered domain-then-severity so
+-- the handler can group consecutively without a second sort.
+SELECT f.finding_uid,
+       f.domain_uid,
+       f.domain_name,
+       f.kind,
+       f.severity,
+       f.status,
+       f.issue_type,
+       f.value,
+       f.details,
+       f.selector,
+       f.created_at
+FROM (SELECT sf.uid                AS finding_uid,
+             d.uid                 AS domain_uid,
+             d.name                AS domain_name,
+             'SPF'::text           AS kind,
+             sf.severity           AS severity,
+             sf.status             AS status,
+             sf.issue_type         AS issue_type,
+             sf.spf_value          AS value,
+             sf.details            AS details,
+             NULL::text            AS selector,
+             sf.created_at         AS created_at
+      FROM spf_findings sf
+               JOIN domains d ON sf.domain_id = d.id
+      WHERE d.tenant_id = @tenant_id
+        AND (@include_compliant::bool OR sf.status = 'open')
+
+      UNION ALL
+
+      SELECT df.uid, d.uid, d.name, 'DKIM'::text, df.severity, df.status,
+             df.issue_type, df.dkim_value, df.details, df.selector, df.created_at
+      FROM dkim_findings df
+               JOIN domains d ON df.domain_id = d.id
+      WHERE d.tenant_id = @tenant_id
+        AND (@include_compliant::bool OR df.status = 'open')
+
+      UNION ALL
+
+      SELECT mf.uid, d.uid, d.name, 'DMARC'::text, mf.severity, mf.status,
+             mf.issue_type, mf.dmarc_value, mf.details, NULL::text, mf.created_at
+      FROM dmarc_findings mf
+               JOIN domains d ON mf.domain_id = d.id
+      WHERE d.tenant_id = @tenant_id
+        AND (@include_compliant::bool OR mf.status = 'open')
+
+      UNION ALL
+
+      SELECT zf.uid, d.uid, d.name, 'ZONE'::text, zf.severity, zf.status,
+             CASE WHEN zf.zone_transfer_possible
+                  THEN 'zone_transfer_exposed' ELSE 'zone_transfer_refused' END,
+             zf.nameserver, zf.details, NULL::text, zf.created_at
+      FROM zone_transfer_findings zf
+               JOIN domains d ON zf.domain_id = d.id
+      WHERE d.tenant_id = @tenant_id
+        AND (@include_compliant::bool OR zf.zone_transfer_possible = true)) f
+ORDER BY f.domain_name ASC,
+         CASE f.severity
+             WHEN 'critical' THEN 1
+             WHEN 'high' THEN 2
+             WHEN 'medium' THEN 3
+             WHEN 'low' THEN 4
+             WHEN 'info' THEN 5
+             ELSE 6
+             END ASC,
+         f.created_at ASC;
+
 -- name: TenantFindingStatsAll :many
 -- Per-tenant counts of domains whose worst open finding is critical/high
 -- (critical_count) versus medium/low (warning_count), in a single grouped pass

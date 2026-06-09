@@ -67,16 +67,9 @@ func (h *Handlers) Routes() http.Handler {
 
 		r.Post("/logout", h.handleLogoutPost)
 
+		r.Get("/findings", h.handleFindingsPage)
+
 		// ComingSoon placeholder pages.
-		r.Get(
-			"/findings",
-			h.handleComingSoon(
-				"findings",
-				"⚠",
-				"Findings",
-				"Security findings and DNS misconfiguration alerts will surface here. Coming soon.",
-			),
-		)
 		r.Get(
 			"/scans",
 			h.handleComingSoon(
