@@ -331,7 +331,8 @@ func TestAuthService_Session_MintAndResolve(t *testing.T) {
 
 	// Verify the raw token is NOT stored in the DB (only its hash is).
 	var hash string
-	err = pc.Pool.QueryRow(ctx,
+	err = pc.Pool.QueryRow(
+		ctx,
 		`SELECT token_hash FROM sessions ORDER BY created_at DESC LIMIT 1`,
 	).Scan(&hash)
 	if err != nil {
@@ -393,7 +394,8 @@ func TestAuthService_Session_LastUsedAtAdvances(t *testing.T) {
 
 	// Record initial last_used_at.
 	var before time.Time
-	err = pc.Pool.QueryRow(ctx,
+	err = pc.Pool.QueryRow(
+		ctx,
 		`SELECT last_used_at FROM sessions WHERE token_hash = $1`, auth.HashToken(rawToken),
 	).Scan(&before)
 	if err != nil {
@@ -408,7 +410,8 @@ func TestAuthService_Session_LastUsedAtAdvances(t *testing.T) {
 	}
 
 	var after time.Time
-	err = pc.Pool.QueryRow(ctx,
+	err = pc.Pool.QueryRow(
+		ctx,
 		`SELECT last_used_at FROM sessions WHERE token_hash = $1`, auth.HashToken(rawToken),
 	).Scan(&after)
 	if err != nil {
@@ -441,7 +444,8 @@ func TestAuthService_Session_ExpiredToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generate token: %v", err)
 	}
-	_, err = pc.Pool.Exec(ctx,
+	_, err = pc.Pool.Exec(
+		ctx,
 		`INSERT INTO sessions (user_id, tenant_id, token_hash, expires_at)
 		 VALUES ($1, $2, $3, NOW() - INTERVAL '1 hour')`,
 		ownerUser.ID, ownerUser.TenantID.Int32, auth.HashToken(rawToken),
@@ -517,7 +521,8 @@ func TestAuthService_Session_Revoke(t *testing.T) {
 
 	// Row must be gone.
 	var count int
-	err = pc.Pool.QueryRow(ctx,
+	err = pc.Pool.QueryRow(
+		ctx,
 		`SELECT COUNT(*) FROM sessions WHERE token_hash = $1`, auth.HashToken(rawToken),
 	).Scan(&count)
 	if err != nil {
@@ -571,7 +576,8 @@ func TestAuthService_Session_RawTokenNotStored(t *testing.T) {
 
 	// Scan ALL text columns for the raw token — it must not appear anywhere.
 	var count int
-	err = pc.Pool.QueryRow(ctx,
+	err = pc.Pool.QueryRow(
+		ctx,
 		`SELECT COUNT(*) FROM sessions
 		 WHERE token_hash = $1 OR user_agent = $1 OR ip = $1`,
 		rawToken,
@@ -669,7 +675,8 @@ func TestAuthService_AcceptInviteWeb_Valid(t *testing.T) {
 
 	// Confirm no api_keys row was created for this user.
 	var count int
-	err = pc.Pool.QueryRow(ctx,
+	err = pc.Pool.QueryRow(
+		ctx,
 		`SELECT COUNT(*) FROM api_keys WHERE user_id = $1`, p.UserID,
 	).Scan(&count)
 	if err != nil {

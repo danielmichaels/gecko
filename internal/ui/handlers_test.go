@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -411,9 +413,11 @@ func TestHandlerDomains_Authenticated(t *testing.T) {
 	if !strings.Contains(body, "Domains") {
 		t.Error("GET /app/domains authed: body should contain 'Domains'")
 	}
-	if !strings.Contains(body, "myseeded.example.com") {
+	// Default layout is nested: the subdomain renders under its apex as
+	// <b>myseeded</b>.example.com, so assert the label and apex separately.
+	if !strings.Contains(body, "myseeded") || !strings.Contains(body, "example.com") {
 		t.Errorf(
-			"GET /app/domains authed: body should contain seeded domain, got partial: %s",
+			"GET /app/domains authed: body should contain seeded domain (nested), got partial: %s",
 			body[:min(200, len(body))],
 		)
 	}
@@ -460,10 +464,13 @@ func TestHandlerDomains_AddDomain_WithCSRF(t *testing.T) {
 			rr.Body.String(),
 		)
 	}
-	if !strings.Contains(rr.Body.String(), "added-by-test.example.com") {
+	// Create re-renders the grouped (nested) body, so the new subdomain shows as
+	// <b>added-by-test</b>.example.com — assert the label and apex separately.
+	addBody := rr.Body.String()
+	if !strings.Contains(addBody, "added-by-test") || !strings.Contains(addBody, "example.com") {
 		t.Errorf(
 			"POST /app/domains add: SSE body should contain new domain name, got: %s",
-			rr.Body.String(),
+			addBody,
 		)
 	}
 }
@@ -1038,6 +1045,164 @@ func TestHandlerRescanAll_RoutesCorrectly(t *testing.T) {
 	// Rescan-all returns 200 whether there are domains or not.
 	if rr.Code != http.StatusOK {
 		t.Fatalf("POST /app/domains/rescan: want 200, got %d\nbody: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// datastarGet issues a GET carrying datastar signals in the query param and the
+// Datastar-Request header, exercising the rows-only fragment path.
+func (h *uiHarness) datastarGet(
+	t *testing.T,
+	path, signals, cookieValue string,
+) *httptest.ResponseRecorder {
+	t.Helper()
+	u := path + "?datastar=" + url.QueryEscape(signals)
+	req := httptest.NewRequest(http.MethodGet, u, nil)
+	if cookieValue != "" {
+		req.AddCookie(&http.Cookie{Name: h.cookieCfg.Name, Value: cookieValue})
+	}
+	req.Header.Set("Datastar-Request", "true")
+	rr := httptest.NewRecorder()
+	h.handler.ServeHTTP(rr, req)
+	return rr
+}
+
+func TestDomainsGet_NestedLayoutGroupsByApex(t *testing.T) {
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+	cookie, _ := h.loginCookie(t, "nested@example.com", "pass1234")
+	tid := tenantIDFor(t, ctx, pc, "nested@example.com")
+	seedDomainForTenant(t, ctx, pc, tid, "example.com")
+	seedDomainForTenant(t, ctx, pc, tid, "api.example.com")
+	seedDomainForTenant(t, ctx, pc, tid, "other.com")
+
+	rr := h.datastarGet(t, "/app/domains", `{"layout":"nested","tld":"example.com"}`, cookie)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("nested fragment: want 200, got %d\nbody: %s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "example.com") {
+		t.Error("nested fragment: body should contain the filtered apex example.com")
+	}
+	if !strings.Contains(body, "apex") {
+		t.Error("nested fragment: body should render an apex group row")
+	}
+	if strings.Contains(body, "other.com") {
+		t.Error("nested fragment: tld filter should exclude other.com")
+	}
+}
+
+func TestDomainCreate_RerendersGroupedBody(t *testing.T) {
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+	cookie, csrf := h.loginCookie(t, "createnest@example.com", "pass1234")
+	tid := tenantIDFor(t, ctx, pc, "createnest@example.com")
+	seedDomainForTenant(t, ctx, pc, tid, "example.com")
+
+	body, _ := json.Marshal(map[string]string{"newDomain": "www.example.com"})
+	rr := h.do(t, http.MethodPost, "/app/domains", body, cookie, csrf)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("create: want 200 (SSE), got %d\nbody: %s", rr.Code, rr.Body.String())
+	}
+	out := rr.Body.String()
+	if !strings.Contains(out, "domains-rows") {
+		t.Error("create: should patch the #domains-rows body")
+	}
+	if !strings.Contains(out, "apex") {
+		t.Error("create: should re-render the grouped (apex) body")
+	}
+	if !strings.Contains(out, "<b>www</b>.example.com") {
+		t.Error("create: new subdomain should nest under its apex")
+	}
+}
+
+func TestDomainsGet_NestedGroupsOverFullTenantSet(t *testing.T) {
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+	cookie, _ := h.loginCookie(t, "bigtenant@example.com", "pass1234")
+	tid := tenantIDFor(t, ctx, pc, "bigtenant@example.com")
+
+	// One apex with 104 children = 105 domains, exceeding the prior 100-row cap.
+	seedDomainForTenant(t, ctx, pc, tid, "bigapex.com")
+	for i := 0; i < 104; i++ {
+		seedDomainForTenant(t, ctx, pc, tid, fmt.Sprintf("sub%03d.bigapex.com", i))
+	}
+
+	rr := h.datastarGet(t, "/app/domains", `{"layout":"nested"}`, cookie)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("nested over full set: want 200, got %d", rr.Code)
+	}
+	// Grouping over the full tenant set: all 104 children nest under the apex.
+	// A 104-child count is unreachable under a 100-row page cap.
+	if !strings.Contains(rr.Body.String(), "104 sub") {
+		t.Error("nested groups should cover all 104 children across the full tenant set")
+	}
+}
+
+func TestDomainsGet_FlatLoadMorePaginates(t *testing.T) {
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+	cookie, _ := h.loginCookie(t, "flatpage@example.com", "pass1234")
+	tid := tenantIDFor(t, ctx, pc, "flatpage@example.com")
+
+	// 60 independent apex domains → flat mode shows 60 rows, exceeding one page.
+	for i := 0; i < 60; i++ {
+		seedDomainForTenant(t, ctx, pc, tid, fmt.Sprintf("d%02d.com", i))
+	}
+
+	// Page 1: fresh flat render (offset 0) shows the first page and a load-more
+	// trigger, and advances the offset signal to the page size.
+	p1 := h.datastarGet(t, "/app/domains", `{"layout":"flat","offset":0}`, cookie)
+	if p1.Code != http.StatusOK {
+		t.Fatalf("flat page 1: want 200, got %d", p1.Code)
+	}
+	b1 := p1.Body.String()
+	if !strings.Contains(b1, "Load more") {
+		t.Error("flat page 1: expected a 'Load more' trigger (60 rows > one page)")
+	}
+	if !strings.Contains(b1, `"offset":50`) {
+		t.Error("flat page 1: expected offset signal advanced to 50")
+	}
+
+	// Page 2: load-more (offset 50) appends the remainder and removes the trigger.
+	p2 := h.datastarGet(t, "/app/domains", `{"layout":"flat","offset":50}`, cookie)
+	if p2.Code != http.StatusOK {
+		t.Fatalf("flat page 2: want 200, got %d", p2.Code)
+	}
+	b2 := p2.Body.String()
+	if !strings.Contains(b2, "mode append") {
+		t.Error("flat page 2: expected append patch mode")
+	}
+	if !strings.Contains(b2, `"offset":60`) {
+		t.Error("flat page 2: expected offset signal advanced to 60")
+	}
+	if strings.Contains(b2, "Load more") {
+		t.Error("flat page 2: load-more trigger should be gone at the end of the list")
 	}
 }
 

@@ -93,6 +93,7 @@ func TestDomainsPageRender(t *testing.T) {
 			Warnings: "1",
 			Records:  "52",
 		},
+		Layout: "flat",
 		Domains: []templates.DomainRowView{
 			{
 				UID:              "dom_001",
@@ -120,8 +121,14 @@ func TestDomainsPageRender(t *testing.T) {
 		t.Error("expected 'domains-rows' container in DomainsPage output")
 	}
 	// Search promoted to primary: debounced datastar GET (colon-form binding).
-	if !strings.Contains(out, `data-on:input__debounce.300ms="@get('/app/domains')"`) {
-		t.Error("expected debounced search binding in DomainsPage output")
+	if !strings.Contains(out, `data-on:input__debounce.300ms="$offset = 0; @get('/app/domains')"`) {
+		t.Error("expected debounced search binding (resetting offset) in DomainsPage output")
+	}
+	// Rescan-all re-scans every domain → guard behind a confirm dialog. templ
+	// HTML-escapes the expression attribute, so quotes render as &#39; (the
+	// browser decodes them back before datastar evaluates the action).
+	if !strings.Contains(out, "confirm(&#39;Rescan all tracked domains?&#39;)") {
+		t.Error("expected rescan-all confirm dialog in DomainsPage output")
 	}
 	// Add-domain demoted to a drawer toggled by the drawerOpen signal.
 	if !strings.Contains(out, `class="drawer"`) {
@@ -129,6 +136,98 @@ func TestDomainsPageRender(t *testing.T) {
 	}
 	if !strings.Contains(out, "$drawerOpen = true") {
 		t.Error("expected drawer-open trigger in DomainsPage output")
+	}
+}
+
+func TestDomainTableBodyNestedRender(t *testing.T) {
+	props := templates.DomainsPageProps{
+		Layout: "nested",
+		Groups: []templates.DomainGroupView{
+			{
+				Apex:   "example.com",
+				HasOwn: true,
+				Header: templates.DomainRowView{
+					UID:         "dom_1",
+					Name:        "example.com",
+					RecordCount: "14",
+					LastScan:    "2m ago",
+				},
+				Children: []templates.DomainRowView{
+					{
+						UID:              "dom_2",
+						Name:             "api.example.com",
+						RecordCount:      "6",
+						LastScan:         "2m ago",
+						FindingsSeverity: "warn",
+						FindingsLabel:    "SPF soft-fail",
+					},
+				},
+				SubCount:         1,
+				RollupSeverity:   "crit",
+				Rollup:           []string{"crit", "warn"},
+				FindingsSeverity: "crit",
+				FindingsLabel:    "1 critical",
+			},
+		},
+	}
+	var buf bytes.Buffer
+	if err := templates.DomainTableBody(props, "tok").Render(context.Background(), &buf); err != nil {
+		t.Fatalf("DomainTableBody render error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "apex") {
+		t.Error("expected apex row class in nested body output")
+	}
+	if !strings.Contains(out, "<b>example.com</b>") {
+		t.Error("expected bold apex name in nested body output")
+	}
+	// Tracked apex (HasOwn) name links to its detail page so its own findings
+	// are reachable from nested mode.
+	if !strings.Contains(out, `href="/app/domains/dom_1"`) {
+		t.Error("expected tracked apex name to link to its detail page")
+	}
+	if !strings.Contains(out, "<b>api</b>.example.com") {
+		t.Error("expected child FQDN (label + apex) in nested body output")
+	}
+	if !strings.Contains(out, "1 sub") {
+		t.Error("expected '1 sub' pill in nested body output")
+	}
+	// Collapse toggle: colon-form binding mutating the $collapsed array signal.
+	if !strings.Contains(out, "data-on:click") {
+		t.Error("expected colon-form data-on:click on apex row")
+	}
+	if !strings.Contains(out, "$collapsed") {
+		t.Error("expected $collapsed array signal expression on apex row")
+	}
+}
+
+func TestDomainsPageLayoutToggleRender(t *testing.T) {
+	props := templates.DomainsPageProps{
+		Shell: templates.AppShellProps{
+			ActiveNav: "domains",
+			CSRFToken: "tok",
+		},
+		Stats:      templates.DomainsStats{Tracked: "1"},
+		Layout:     "nested",
+		TLDOptions: []string{"example.com", "acme.io"},
+	}
+	var buf bytes.Buffer
+	if err := templates.DomainsPage(props).Render(context.Background(), &buf); err != nil {
+		t.Fatalf("DomainsPage render error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, `data-bind="tld"`) {
+		t.Error("expected tld-bound select in toolbar")
+	}
+	if !strings.Contains(out, "All top-level") {
+		t.Error("expected 'All top-level' default option in tld filter")
+	}
+	if !strings.Contains(out, "example.com") {
+		t.Error("expected a tld option for example.com")
+	}
+	// Layout toggle: colon-form binding setting the $layout signal to 'flat'.
+	if !strings.Contains(out, "$layout = 'flat'") {
+		t.Error("expected flat layout toggle binding")
 	}
 }
 

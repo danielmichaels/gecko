@@ -9,6 +9,17 @@ func postWithCSRF(url, token string) string {
 	return fmt.Sprintf("@post('%s', {headers: {'X-CSRF-Token': '%s'}})", url, token)
 }
 
+// postWithConfirm returns a data-on-click action that confirms before POSTing to
+// url with the CSRF token. Used for bulk/irreversible actions like rescan-all.
+func postWithConfirm(message, url, token string) string {
+	return fmt.Sprintf(
+		"if(!confirm('%s')) return; @post('%s', {headers: {'X-CSRF-Token': '%s'}})",
+		message,
+		url,
+		token,
+	)
+}
+
 // deleteRowWithConfirm returns a data-on-click action that confirms before deleting.
 func deleteRowWithConfirm(url, token string) string {
 	return fmt.Sprintf(
@@ -21,6 +32,52 @@ func deleteRowWithConfirm(url, token string) string {
 // inviteSignals returns a JSON signals string for the invite form.
 func inviteSignals(token string) string {
 	return fmt.Sprintf(`{"token":"%s","password":"","name":""}`, token)
+}
+
+// toggleCollapse returns a datastar expression that toggles an apex key in the
+// $collapsed array signal. A single array signal is used because datastar
+// signals are a fixed object — per-group keys are not dynamically addable.
+func toggleCollapse(apex string) string {
+	return fmt.Sprintf(
+		"$collapsed = $collapsed.includes('%s') ? $collapsed.filter(k => k !== '%s') : [...$collapsed, '%s']",
+		apex,
+		apex,
+		apex,
+	)
+}
+
+// notCollapsed returns a datastar expression true when the apex is expanded.
+func notCollapsed(apex string) string { return fmt.Sprintf("!$collapsed.includes('%s')", apex) }
+
+// collapsedClass returns a datastar data-class map toggling 'collapsed' on the apex row.
+func collapsedClass(apex string) string {
+	return fmt.Sprintf("{'collapsed': $collapsed.includes('%s')}", apex)
+}
+
+// subLabel renders the "N sub" pill text for an apex group.
+func subLabel(n int) string { return fmt.Sprintf("%d sub", n) }
+
+// childLabel strips the apex suffix from a child FQDN, leaving the label that
+// renders bold ("api" from "api.example.com"). Falls back to the full name.
+func childLabel(name, apex string) string {
+	if suffix := "." + apex; len(name) > len(suffix) && name[len(name)-len(suffix):] == suffix {
+		return name[:len(name)-len(suffix)]
+	}
+	return name
+}
+
+// dotClass maps a rollup severity to its single-letter CSS class for the dots.
+func dotClass(sev string) string {
+	switch sev {
+	case "crit":
+		return "c"
+	case "warn":
+		return "w"
+	case "scan":
+		return "s"
+	default:
+		return "o"
+	}
 }
 
 // AppShellProps contains the data needed to render the application shell:
@@ -63,9 +120,27 @@ type DomainsStats struct {
 
 // DomainsPageProps holds data for the domains list page.
 type DomainsPageProps struct {
-	Shell   AppShellProps
-	Stats   DomainsStats
-	Domains []DomainRowView
+	Shell      AppShellProps
+	Stats      DomainsStats
+	Domains    []DomainRowView
+	Layout     string
+	Groups     []DomainGroupView
+	TLDOptions []string
+}
+
+// DomainGroupView is the presentation model for one apex group in nested layout:
+// the apex header (real or synthetic) plus its subdomain children, with a
+// worst-child severity rollup.
+type DomainGroupView struct {
+	Header           DomainRowView
+	Apex             string
+	RollupSeverity   string // worst severity across header+children
+	FindingsSeverity string // apex badge CSS class (crit|warn|ok|info)
+	FindingsLabel    string // apex badge text, e.g. "1 critical" / "clean"
+	Children         []DomainRowView
+	Rollup           []string // distinct severities present, worst-first
+	SubCount         int
+	HasOwn           bool
 }
 
 // DomainRowView is the presentation model for a single row in the domain table.

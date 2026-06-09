@@ -3,7 +3,7 @@ package templates
 templ DomainsPage(props DomainsPageProps) {
 	@Page("gecko · Domains") {
 		@AppShell(props.Shell) {
-			<div data-signals='{"q":"","newDomain":"","drawerOpen":false}'>
+			<div data-signals='{"q":"","newDomain":"","drawerOpen":false,"layout":"nested","tld":"","collapsed":[],"offset":0}'>
 				<div class="page-head">
 					<div>
 						<h1>Domains</h1>
@@ -14,7 +14,7 @@ templ DomainsPage(props DomainsPageProps) {
 					<button
 						class="btn-ghost btn"
 						type="button"
-						data-on:click={ postWithCSRF("/app/domains/rescan", props.Shell.CSRFToken) }
+						data-on:click={ postWithConfirm("Rescan all tracked domains?", "/app/domains/rescan", props.Shell.CSRFToken) }
 					>⟳ Rescan all</button>
 				</div>
 				<div class="stats">
@@ -41,9 +41,29 @@ templ DomainsPage(props DomainsPageProps) {
 						<input
 							placeholder="Search domains…"
 							data-bind="q"
-							data-on:input__debounce.300ms="@get('/app/domains')"
+							data-on:input__debounce.300ms="$offset = 0; @get('/app/domains')"
 						/>
 						<span class="kbd">/</span>
+					</div>
+					<div class="tld-filter">
+						<select data-bind="tld" data-on:change="$offset = 0; @get('/app/domains')">
+							<option value="">All top-level</option>
+							for _, t := range props.TLDOptions {
+								<option value={ t }>{ t }</option>
+							}
+						</select>
+					</div>
+					<div class="seg">
+						<button
+							type="button"
+							data-class="{'on': $layout === 'nested'}"
+							data-on:click="$layout = 'nested'; $offset = 0; @get('/app/domains')"
+						><span class="gly">⊟</span> Nested</button>
+						<button
+							type="button"
+							data-class="{'on': $layout === 'flat'}"
+							data-on:click="$layout = 'flat'; $offset = 0; @get('/app/domains')"
+						><span class="gly">≡</span> Flat</button>
 					</div>
 					<button
 						class="btn btn-add"
@@ -62,9 +82,10 @@ templ DomainsPage(props DomainsPageProps) {
 						<span></span>
 					</div>
 					<div id="domains-rows">
-						@DomainRowsFragment(props.Domains, props.Shell.CSRFToken)
+						@DomainTableBody(props, props.Shell.CSRFToken)
 					</div>
 				</div>
+				@DomainsLoadMore(false)
 				<div class="scrim" data-class="{'open': $drawerOpen}" data-on:click="$drawerOpen = false"></div>
 				<aside class="drawer" data-class="{'open': $drawerOpen}">
 					<div class="drawer-h">
@@ -93,6 +114,123 @@ templ DomainsPage(props DomainsPageProps) {
 			</div>
 		}
 	}
+}
+
+// DomainsLoadMore renders the flat-mode pagination trigger below the table.
+// The button re-requests the list; the server reads the current $offset signal,
+// appends the next page, advances $offset, and re-patches this container without
+// a button when the list is exhausted. Nested mode renders it empty.
+templ DomainsLoadMore(show bool) {
+	<div id="domains-more" class="load-more">
+		if show {
+			<button type="button" class="btn-ghost btn" data-on:click="@get('/app/domains')">↓ Load more</button>
+		}
+	</div>
+}
+
+// DomainTableBody switches the #domains-rows content between flat and nested
+// layouts. Flat reuses today's exact per-domain rows; nested renders apex groups
+// with collapse toggles. The layout choice arrives as a server-rendered prop
+// (driven by the $layout signal sent to the handler).
+templ DomainTableBody(props DomainsPageProps, csrfToken string) {
+	if props.Layout == "flat" {
+		@DomainRowsFragment(props.Domains, csrfToken)
+	} else if len(props.Groups) == 0 {
+		<div class="trow-empty">no domains match your search</div>
+	} else {
+		for _, g := range props.Groups {
+			@DomainGroupRow(g, csrfToken)
+		}
+	}
+}
+
+// DomainGroupRow renders one apex group: the apex header row (whose click
+// toggles the group via the $collapsed array signal) followed by its child rows
+// as grid siblings so column alignment is preserved.
+templ DomainGroupRow(g DomainGroupView, csrfToken string) {
+	<div
+		class={ "trow", "apex", g.RollupSeverity }
+		data-class={ collapsedClass(g.Apex) }
+		data-on:click={ toggleCollapse(g.Apex) }
+	>
+		<div class="dname">
+			<span class="disc">▾</span>
+			<span class="sdot"></span>
+			if g.HasOwn {
+				<a
+					href={ templ.SafeURL("/app/domains/" + g.Header.UID) }
+					class="n"
+					data-on:click="evt.stopPropagation()"
+					style="text-decoration:none;color:inherit"
+				><b>{ g.Apex }</b></a>
+			} else {
+				<span class="n"><b>{ g.Apex }</b></span>
+			}
+			if g.SubCount > 0 {
+				<span class="subcount">{ subLabel(g.SubCount) }</span>
+				@RollupDots(g.Rollup)
+			}
+		</div>
+		<span class="cell-mono">{ g.Header.RecordCount }</span>
+		<span>
+			<span class={ "badge", g.FindingsSeverity }>
+				if g.FindingsSeverity == "info" && g.FindingsLabel == "scanning" {
+					<span class="pulse"></span>
+				}
+				{ g.FindingsLabel }
+			</span>
+		</span>
+		<span class="cell-mono">{ g.Header.LastScan }</span>
+		<span class="chev">→</span>
+	</div>
+	for i, c := range g.Children {
+		@DomainChildRow(c, g.Apex, i == len(g.Children)-1, csrfToken)
+	}
+}
+
+// DomainChildRow renders a subdomain under its apex: indented with a tree
+// connector, showing only the label in bold against the dimmed apex. Hidden when
+// the parent group is collapsed (data-show keyed on the same $collapsed signal).
+templ DomainChildRow(c DomainRowView, apex string, last bool, csrfToken string) {
+	<div
+		class={ "trow", "child", c.FindingsSeverity, templ.KV("last", last) }
+		id={ "domain-row-" + c.UID }
+		data-show={ notCollapsed(apex) }
+	>
+		<a href={ templ.SafeURL("/app/domains/" + c.UID) } style="display:contents;text-decoration:none;color:inherit">
+			<div class="dname">
+				<span class="sdot"></span>
+				<span class="n"><span class="lead"><b>{ childLabel(c.Name, apex) }</b>.{ apex }</span></span>
+			</div>
+			<span class="cell-mono">{ c.RecordCount }</span>
+			<span>
+				<span class={ "badge", c.FindingsSeverity }>
+					if c.FindingsSeverity == "info" && c.FindingsLabel == "scanning" {
+						<span class="pulse"></span>
+					}
+					{ c.FindingsLabel }
+				</span>
+			</span>
+			<span class="cell-mono">{ c.LastScan }</span>
+		</a>
+		<span class="chev" style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
+			<button
+				type="button"
+				style="background:transparent;border:0;color:var(--txt-faint);cursor:pointer;font-size:13px;padding:2px 6px;border-radius:4px"
+				data-on:click={ deleteRowWithConfirm("/app/domains/"+c.UID, csrfToken) }
+			>✕</button>
+			→
+		</span>
+	</div>
+}
+
+// RollupDots renders the distinct-severity mini dots on an apex header.
+templ RollupDots(severities []string) {
+	<span class="rollup">
+		for _, s := range severities {
+			<i class={ dotClass(s) }></i>
+		}
+	</span>
 }
 
 // DomainRowsFragment renders the inner content of #domains-rows: every domain

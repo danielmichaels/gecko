@@ -17,7 +17,8 @@ func newTestParser(t *testing.T, cli *CLI) *kong.Kong {
 	if err := os.WriteFile(cfg, []byte("{}\n"), 0o600); err != nil {
 		t.Fatalf("write test config: %v", err)
 	}
-	k, err := kong.New(cli,
+	k, err := kong.New(
+		cli,
 		kong.Name(appName),
 		kong.DefaultEnvars(appName),
 		kong.Configuration(kongyaml.Loader, cfg),

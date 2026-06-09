@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"html"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/danielmichaels/gecko/internal/auth"
 	"github.com/danielmichaels/gecko/internal/dto"
 	"github.com/danielmichaels/gecko/internal/service"
 	"github.com/danielmichaels/gecko/internal/store"
@@ -18,6 +20,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	datastar "github.com/starfederation/datastar-go/datastar"
 )
+
+// maxListDomains bounds how many of a tenant's domains the list page fetches.
+// Nested grouping, the worst-child rollups, and the TLD-filter options must be
+// computed over the whole tenant set to be correct (an apex and its children can
+// otherwise straddle a page boundary), so this is a generous safety bound rather
+// than a display page size. Tenants beyond it are logged, not silently dropped.
+const maxListDomains = 5000
+
+// flatPageSize is how many flat-mode rows render per "load more" request. Nested
+// mode is not paginated (a correct rollup needs the whole group), so this only
+// bounds the flat-list DOM, not the underlying fetch.
+const flatPageSize = 50
 
 // handleDomainsGet renders the full domains list page.
 func (h *Handlers) handleDomainsGet(w http.ResponseWriter, r *http.Request) {
@@ -32,24 +46,49 @@ func (h *Handlers) handleDomainsGet(w http.ResponseWriter, r *http.Request) {
 	isDatastar := r.Header.Get("Datastar-Request") == "true"
 
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
-	if query == "" && isDatastar {
+	layout := r.URL.Query().Get("layout")
+	tld := strings.TrimSpace(r.URL.Query().Get("tld"))
+	offset := 0
+	if isDatastar {
 		var sig struct {
-			Q string `json:"q"`
+			Q      string `json:"q"`
+			Layout string `json:"layout"`
+			Tld    string `json:"tld"`
+			Offset int    `json:"offset"`
 		}
 		if err := datastar.ReadSignals(r, &sig); err == nil {
-			query = strings.TrimSpace(sig.Q)
+			if query == "" {
+				query = strings.TrimSpace(sig.Q)
+			}
+			if layout == "" {
+				layout = sig.Layout
+			}
+			if tld == "" {
+				tld = strings.TrimSpace(sig.Tld)
+			}
+			offset = sig.Offset
 		}
+	}
+	// Nested is the default layout; only an explicit "flat" opts out.
+	if layout != "flat" {
+		layout = "nested"
 	}
 
 	result, err := h.svc.DomainsService().List(r.Context(), p, service.DomainsListParams{
 		FilterName: query,
-		PageSize:   100,
+		PageSize:   maxListDomains,
 		Offset:     0,
 	})
 	if err != nil {
 		h.log.Error("domains list", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
+	}
+	if result.TotalCount > maxListDomains {
+		h.log.Warn(
+			"domains list truncated: grouping/rollups cover only the fetched subset",
+			"tenant", p.TenantID, "total", result.TotalCount, "cap", maxListDomains,
+		)
 	}
 
 	ids := make([]int32, len(result.Domains))
@@ -77,13 +116,70 @@ func (h *Handlers) handleDomainsGet(w http.ResponseWriter, r *http.Request) {
 		rows[i] = view
 	}
 
+	// TLD options reflect every apex present (computed before the filter narrows
+	// rows). The active filter then scopes the rendered rows to one apex family.
+	tldOptions := distinctApexes(rows)
+	if tld != "" {
+		filtered := make([]templates.DomainRowView, 0, len(rows))
+		for _, row := range rows {
+			if apexOf(row.Name) == tld {
+				filtered = append(filtered, row)
+			}
+		}
+		rows = filtered
+	}
+	groups := groupDomainsByApex(rows)
+
 	if isDatastar {
 		sse := datastar.NewSSE(w, r)
-		_ = sse.PatchElementTempl(
-			templates.DomainRowsFragment(rows, CSRFTokenFrom(r.Context())),
-			datastar.WithSelectorID("domains-rows"),
-			datastar.WithModeInner(),
-		)
+		csrf := CSRFTokenFrom(r.Context())
+		if layout == "flat" {
+			// DOM pagination over the in-memory filtered set: offset 0 replaces the
+			// list, a later offset appends the next page. The offset signal is
+			// advanced server-side so the load-more button stays stateless.
+			start := offset
+			if start < 0 {
+				start = 0
+			}
+			if start > len(rows) {
+				start = len(rows)
+			}
+			end := start + flatPageSize
+			if end > len(rows) {
+				end = len(rows)
+			}
+			page := rows[start:end]
+			mode := datastar.WithModeInner()
+			if start > 0 {
+				mode = datastar.WithModeAppend()
+			}
+			if start == 0 || len(page) > 0 {
+				_ = sse.PatchElementTempl(
+					templates.DomainRowsFragment(page, csrf),
+					datastar.WithSelectorID("domains-rows"),
+					mode,
+				)
+			}
+			_ = sse.PatchElementTempl(
+				templates.DomainsLoadMore(end < len(rows)),
+				datastar.WithSelectorID("domains-more"),
+			)
+			_ = sse.MarshalAndPatchSignals(map[string]any{"offset": end})
+		} else {
+			_ = sse.PatchElementTempl(
+				templates.DomainTableBody(templates.DomainsPageProps{
+					Layout:  layout,
+					Domains: rows,
+					Groups:  groups,
+				}, csrf),
+				datastar.WithSelectorID("domains-rows"),
+				datastar.WithModeInner(),
+			)
+			_ = sse.PatchElementTempl(
+				templates.DomainsLoadMore(false),
+				datastar.WithSelectorID("domains-more"),
+			)
+		}
 		_ = sse.PatchElements(
 			fmt.Sprintf(
 				`<div class="result-meta" id="result-meta">%s</div>`,
@@ -121,10 +217,55 @@ func (h *Handlers) handleDomainsGet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	renderPage(w, r, templates.DomainsPage(templates.DomainsPageProps{
-		Shell:   shell,
-		Stats:   stats,
-		Domains: rows,
+		Shell:      shell,
+		Stats:      stats,
+		Layout:     layout,
+		Domains:    rows,
+		Groups:     groups,
+		TLDOptions: tldOptions,
 	}))
+}
+
+// listDomainRows lists a tenant's domains (capped at the page size) and maps
+// them to row views, overlaying each domain's open-findings badge. Shared by the
+// list page and the create flow so both render the same row data.
+func (h *Handlers) listDomainRows(
+	ctx context.Context,
+	p *auth.Principal,
+) ([]templates.DomainRowView, error) {
+	result, err := h.svc.DomainsService().List(ctx, p, service.DomainsListParams{
+		PageSize: maxListDomains,
+		Offset:   0,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	ids := make([]int32, len(result.Domains))
+	for i, d := range result.Domains {
+		ids[i] = d.ID
+	}
+	summaries, err := h.svc.DomainsService().FindingsSummaryForPage(ctx, p, ids)
+	if err != nil {
+		h.log.Error("domains list: findings summary", "error", err)
+		summaries = nil
+	}
+	recordCounts, err := h.svc.DomainsService().RecordCountsForPage(ctx, p, ids)
+	if err != nil {
+		h.log.Error("domains list: record counts", "error", err)
+		recordCounts = nil
+	}
+
+	rows := make([]templates.DomainRowView, len(result.Domains))
+	for i, d := range result.Domains {
+		view := domainRowView(d)
+		view.RecordCount = strconv.Itoa(int(recordCounts[d.ID]))
+		if sum, ok := summaries[d.ID]; ok {
+			view.FindingsSeverity, view.FindingsLabel = findingBadge(sum)
+		}
+		rows[i] = view
+	}
+	return rows, nil
 }
 
 // resultMeta renders the count line under the search bar: the tenant total, or
@@ -156,7 +297,7 @@ func (h *Handlers) handleDomainCreate(w http.ResponseWriter, r *http.Request) {
 
 	sse := datastar.NewSSE(w, r)
 
-	domain, err := h.svc.DomainsService().Create(r.Context(), p, service.DomainsCreateParams{
+	_, err := h.svc.DomainsService().Create(r.Context(), p, service.DomainsCreateParams{
 		Domain: form.NewDomain,
 	})
 	if err != nil {
@@ -175,16 +316,32 @@ func (h *Handlers) handleDomainCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Newly created domain is immediately scanning — show the scanning badge.
-	view := domainRowView(domain)
-	view.Severity = "scan"
-	view.FindingsLabel = "scanning"
-	view.FindingsSeverity = "info"
+	// A flat append would drop the new subdomain ungrouped at the bottom, so
+	// re-render the whole grouped body to nest it under its apex.
+	rows, err := h.listDomainRows(r.Context(), p)
+	if err != nil {
+		h.log.Error("domain create: re-list", "error", err)
+		_ = sse.PatchElements(
+			`<div id="domain-add-error" style="color:var(--crit);font-family:var(--mono);font-size:12.5px;background:var(--crit-bg);border:1px solid var(--crit);border-radius:8px;padding:8px 12px;margin:8px 0">added, but failed to refresh the list</div>`,
+			datastar.WithSelectorID("domain-add-error"),
+		)
+		return
+	}
 
 	_ = sse.PatchElementTempl(
-		templates.DomainRow(view, CSRFTokenFrom(r.Context())),
+		templates.DomainTableBody(templates.DomainsPageProps{
+			Layout:  "nested",
+			Domains: rows,
+			Groups:  groupDomainsByApex(rows),
+		}, CSRFTokenFrom(r.Context())),
 		datastar.WithSelectorID("domains-rows"),
-		datastar.WithModeAppend(),
+		datastar.WithModeInner(),
+	)
+	// The grouped body is the full set; drop any flat load-more trigger left over
+	// from flat mode so it can't append a stale page on top of the groups.
+	_ = sse.PatchElementTempl(
+		templates.DomainsLoadMore(false),
+		datastar.WithSelectorID("domains-more"),
 	)
 	// Clear any prior error, then close the drawer and reset its input.
 	_ = sse.PatchElements(

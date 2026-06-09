@@ -8,7 +8,11 @@ import (
 
 type Backend struct{}
 
-func (m *Backend) Lint(ctx context.Context, src *dagger.Directory) (string, error) {
+func (m *Backend) Lint(
+	ctx context.Context,
+	// +ignore=[".worktrees", ".git"]
+	src *dagger.Directory,
+) (string, error) {
 	return dag.Container().
 		From("danielmichaels/ci-toolkit").
 		WithDirectory("/src", src).
@@ -18,7 +22,11 @@ func (m *Backend) Lint(ctx context.Context, src *dagger.Directory) (string, erro
 		WithExec([]string{"task", "golangci"}, dagger.ContainerWithExecOpts{}).
 		Stdout(ctx)
 }
-func (m *Backend) Test(ctx context.Context, src *dagger.Directory) (string, error) {
+func (m *Backend) Test(
+	ctx context.Context,
+	// +ignore=[".worktrees", ".git"]
+	src *dagger.Directory,
+) (string, error) {
 	pg := dag.Container().
 		From("postgres:16-alpine").
 		WithEnvVariable("POSTGRES_PASSWORD", "postgres").
@@ -42,6 +50,7 @@ func (m *Backend) Test(ctx context.Context, src *dagger.Directory) (string, erro
 
 func (m *Backend) Build(
 	ctx context.Context,
+	// +ignore=[".worktrees"]
 	src *dagger.Directory,
 	dockerfile *dagger.File,
 ) (*dagger.Container, error) {
@@ -58,6 +67,7 @@ func (m *Backend) Build(
 
 func (m *Backend) LintTestBuild(
 	ctx context.Context,
+	// +ignore=[".worktrees"]
 	src *dagger.Directory,
 	dockerfile *dagger.File,
 ) (*dagger.Container, error) {
@@ -74,6 +84,7 @@ func (m *Backend) LintTestBuild(
 
 func (m *Backend) Publish(
 	ctx context.Context,
+	// +ignore=[".worktrees"]
 	buildContext *dagger.Directory,
 	dockerfile *dagger.File,
 	registry, imageName, registryUsername string,
