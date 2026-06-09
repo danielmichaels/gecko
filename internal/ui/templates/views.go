@@ -253,3 +253,31 @@ type ContentErrorProps struct {
 	Message  string
 	RetryURL string
 }
+
+// ToastView is the presentation model for a single toast notification.
+// Variant is one of ok|crit|warn|info and drives both the colour class and the
+// icon. ID must be unique per toast so idiomorph appends each one onto the stack
+// rather than morphing them together.
+type ToastView struct {
+	ID        string
+	Variant   string
+	Tag       string
+	Title     string
+	Desc      string
+	Timestamp string
+}
+
+// toastIcon maps a toast variant to its glyph. Mirrors the variant→icon mapping
+// the action handlers rely on, kept in the template so callers only pick a variant.
+func toastIcon(variant string) string {
+	switch variant {
+	case "crit":
+		return "⚠"
+	case "warn":
+		return "!"
+	case "info":
+		return "⟳"
+	default:
+		return "✓"
+	}
+}

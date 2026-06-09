@@ -302,17 +302,11 @@ func (h *Handlers) handleDomainCreate(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if errors.Is(err, service.ErrConflict) {
-			_ = sse.PatchElements(
-				`<div id="domain-add-error" style="color:var(--crit);font-family:var(--mono);font-size:12.5px;background:var(--crit-bg);border:1px solid var(--crit);border-radius:8px;padding:8px 12px;margin:8px 0">domain already tracked</div>`,
-				datastar.WithSelectorID("domain-add-error"),
-			)
+			pushToast(sse, newToast("warn", "NOTICE", "Domain already tracked", form.NewDomain))
 			return
 		}
 		h.log.Error("domain create", "error", err)
-		_ = sse.PatchElements(
-			`<div id="domain-add-error" style="color:var(--crit);font-family:var(--mono);font-size:12.5px;background:var(--crit-bg);border:1px solid var(--crit);border-radius:8px;padding:8px 12px;margin:8px 0">failed to add domain</div>`,
-			datastar.WithSelectorID("domain-add-error"),
-		)
+		pushToast(sse, newToast("crit", "ERROR", "Failed to add domain", form.NewDomain))
 		return
 	}
 
@@ -321,9 +315,9 @@ func (h *Handlers) handleDomainCreate(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.listDomainRows(r.Context(), p)
 	if err != nil {
 		h.log.Error("domain create: re-list", "error", err)
-		_ = sse.PatchElements(
-			`<div id="domain-add-error" style="color:var(--crit);font-family:var(--mono);font-size:12.5px;background:var(--crit-bg);border:1px solid var(--crit);border-radius:8px;padding:8px 12px;margin:8px 0">added, but failed to refresh the list</div>`,
-			datastar.WithSelectorID("domain-add-error"),
+		pushToast(
+			sse,
+			newToast("warn", "NOTICE", "Domain added", "added, but the list failed to refresh"),
 		)
 		return
 	}
@@ -343,11 +337,8 @@ func (h *Handlers) handleDomainCreate(w http.ResponseWriter, r *http.Request) {
 		templates.DomainsLoadMore(false),
 		datastar.WithSelectorID("domains-more"),
 	)
-	// Clear any prior error, then close the drawer and reset its input.
-	_ = sse.PatchElements(
-		`<div id="domain-add-error"></div>`,
-		datastar.WithSelectorID("domain-add-error"),
-	)
+	pushToast(sse, newToast("ok", "DOMAIN", "Domain added", form.NewDomain+" is now tracked"))
+	// Close the drawer and reset its input.
 	_ = sse.MarshalAndPatchSignals(map[string]any{"drawerOpen": false, "newDomain": ""})
 }
 
@@ -608,29 +599,26 @@ func (h *Handlers) handleDomainRescan(w http.ResponseWriter, r *http.Request) {
 	// Call Update BEFORE opening the SSE stream so we can still write an HTTP
 	// error status if the request fails (once SSE headers are flushed, status
 	// codes are discarded by the browser).
-	_, err := h.svc.DomainsService().Update(r.Context(), p, uid, service.DomainsUpdateParams{})
+	d, err := h.svc.DomainsService().Update(r.Context(), p, uid, service.DomainsUpdateParams{})
 	if err != nil {
 		sse := datastar.NewSSE(w, r)
 		if errors.Is(err, service.ErrNotFound) {
-			_ = sse.PatchElements(
-				`<span id="rescan-status" style="color:var(--warn);font-family:var(--mono);font-size:12px">domain not found</span>`,
-			)
+			pushToast(sse, newToast("warn", "NOTICE", "Domain not found", "nothing to rescan"))
 			return
 		}
 		h.log.Error("domain rescan", "error", err, "uid", uid)
-		_ = sse.PatchElements(
-			`<span id="rescan-status" style="color:var(--crit);font-family:var(--mono);font-size:12px">rescan failed</span>`,
+		pushToast(
+			sse,
+			newToast("crit", "ERROR", "Rescan failed", "resolver degraded — try again shortly"),
 		)
 		return
 	}
 
 	// Open SSE only on the success path. The detail page has no #domain-row-{uid}
-	// to patch, so we open the stream and return a no-op; the list page reflects
-	// the scanning state on the next visit.
+	// to patch, so the toast is the sole confirmation; the list page reflects the
+	// scanning state on the next visit.
 	sse := datastar.NewSSE(w, r)
-	_ = sse.PatchElements(
-		`<span id="rescan-status" style="color:var(--ok);font-family:var(--mono);font-size:12px">rescan queued</span>`,
-	)
+	pushToast(sse, newToast("ok", "SCAN", "Rescan queued", d.Name+" · enumerating"))
 }
 
 // handleDomainsRescanAll triggers a rescan for every tracked domain (bounded to
@@ -655,6 +643,7 @@ func (h *Handlers) handleDomainsRescanAll(w http.ResponseWriter, r *http.Request
 	sse := datastar.NewSSE(w, r)
 
 	csrfToken := CSRFTokenFrom(r.Context())
+	queued := 0
 	for _, d := range result.Domains {
 		updated, uErr := h.svc.DomainsService().
 			Update(r.Context(), p, d.Uid, service.DomainsUpdateParams{})
@@ -662,6 +651,7 @@ func (h *Handlers) handleDomainsRescanAll(w http.ResponseWriter, r *http.Request
 			h.log.Warn("domains rescan all: update", "error", uErr, "uid", d.Uid)
 			continue
 		}
+		queued++
 		view := domainRowView(updated)
 		view.Severity = "scan"
 		view.FindingsLabel = "scanning"
@@ -672,6 +662,9 @@ func (h *Handlers) handleDomainsRescanAll(w http.ResponseWriter, r *http.Request
 			datastar.WithSelectorID("domain-row-"+d.Uid),
 		)
 	}
+
+	pushToast(sse, newToast("info", "SCAN", "Fleet rescan started",
+		strconv.Itoa(queued)+" domains queued for enumeration"))
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
