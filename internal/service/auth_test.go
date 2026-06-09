@@ -84,6 +84,7 @@ func seedInvitation(
 }
 
 func TestAuthService_Login_Valid(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -114,6 +115,7 @@ func TestAuthService_Login_Valid(t *testing.T) {
 }
 
 func TestAuthService_Login_Invalid(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -142,6 +144,7 @@ func TestAuthService_Login_Invalid(t *testing.T) {
 }
 
 func TestAuthService_Signup_HappyPath(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -172,6 +175,7 @@ func TestAuthService_Signup_HappyPath(t *testing.T) {
 }
 
 func TestAuthService_Signup_DuplicateEmail(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -195,6 +199,7 @@ func TestAuthService_Signup_DuplicateEmail(t *testing.T) {
 }
 
 func TestAuthService_AcceptInvite_HappyPath(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -237,6 +242,7 @@ func TestAuthService_AcceptInvite_HappyPath(t *testing.T) {
 }
 
 func TestAuthService_AcceptInvite_InvalidToken(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -259,6 +265,7 @@ func TestAuthService_AcceptInvite_InvalidToken(t *testing.T) {
 }
 
 func TestAuthService_AcceptInvite_DuplicateEmail(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -293,6 +300,7 @@ func TestAuthService_AcceptInvite_DuplicateEmail(t *testing.T) {
 }
 
 func TestAuthService_Session_MintAndResolve(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -366,6 +374,7 @@ func TestAuthService_Session_MintAndResolve(t *testing.T) {
 }
 
 func TestAuthService_Session_LastUsedAtAdvances(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -392,18 +401,24 @@ func TestAuthService_Session_LastUsedAtAdvances(t *testing.T) {
 		t.Fatalf("mint session: %v", err)
 	}
 
-	// Record initial last_used_at.
-	var before time.Time
+	before := time.Now().Add(-2 * time.Second).Truncate(time.Second)
+	if _, err := pc.Pool.Exec(
+		ctx,
+		`UPDATE sessions SET last_used_at = $1 WHERE token_hash = $2`,
+		before,
+		auth.HashToken(rawToken),
+	); err != nil {
+		t.Fatalf("backdate last_used_at: %v", err)
+	}
+
+	var storedBefore time.Time
 	err = pc.Pool.QueryRow(
 		ctx,
 		`SELECT last_used_at FROM sessions WHERE token_hash = $1`, auth.HashToken(rawToken),
-	).Scan(&before)
+	).Scan(&storedBefore)
 	if err != nil {
 		t.Fatalf("query last_used_at before: %v", err)
 	}
-
-	// Ensure at least 1 second passes so the TIMESTAMP(0) resolution can show a change.
-	time.Sleep(1100 * time.Millisecond)
 
 	if _, err := svc.ResolveSession(ctx, rawToken); err != nil {
 		t.Fatalf("resolve: %v", err)
@@ -418,12 +433,13 @@ func TestAuthService_Session_LastUsedAtAdvances(t *testing.T) {
 		t.Fatalf("query last_used_at after: %v", err)
 	}
 
-	if !after.After(before) {
-		t.Errorf("last_used_at did not advance: before=%v after=%v", before, after)
+	if !after.After(storedBefore) {
+		t.Errorf("last_used_at did not advance: before=%v after=%v", storedBefore, after)
 	}
 }
 
 func TestAuthService_Session_ExpiredToken(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -464,6 +480,7 @@ func TestAuthService_Session_ExpiredToken(t *testing.T) {
 }
 
 func TestAuthService_Session_BogusToken(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -483,6 +500,7 @@ func TestAuthService_Session_BogusToken(t *testing.T) {
 }
 
 func TestAuthService_Session_Revoke(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -548,6 +566,7 @@ func TestAuthService_Session_Revoke(t *testing.T) {
 }
 
 func TestAuthService_Session_RawTokenNotStored(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -591,6 +610,7 @@ func TestAuthService_Session_RawTokenNotStored(t *testing.T) {
 }
 
 func TestAuthService_Authenticate_Valid(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -617,6 +637,7 @@ func TestAuthService_Authenticate_Valid(t *testing.T) {
 }
 
 func TestAuthService_Authenticate_Invalid(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -637,6 +658,7 @@ func TestAuthService_Authenticate_Invalid(t *testing.T) {
 }
 
 func TestAuthService_AcceptInviteWeb_Valid(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -688,6 +710,7 @@ func TestAuthService_AcceptInviteWeb_Valid(t *testing.T) {
 }
 
 func TestAuthService_AcceptInviteWeb_InvalidToken(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {

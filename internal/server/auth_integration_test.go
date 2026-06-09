@@ -153,6 +153,7 @@ func seedDomain(
 }
 
 func TestAuth_SignupLoginMe(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -202,6 +203,7 @@ func TestAuth_SignupLoginMe(t *testing.T) {
 }
 
 func TestAuth_SignupDisabled(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -218,6 +220,7 @@ func TestAuth_SignupDisabled(t *testing.T) {
 }
 
 func TestAuth_MissingOrInvalidKey(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {

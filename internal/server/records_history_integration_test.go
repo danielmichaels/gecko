@@ -19,6 +19,7 @@ import (
 // keeps its observations (domain_id SET NULL, identity denormalized), and a
 // re-added domain of the same (tenant, name) sees the prior timeline.
 func TestRecordsHistoryHandler_PreservesTimelineAcrossDeleteReadd(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {

@@ -82,6 +82,7 @@ func inviteMember(
 
 // TestUsersService_List_TenantScoped verifies List returns only the caller's tenant.
 func TestUsersService_List_TenantScoped(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -116,6 +117,7 @@ func TestUsersService_List_TenantScoped(t *testing.T) {
 
 // TestUsersService_Update_HappyPath verifies a basic successful update.
 func TestUsersService_Update_HappyPath(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -148,6 +150,7 @@ func TestUsersService_Update_HappyPath(t *testing.T) {
 
 // TestUsersService_Update_ViewerForbidden verifies that a viewer cannot update users.
 func TestUsersService_Update_ViewerForbidden(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -181,6 +184,7 @@ func TestUsersService_Update_ViewerForbidden(t *testing.T) {
 
 // TestUsersService_Update_ManagerCannotGrantOwner verifies the escalation block.
 func TestUsersService_Update_ManagerCannotGrantOwner(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -214,6 +218,7 @@ func TestUsersService_Update_ManagerCannotGrantOwner(t *testing.T) {
 
 // TestUsersService_Update_ManagerCannotModifyOwner verifies the protection check.
 func TestUsersService_Update_ManagerCannotModifyOwner(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -246,6 +251,7 @@ func TestUsersService_Update_ManagerCannotModifyOwner(t *testing.T) {
 
 // TestUsersService_Update_CrossTenant verifies cross-tenant update returns ErrNotFound.
 func TestUsersService_Update_CrossTenant(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -276,6 +282,7 @@ func TestUsersService_Update_CrossTenant(t *testing.T) {
 
 // TestUsersService_Update_EmailConflict verifies email uniqueness is enforced.
 func TestUsersService_Update_EmailConflict(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -308,6 +315,7 @@ func TestUsersService_Update_EmailConflict(t *testing.T) {
 
 // TestUsersService_Update_LastOwnerDemote verifies the last-owner guard on demotion.
 func TestUsersService_Update_LastOwnerDemote(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -338,6 +346,7 @@ func TestUsersService_Update_LastOwnerDemote(t *testing.T) {
 
 // TestUsersService_Delete_HappyPath verifies a basic successful delete.
 func TestUsersService_Delete_HappyPath(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -362,6 +371,7 @@ func TestUsersService_Delete_HappyPath(t *testing.T) {
 
 // TestUsersService_Delete_ViewerForbidden verifies viewer cannot delete.
 func TestUsersService_Delete_ViewerForbidden(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -391,6 +401,7 @@ func TestUsersService_Delete_ViewerForbidden(t *testing.T) {
 
 // TestUsersService_Delete_ManagerCannotDeleteOwner verifies manager cannot delete owner.
 func TestUsersService_Delete_ManagerCannotDeleteOwner(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -420,6 +431,7 @@ func TestUsersService_Delete_ManagerCannotDeleteOwner(t *testing.T) {
 
 // TestUsersService_Delete_CrossTenant verifies cross-tenant delete returns ErrNotFound.
 func TestUsersService_Delete_CrossTenant(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -447,6 +459,7 @@ func TestUsersService_Delete_CrossTenant(t *testing.T) {
 
 // TestUsersService_Delete_LastOwner verifies the last-owner guard on delete.
 func TestUsersService_Delete_LastOwner(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -473,6 +486,7 @@ func TestUsersService_Delete_LastOwner(t *testing.T) {
 
 // TestUsersService_ManagerSelfPromote verifies a manager cannot promote themselves to owner.
 func TestUsersService_ManagerSelfPromote(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -506,6 +520,7 @@ func TestUsersService_ManagerSelfPromote(t *testing.T) {
 // TestMessagedError_Unwrap verifies that msgErr produces errors that satisfy
 // errors.Is for the sentinel while Error() returns the custom message.
 func TestMessagedError_Unwrap(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	err := service.MsgErrExported(service.ErrForbidden, "custom message")
 	if !errors.Is(err, service.ErrForbidden) {
 		t.Error("errors.Is(msgErr(ErrForbidden, ...), ErrForbidden) must be true")

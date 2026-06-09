@@ -41,6 +41,7 @@ func setupInvitationsService(
 
 // TestInvitationsService_Create_HappyPath verifies owner can create an invitation.
 func TestInvitationsService_Create_HappyPath(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -75,6 +76,7 @@ func TestInvitationsService_Create_HappyPath(t *testing.T) {
 
 // TestInvitationsService_Create_ViewerForbidden verifies viewer cannot create invitation.
 func TestInvitationsService_Create_ViewerForbidden(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -102,6 +104,7 @@ func TestInvitationsService_Create_ViewerForbidden(t *testing.T) {
 
 // TestInvitationsService_Create_ManagerCannotGrantOwner verifies manager cannot invite at owner role.
 func TestInvitationsService_Create_ManagerCannotGrantOwner(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -129,6 +132,7 @@ func TestInvitationsService_Create_ManagerCannotGrantOwner(t *testing.T) {
 
 // TestInvitationsService_Create_ExistingUserConflict verifies already-registered email is rejected.
 func TestInvitationsService_Create_ExistingUserConflict(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -155,6 +159,7 @@ func TestInvitationsService_Create_ExistingUserConflict(t *testing.T) {
 
 // TestInvitationsService_Create_DuplicatePendingInvite verifies collision on active invite.
 func TestInvitationsService_Create_DuplicatePendingInvite(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -194,6 +199,7 @@ func TestInvitationsService_Create_DuplicatePendingInvite(t *testing.T) {
 
 // TestInvitationsService_List_TenantScoped verifies List returns only the caller's tenant.
 func TestInvitationsService_List_TenantScoped(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -235,6 +241,7 @@ func TestInvitationsService_List_TenantScoped(t *testing.T) {
 
 // TestInvitationsService_Revoke_HappyPath verifies owner can revoke a pending invite.
 func TestInvitationsService_Revoke_HappyPath(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -267,6 +274,7 @@ func TestInvitationsService_Revoke_HappyPath(t *testing.T) {
 
 // TestInvitationsService_Revoke_ViewerForbidden verifies viewer cannot revoke.
 func TestInvitationsService_Revoke_ViewerForbidden(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -291,6 +299,7 @@ func TestInvitationsService_Revoke_ViewerForbidden(t *testing.T) {
 
 // TestInvitationsService_Revoke_CrossTenant verifies cross-tenant revoke returns ErrNotFound.
 func TestInvitationsService_Revoke_CrossTenant(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -333,6 +342,7 @@ func TestInvitationsService_Revoke_CrossTenant(t *testing.T) {
 
 // TestInvitationsService_TokenUsable verifies the returned token is accepted by AcceptInvite.
 func TestInvitationsService_TokenUsable(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {

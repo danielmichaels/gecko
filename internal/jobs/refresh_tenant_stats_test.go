@@ -78,6 +78,7 @@ func seedStatsSPF(
 // findings across two tenants, runs the refresh, and asserts each tenant's
 // cached rollups are correct and do not leak across the tenant boundary.
 func TestRefreshTenantStatsWorker_ComputesAndIsolatesTenants(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -159,6 +160,7 @@ func TestRefreshTenantStatsWorker_ComputesAndIsolatesTenants(t *testing.T) {
 // tenant's domains are deleted, a re-run overwrites the cached row with zeros
 // (the drop-to-zero case the periodic full pass can't self-heal).
 func TestRefreshTenantStatsWorker_SingleTenant(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {

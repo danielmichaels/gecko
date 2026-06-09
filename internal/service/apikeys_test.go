@@ -37,6 +37,7 @@ func setupAPIKeysService(
 
 // TestAPIKeysService_Create_HappyPath verifies owner can create an API key.
 func TestAPIKeysService_Create_HappyPath(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -65,6 +66,7 @@ func TestAPIKeysService_Create_HappyPath(t *testing.T) {
 
 // TestAPIKeysService_Create_ViewerForbidden verifies viewer cannot create API keys.
 func TestAPIKeysService_Create_ViewerForbidden(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -89,6 +91,7 @@ func TestAPIKeysService_Create_ViewerForbidden(t *testing.T) {
 
 // TestAPIKeysService_Create_ManagerAllowed verifies manager can create API keys.
 func TestAPIKeysService_Create_ManagerAllowed(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -113,6 +116,7 @@ func TestAPIKeysService_Create_ManagerAllowed(t *testing.T) {
 
 // TestAPIKeysService_List_TenantScoped verifies List returns only the caller's tenant keys.
 func TestAPIKeysService_List_TenantScoped(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -159,6 +163,7 @@ func TestAPIKeysService_List_TenantScoped(t *testing.T) {
 
 // TestAPIKeysService_Revoke_HappyPath verifies owner can revoke an API key.
 func TestAPIKeysService_Revoke_HappyPath(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -182,6 +187,7 @@ func TestAPIKeysService_Revoke_HappyPath(t *testing.T) {
 
 // TestAPIKeysService_Revoke_ViewerForbidden verifies viewer cannot revoke API keys.
 func TestAPIKeysService_Revoke_ViewerForbidden(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -206,6 +212,7 @@ func TestAPIKeysService_Revoke_ViewerForbidden(t *testing.T) {
 
 // TestAPIKeysService_Revoke_CrossTenant verifies cross-tenant revoke returns ErrNotFound.
 func TestAPIKeysService_Revoke_CrossTenant(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -237,6 +244,7 @@ func TestAPIKeysService_Revoke_CrossTenant(t *testing.T) {
 
 // TestAPIKeysService_Revoke_NotFound verifies revoking non-existent key returns ErrNotFound.
 func TestAPIKeysService_Revoke_NotFound(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -259,6 +267,7 @@ func TestAPIKeysService_Revoke_NotFound(t *testing.T) {
 
 // TestAPIKeysService_Create_KeyIsUsable verifies the returned raw key authenticates.
 func TestAPIKeysService_Create_KeyIsUsable(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {

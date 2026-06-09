@@ -13,6 +13,7 @@ import (
 )
 
 func TestAuth_APIKeyLifecycle(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -46,6 +47,7 @@ func TestAuth_APIKeyLifecycle(t *testing.T) {
 }
 
 func TestAuth_CrossTenantIsolation(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -87,6 +89,7 @@ func TestAuth_CrossTenantIsolation(t *testing.T) {
 }
 
 func TestAuth_InviteFlow(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -189,6 +192,7 @@ func TestAuth_InviteFlow(t *testing.T) {
 }
 
 func TestAuth_InactiveUserRejected(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -213,6 +217,7 @@ func TestAuth_InactiveUserRejected(t *testing.T) {
 }
 
 func TestAuth_UserManagementScoping(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {

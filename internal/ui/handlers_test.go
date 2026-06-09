@@ -244,6 +244,7 @@ func loginBody(email, password string) []byte {
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 func TestHandlerLogin_Get(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -263,6 +264,7 @@ func TestHandlerLogin_Get(t *testing.T) {
 }
 
 func TestHandlerLogin_Post_WrongPassword(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -295,6 +297,7 @@ func TestHandlerLogin_Post_WrongPassword(t *testing.T) {
 }
 
 func TestHandlerLogin_Post_Success(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -350,6 +353,7 @@ func TestHandlerLogin_Post_Success(t *testing.T) {
 }
 
 func TestHandlerDomains_Unauthenticated(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -369,6 +373,7 @@ func TestHandlerDomains_Unauthenticated(t *testing.T) {
 }
 
 func TestHandlerRoot_RedirectsToDomains(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -390,6 +395,7 @@ func TestHandlerRoot_RedirectsToDomains(t *testing.T) {
 }
 
 func TestHandlerDomains_Authenticated(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -424,6 +430,7 @@ func TestHandlerDomains_Authenticated(t *testing.T) {
 }
 
 func TestHandlerDomains_CSRF_MissingToken(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -444,6 +451,7 @@ func TestHandlerDomains_CSRF_MissingToken(t *testing.T) {
 }
 
 func TestHandlerDomains_AddDomain_WithCSRF(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -480,6 +488,7 @@ func TestHandlerDomains_AddDomain_WithCSRF(t *testing.T) {
 }
 
 func TestHandlerDomains_DeleteDomain(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -522,6 +531,7 @@ func TestHandlerDomains_DeleteDomain(t *testing.T) {
 }
 
 func TestHandlerDomainDetail(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -569,6 +579,7 @@ func TestHandlerDomainDetail(t *testing.T) {
 }
 
 func TestHandlerRecordsFragment(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -603,6 +614,7 @@ func TestHandlerRecordsFragment(t *testing.T) {
 }
 
 func TestHandlerTimelineFragment(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -636,6 +648,7 @@ func TestHandlerTimelineFragment(t *testing.T) {
 }
 
 func TestHandlerFindingsPage(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -665,6 +678,7 @@ func TestHandlerFindingsPage(t *testing.T) {
 }
 
 func TestHandlerLogout(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -707,6 +721,7 @@ func TestHandlerLogout(t *testing.T) {
 }
 
 func TestHandlerCrossTenant_DomainDetail(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -744,6 +759,7 @@ func TestHandlerCrossTenant_DomainDetail(t *testing.T) {
 }
 
 func TestHandlerCrossTenant_DeleteDomain(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -781,6 +797,7 @@ func TestHandlerCrossTenant_DeleteDomain(t *testing.T) {
 }
 
 func TestHandlerCrossTenant_RecordsFragment(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -812,6 +829,7 @@ func TestHandlerCrossTenant_RecordsFragment(t *testing.T) {
 }
 
 func TestHandlerCrossTenant_TimelineFragment(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -841,6 +859,7 @@ func TestHandlerCrossTenant_TimelineFragment(t *testing.T) {
 }
 
 func TestHandlerInvite_Get_NoToken(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -860,6 +879,7 @@ func TestHandlerInvite_Get_NoToken(t *testing.T) {
 }
 
 func TestHandlerInvite_Get_ValidToken(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -912,6 +932,7 @@ func TestHandlerInvite_Get_ValidToken(t *testing.T) {
 }
 
 func TestHandlerInvite_Post_InvalidToken(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -940,6 +961,7 @@ func TestHandlerInvite_Post_InvalidToken(t *testing.T) {
 }
 
 func TestHandlerInvite_Post_Valid(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -1005,6 +1027,7 @@ func TestHandlerInvite_Post_Valid(t *testing.T) {
 }
 
 func TestHandlerDomainRescan_NotFound(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -1063,6 +1086,7 @@ func TestHandlerDomainRescan_Success(t *testing.T) {
 }
 
 func TestHandlerRescanAll_RoutesCorrectly(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -1101,6 +1125,7 @@ func (h *uiHarness) datastarGet(
 }
 
 func TestDomainsGet_NestedLayoutGroupsByApex(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -1133,6 +1158,7 @@ func TestDomainsGet_NestedLayoutGroupsByApex(t *testing.T) {
 }
 
 func TestDomainCreate_RerendersGroupedBody(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -1164,6 +1190,7 @@ func TestDomainCreate_RerendersGroupedBody(t *testing.T) {
 }
 
 func TestDomainsGet_NestedGroupsOverFullTenantSet(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
@@ -1193,6 +1220,7 @@ func TestDomainsGet_NestedGroupsOverFullTenantSet(t *testing.T) {
 }
 
 func TestDomainsGet_FlatLoadMorePaginates(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {

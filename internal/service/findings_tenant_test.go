@@ -13,6 +13,7 @@ import (
 // real database: the cross-tenant isolation invariant, the compliant toggle, the
 // severity/kind/domain filters, and the data-driven KindCounts.
 func TestFindingsService_ListByTenant(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
 	if err != nil {
