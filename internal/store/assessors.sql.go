@@ -581,6 +581,131 @@ func (q *Queries) DomainsListFindingsSummary(ctx context.Context, domainIds []in
 	return items, nil
 }
 
+const findingsListByTenant = `-- name: FindingsListByTenant :many
+SELECT f.finding_uid,
+       f.domain_uid,
+       f.domain_name,
+       f.kind,
+       f.severity,
+       f.status,
+       f.issue_type,
+       f.value,
+       f.details,
+       f.selector,
+       f.created_at
+FROM (SELECT sf.uid                AS finding_uid,
+             d.uid                 AS domain_uid,
+             d.name                AS domain_name,
+             'SPF'::text           AS kind,
+             sf.severity           AS severity,
+             sf.status             AS status,
+             sf.issue_type         AS issue_type,
+             sf.spf_value          AS value,
+             sf.details            AS details,
+             NULL::text            AS selector,
+             sf.created_at         AS created_at
+      FROM spf_findings sf
+               JOIN domains d ON sf.domain_id = d.id
+      WHERE d.tenant_id = $1
+        AND ($2::bool OR sf.status = 'open')
+
+      UNION ALL
+
+      SELECT df.uid, d.uid, d.name, 'DKIM'::text, df.severity, df.status,
+             df.issue_type, df.dkim_value, df.details, df.selector, df.created_at
+      FROM dkim_findings df
+               JOIN domains d ON df.domain_id = d.id
+      WHERE d.tenant_id = $1
+        AND ($2::bool OR df.status = 'open')
+
+      UNION ALL
+
+      SELECT mf.uid, d.uid, d.name, 'DMARC'::text, mf.severity, mf.status,
+             mf.issue_type, mf.dmarc_value, mf.details, NULL::text, mf.created_at
+      FROM dmarc_findings mf
+               JOIN domains d ON mf.domain_id = d.id
+      WHERE d.tenant_id = $1
+        AND ($2::bool OR mf.status = 'open')
+
+      UNION ALL
+
+      SELECT zf.uid, d.uid, d.name, 'ZONE'::text, zf.severity, zf.status,
+             CASE WHEN zf.zone_transfer_possible
+                  THEN 'zone_transfer_exposed' ELSE 'zone_transfer_refused' END,
+             zf.nameserver, zf.details, NULL::text, zf.created_at
+      FROM zone_transfer_findings zf
+               JOIN domains d ON zf.domain_id = d.id
+      WHERE d.tenant_id = $1
+        AND ($2::bool OR zf.zone_transfer_possible = true)) f
+ORDER BY f.domain_name ASC,
+         CASE f.severity
+             WHEN 'critical' THEN 1
+             WHEN 'high' THEN 2
+             WHEN 'medium' THEN 3
+             WHEN 'low' THEN 4
+             WHEN 'info' THEN 5
+             ELSE 6
+             END ASC,
+         f.created_at ASC
+`
+
+type FindingsListByTenantParams struct {
+	TenantID         pgtype.Int4 `json:"tenant_id"`
+	IncludeCompliant bool        `json:"include_compliant"`
+}
+
+type FindingsListByTenantRow struct {
+	FindingUid string             `json:"finding_uid"`
+	DomainUid  string             `json:"domain_uid"`
+	DomainName string             `json:"domain_name"`
+	Kind       string             `json:"kind"`
+	Severity   FindingSeverity    `json:"severity"`
+	Status     FindingStatus      `json:"status"`
+	IssueType  string             `json:"issue_type"`
+	Value      pgtype.Text        `json:"value"`
+	Details    pgtype.Text        `json:"details"`
+	Selector   pgtype.Text        `json:"selector"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+}
+
+// Every finding across SPF/DKIM/DMARC/zone-transfer for one tenant, in a single
+// UNION ALL. Tenant scope is enforced transitively by the domains.tenant_id join
+// (the finding tables have no tenant_id) — this join IS the security boundary.
+// When @include_compliant is false, email findings are restricted to status='open'
+// and zone-transfer to actually-possible AXFRs. Ordered domain-then-severity so
+// the handler can group consecutively without a second sort.
+func (q *Queries) FindingsListByTenant(ctx context.Context, arg FindingsListByTenantParams) ([]FindingsListByTenantRow, error) {
+	rows, err := q.db.Query(ctx, findingsListByTenant, arg.TenantID, arg.IncludeCompliant)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []FindingsListByTenantRow{}
+	for rows.Next() {
+		var i FindingsListByTenantRow
+		if err := rows.Scan(
+			&i.FindingUid,
+			&i.DomainUid,
+			&i.DomainName,
+			&i.Kind,
+			&i.Severity,
+			&i.Status,
+			&i.IssueType,
+			&i.Value,
+			&i.Details,
+			&i.Selector,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const storeZoneTransferFinding = `-- name: StoreZoneTransferFinding :one
 INSERT INTO zone_transfer_findings (domain_id,
                                     ns_record_id,
