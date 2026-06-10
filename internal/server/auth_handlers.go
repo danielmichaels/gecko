@@ -133,6 +133,31 @@ func (app *Server) handleMe(ctx context.Context, _ *struct{}) (*MeOutput, error)
 	return out, nil
 }
 
+type ChangePasswordInput struct {
+	Body struct {
+		CurrentPassword string `json:"current_password" required:"true"`
+		NewPassword     string `json:"new_password"     required:"true" minLength:"8"`
+	}
+}
+
+// handleChangePassword verifies the caller's current password and sets a new one.
+func (app *Server) handleChangePassword(
+	ctx context.Context,
+	i *ChangePasswordInput,
+) (*struct{}, error) {
+	p, err := principalOrErr(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := app.Svc.AuthService().ChangePassword(ctx, p, i.Body.CurrentPassword, i.Body.NewPassword); err != nil {
+		if errors.Is(err, service.ErrInvalidInput) {
+			return nil, huma.Error400BadRequest(err.Error())
+		}
+		return nil, huma.Error500InternalServerError("failed to change password", err)
+	}
+	return &struct{}{}, nil
+}
+
 type AcceptInviteInput struct {
 	Body struct {
 		Token    string `json:"token"    required:"true"`

@@ -466,6 +466,35 @@ func timelineFullLoad(uid, scan string) string {
 	return fmt.Sprintf("@get('%s')", url)
 }
 
+// SettingsPageProps holds data for the settings page. CanManage gates the
+// owner/manager-only API-key controls (create, revoke), mirroring the
+// service-layer guard; the 403 stays the authoritative backstop.
+type SettingsPageProps struct {
+	Shell     AppShellProps
+	APIKeys   []APIKeyRowView
+	CanManage bool
+}
+
+// APIKeyRowView is the presentation model for one API key in the settings list.
+// Secrets are never present here — only the prefix and lifecycle timestamps. A
+// revoked key is rendered inert (no revoke control).
+type APIKeyRowView struct {
+	UID      string
+	Name     string
+	Prefix   string
+	Created  string
+	LastUsed string
+	Expires  string
+	Revoked  bool
+}
+
+// APIKeySecretView carries a freshly minted key's plaintext for the one-time
+// reveal. It is rendered into #apikey-secret once, on creation, and never again.
+type APIKeySecretView struct {
+	Name string
+	Raw  string
+}
+
 // ComingSoonProps holds data for the coming-soon placeholder page.
 type ComingSoonProps struct {
 	Glyph string

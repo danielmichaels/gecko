@@ -213,3 +213,59 @@ func (q *Queries) ApiKeysListByTenant(ctx context.Context, tenantID int32) ([]Ap
 	}
 	return items, nil
 }
+
+const apiKeysListByUser = `-- name: ApiKeysListByUser :many
+SELECT id, uid, tenant_id, user_id, name, prefix, last_used_at, expires_at, revoked_at, created_at
+FROM api_keys
+WHERE tenant_id = $1 AND user_id = $2
+ORDER BY created_at DESC
+`
+
+type ApiKeysListByUserParams struct {
+	TenantID int32 `json:"tenant_id"`
+	UserID   int32 `json:"user_id"`
+}
+
+type ApiKeysListByUserRow struct {
+	ID         int32              `json:"id"`
+	Uid        string             `json:"uid"`
+	TenantID   int32              `json:"tenant_id"`
+	UserID     int32              `json:"user_id"`
+	Name       string             `json:"name"`
+	Prefix     string             `json:"prefix"`
+	LastUsedAt pgtype.Timestamptz `json:"last_used_at"`
+	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
+	RevokedAt  pgtype.Timestamptz `json:"revoked_at"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) ApiKeysListByUser(ctx context.Context, arg ApiKeysListByUserParams) ([]ApiKeysListByUserRow, error) {
+	rows, err := q.db.Query(ctx, apiKeysListByUser, arg.TenantID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ApiKeysListByUserRow{}
+	for rows.Next() {
+		var i ApiKeysListByUserRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.TenantID,
+			&i.UserID,
+			&i.Name,
+			&i.Prefix,
+			&i.LastUsedAt,
+			&i.ExpiresAt,
+			&i.RevokedAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

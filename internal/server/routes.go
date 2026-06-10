@@ -253,6 +253,18 @@ func (app *Server) registerEndpoints(api huma.API) {
 		Middlewares:   huma.Middlewares{app.apiAuth(api)},
 	}, app.handleMe)
 
+	huma.Register(api, huma.Operation{
+		OperationID:   "change_password",
+		Method:        http.MethodPost,
+		Path:          "/api/auth/change-password",
+		Summary:       "Change password",
+		Description:   "Verify the caller's current password and set a new one.",
+		Tags:          []string{"Auth"},
+		DefaultStatus: http.StatusNoContent,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
+	}, app.handleChangePassword)
+
 	// API key handlers
 	huma.Register(api, huma.Operation{
 		OperationID:   "create_api_key",

@@ -37,6 +37,89 @@ func newAuthSvc(t *testing.T, pc *testhelpers.PostgresContainer) *service.AuthSe
 	return svc.AuthService()
 }
 
+// TestAuthService_ChangePassword_HappyPath verifies a correct current password
+// lets the user set a new one, after which the new password authenticates and
+// the old one no longer does.
+func TestAuthService_ChangePassword_HappyPath(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc := newAuthSvc(t, pc)
+	signupUser(t, svc, "user@a.com", "oldpassword")
+	p := principalForEmail(t, ctx, pc, "user@a.com")
+
+	if err := svc.ChangePassword(ctx, p, "oldpassword", "newpassword"); err != nil {
+		t.Fatalf("change password: %v", err)
+	}
+
+	if _, err := svc.Authenticate(ctx, "user@a.com", "newpassword"); err != nil {
+		t.Errorf("authenticate with new password: %v", err)
+	}
+	if _, err := svc.Authenticate(ctx, "user@a.com", "oldpassword"); !errors.Is(
+		err,
+		service.ErrUnauthenticated,
+	) {
+		t.Errorf("old password should be rejected: got %v", err)
+	}
+}
+
+// TestAuthService_ChangePassword_WrongCurrent verifies an incorrect current
+// password is rejected as invalid input and leaves the password unchanged.
+func TestAuthService_ChangePassword_WrongCurrent(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc := newAuthSvc(t, pc)
+	signupUser(t, svc, "user@a.com", "oldpassword")
+	p := principalForEmail(t, ctx, pc, "user@a.com")
+
+	err = svc.ChangePassword(ctx, p, "wrongcurrent", "newpassword")
+	if !errors.Is(err, service.ErrInvalidInput) {
+		t.Fatalf("wrong current: want ErrInvalidInput, got %v", err)
+	}
+	if err.Error() != "current password is incorrect" {
+		t.Errorf("message = %q, want %q", err.Error(), "current password is incorrect")
+	}
+
+	if _, err := svc.Authenticate(ctx, "user@a.com", "oldpassword"); err != nil {
+		t.Errorf("original password should still work: %v", err)
+	}
+}
+
+// TestAuthService_ChangePassword_WeakNew verifies a too-short new password is
+// rejected as invalid input.
+func TestAuthService_ChangePassword_WeakNew(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc := newAuthSvc(t, pc)
+	signupUser(t, svc, "user@a.com", "oldpassword")
+	p := principalForEmail(t, ctx, pc, "user@a.com")
+
+	err = svc.ChangePassword(ctx, p, "oldpassword", "short")
+	if !errors.Is(err, service.ErrInvalidInput) {
+		t.Fatalf("weak new: want ErrInvalidInput, got %v", err)
+	}
+	if err.Error() != "new password must be at least 8 characters" {
+		t.Errorf("message = %q, want %q", err.Error(), "new password must be at least 8 characters")
+	}
+}
+
 // signupUser is a test helper that creates a user via Signup and returns the result.
 func signupUser(
 	t *testing.T,
