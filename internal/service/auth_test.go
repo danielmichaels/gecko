@@ -980,6 +980,63 @@ func TestAuthService_SignupWeb_DuplicateEmail(t *testing.T) {
 	}
 }
 
+func TestAuthService_SignupWeb_SendsWelcomeEmail(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc, sched := newAuthSvcWithEmailer(t, pc)
+	if _, err := svc.SignupWeb(ctx, service.SignupParams{
+		Email:      "welcome@example.com",
+		Password:   "password123",
+		TenantName: "Acme",
+	}); err != nil {
+		t.Fatalf("signup web: %v", err)
+	}
+
+	if len(sched.emails) != 1 {
+		t.Fatalf("enqueued %d emails, want 1 welcome email", len(sched.emails))
+	}
+	msg := sched.emails[0]
+	if msg.To != "welcome@example.com" {
+		t.Errorf("welcome email To = %q, want welcome@example.com", msg.To)
+	}
+	if !strings.Contains(strings.ToLower(msg.Subject), "welcome") {
+		t.Errorf("welcome email subject = %q, want a welcome subject", msg.Subject)
+	}
+	if !strings.Contains(msg.HTML, "Acme") {
+		t.Errorf("welcome email should mention the workspace name, got: %q", msg.HTML)
+	}
+}
+
+func TestAuthService_Signup_SendsWelcomeEmail(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc, sched := newAuthSvcWithEmailer(t, pc)
+	if _, err := svc.Signup(ctx, service.SignupParams{
+		Email:    "apiwelcome@example.com",
+		Password: "password123",
+	}); err != nil {
+		t.Fatalf("signup: %v", err)
+	}
+	if len(sched.emails) != 1 {
+		t.Fatalf("enqueued %d emails, want 1 welcome email", len(sched.emails))
+	}
+	if !strings.Contains(strings.ToLower(sched.emails[0].Subject), "welcome") {
+		t.Errorf("welcome email subject = %q, want a welcome subject", sched.emails[0].Subject)
+	}
+}
+
 func TestAuthService_RequestPasswordReset_UnknownEmail(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -1017,6 +1074,8 @@ func TestAuthService_RequestPasswordReset_KnownEmail(t *testing.T) {
 
 	svc, sched := newAuthSvcWithEmailer(t, pc)
 	signupUser(t, svc, "real@example.com", "password123")
+	// Drop the welcome email enqueued by signup so we assert on the reset email only.
+	sched.emails = nil
 
 	if err := svc.RequestPasswordReset(ctx, "real@example.com", "https://app.test"); err != nil {
 		t.Fatalf("request reset: %v", err)

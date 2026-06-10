@@ -178,6 +178,12 @@ func (s *AuthService) Signup(ctx context.Context, params SignupParams) (SignupRe
 	if err != nil {
 		return SignupResult{}, fmt.Errorf("signup: mint key: %w", err)
 	}
+	if s.emailer != nil {
+		welcome := welcomeEmail(email, tenant.Name, s.Conf.AppConf.PublicBaseURL)
+		if err := s.emailer.EnqueueEmail(ctx, tx, welcome); err != nil {
+			return SignupResult{}, fmt.Errorf("signup: enqueue welcome email: %w", err)
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return SignupResult{}, fmt.Errorf("signup: commit: %w", err)
 	}
@@ -238,6 +244,12 @@ func (s *AuthService) SignupWeb(ctx context.Context, params SignupParams) (*auth
 		PasswordHash: hash,
 	}); err != nil {
 		return nil, fmt.Errorf("signup web: credential upsert: %w", err)
+	}
+	if s.emailer != nil {
+		welcome := welcomeEmail(email, tenant.Name, s.Conf.AppConf.PublicBaseURL)
+		if err := s.emailer.EnqueueEmail(ctx, tx, welcome); err != nil {
+			return nil, fmt.Errorf("signup web: enqueue welcome email: %w", err)
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("signup web: commit: %w", err)
@@ -581,6 +593,23 @@ func (s *AuthService) ResetPassword(ctx context.Context, token, newPassword stri
 		return fmt.Errorf("reset password: commit: %w", err)
 	}
 	return nil
+}
+
+// welcomeEmail renders the post-signup acknowledgement. Any link uses the trusted
+// PublicBaseURL (config), never request headers — the message is emailed to the
+// new owner, so a request-derived origin would be injectable.
+func welcomeEmail(to, tenantName, baseURL string) mailer.Message {
+	link := baseURL + "/app/domains"
+	return mailer.Message{
+		To:      to,
+		Subject: "Welcome to gecko",
+		HTML: "<p>Welcome to gecko — your workspace <b>" + tenantName + "</b> is ready.</p>" +
+			"<p>Add your first domain and we'll start watching its DNS for misconfigurations.</p>" +
+			"<p><a href=\"" + link + "\">Open your dashboard</a></p>",
+		Text: "Welcome to gecko — your workspace " + tenantName + " is ready.\n\n" +
+			"Add your first domain and we'll start watching its DNS for misconfigurations.\n" +
+			"Open your dashboard: " + link,
+	}
 }
 
 // passwordResetEmail renders the reset message. With no mailer-side templating in
