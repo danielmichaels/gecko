@@ -111,10 +111,14 @@ func (app *Server) handleDomainUpdate(
 		Status:     i.Body.Status,
 	})
 	if err != nil {
-		if errors.Is(err, service.ErrNotFound) {
+		switch {
+		case errors.Is(err, service.ErrForbidden):
+			return nil, huma.Error403Forbidden(err.Error())
+		case errors.Is(err, service.ErrNotFound):
 			return nil, huma.Error404NotFound("domain not found")
+		default:
+			return nil, huma.Error500InternalServerError("failed to update domain", err)
 		}
-		return nil, huma.Error500InternalServerError("failed to update domain", err)
 	}
 	return &DomainOutput{Body: dto.DomainToAPI(domain)}, nil
 }
@@ -165,10 +169,14 @@ func (app *Server) handleDomainDelete(
 		return nil, err
 	}
 	if err := app.Svc.DomainsService().Delete(ctx, p, i.ID); err != nil {
-		if errors.Is(err, service.ErrNotFound) {
+		switch {
+		case errors.Is(err, service.ErrForbidden):
+			return nil, huma.Error403Forbidden(err.Error())
+		case errors.Is(err, service.ErrNotFound):
 			return nil, huma.Error404NotFound("domain not found")
+		default:
+			return nil, huma.Error500InternalServerError("failed to delete domain")
 		}
-		return nil, huma.Error500InternalServerError("failed to delete domain")
 	}
 	return nil, nil
 }
@@ -197,10 +205,14 @@ func (app *Server) handleDomainCreate(
 		Status:     i.Body.Status,
 	})
 	if err != nil {
-		if errors.Is(err, service.ErrConflict) {
+		switch {
+		case errors.Is(err, service.ErrForbidden):
+			return nil, huma.Error403Forbidden(err.Error())
+		case errors.Is(err, service.ErrConflict):
 			return nil, huma.Error409Conflict("domain already exists")
+		default:
+			return nil, huma.Error500InternalServerError("failed to create domain", err)
 		}
-		return nil, huma.Error500InternalServerError("failed to create domain", err)
 	}
 	return &DomainOutput{Body: dto.DomainToAPI(domain)}, nil
 }

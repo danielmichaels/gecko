@@ -90,6 +90,10 @@ type AppShellProps struct {
 	AppVersion   string
 	CSRFToken    string
 	ResolverOK   bool
+	// CanManageDomains gates the owner/manager-only domain controls (add, rescan,
+	// delete). It mirrors the service-layer guard so the UI hides what the API would
+	// reject; the 403 remains the authoritative backstop.
+	CanManageDomains bool
 }
 
 // LoginPageProps holds data for the login page.

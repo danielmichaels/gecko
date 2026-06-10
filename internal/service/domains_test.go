@@ -68,6 +68,16 @@ func ownerPrincipal(tenantID int32) *auth.Principal {
 	}
 }
 
+// principalWithRole returns a synthetic principal for the given tenant and role.
+func principalWithRole(tenantID int32, role string) *auth.Principal {
+	return &auth.Principal{
+		UserID:   1,
+		TenantID: tenantID,
+		Role:     role,
+		Email:    "test@example.com",
+	}
+}
+
 func newTestService(
 	pc *testhelpers.PostgresContainer,
 	sched service.DomainScanScheduler,
@@ -440,6 +450,196 @@ func TestDomainsService_DeletionImpact_HappyPath(t *testing.T) {
 	}
 	if count < 1 {
 		t.Errorf("count = %d, want >= 1", count)
+	}
+}
+
+func TestDomainsService_Create_ViewerForbidden(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	sched := &fakeScheduler{}
+	svc := newTestService(pc, sched)
+	ds := svc.DomainsService()
+
+	tenantA := createTenant(t, ctx, pc, "a@create-viewer.com")
+
+	_, err = ds.Create(
+		ctx,
+		principalWithRole(tenantA, "viewer"),
+		service.DomainsCreateParams{Domain: "viewer-create.example.com"},
+	)
+	if !errors.Is(err, service.ErrForbidden) {
+		t.Fatalf("viewer Create = %v, want ErrForbidden", err)
+	}
+	if sched.Called() != 0 {
+		t.Errorf("scheduler called %d times on forbidden create, want 0", sched.Called())
+	}
+	// No domain was inserted.
+	result, err := ds.List(ctx, ownerPrincipal(tenantA), service.DomainsListParams{PageSize: 10})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if result.TotalCount != 0 {
+		t.Errorf("domains after forbidden create = %d, want 0", result.TotalCount)
+	}
+}
+
+func TestDomainsService_Create_ManagerSucceeds(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	sched := &fakeScheduler{}
+	svc := newTestService(pc, sched)
+	ds := svc.DomainsService()
+
+	tenantA := createTenant(t, ctx, pc, "a@create-manager.com")
+
+	d, err := ds.Create(
+		ctx,
+		principalWithRole(tenantA, "manager"),
+		service.DomainsCreateParams{Domain: "manager-create.example.com"},
+	)
+	if err != nil {
+		t.Fatalf("manager Create: %v", err)
+	}
+	if d.Name != "manager-create.example.com" {
+		t.Errorf("name = %s, want manager-create.example.com", d.Name)
+	}
+	if sched.Called() != 1 {
+		t.Errorf("scheduler called %d times, want 1", sched.Called())
+	}
+}
+
+func TestDomainsService_Update_ViewerForbidden(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	sched := &fakeScheduler{}
+	svc := newTestService(pc, sched)
+	ds := svc.DomainsService()
+
+	tenantA := createTenant(t, ctx, pc, "a@update-viewer.com")
+	d := seedDomain(t, ctx, pc, tenantA, "update-viewer.example.com")
+
+	_, err = ds.Update(
+		ctx,
+		principalWithRole(tenantA, "viewer"),
+		d.Uid,
+		service.DomainsUpdateParams{Status: "inactive"},
+	)
+	if !errors.Is(err, service.ErrForbidden) {
+		t.Fatalf("viewer Update = %v, want ErrForbidden", err)
+	}
+	if sched.Called() != 0 {
+		t.Errorf("scheduler called %d times on forbidden update, want 0", sched.Called())
+	}
+	// The domain is unchanged.
+	got, err := ds.Get(ctx, ownerPrincipal(tenantA), d.Uid)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Status != store.DomainStatusActive {
+		t.Errorf("status after forbidden update = %s, want active", got.Status)
+	}
+}
+
+func TestDomainsService_Update_ManagerSucceeds(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	sched := &fakeScheduler{}
+	svc := newTestService(pc, sched)
+	ds := svc.DomainsService()
+
+	tenantA := createTenant(t, ctx, pc, "a@update-manager.com")
+	d := seedDomain(t, ctx, pc, tenantA, "update-manager.example.com")
+
+	updated, err := ds.Update(
+		ctx,
+		principalWithRole(tenantA, "manager"),
+		d.Uid,
+		service.DomainsUpdateParams{Status: "inactive"},
+	)
+	if err != nil {
+		t.Fatalf("manager Update: %v", err)
+	}
+	if updated.Status != store.DomainStatusInactive {
+		t.Errorf("status = %s, want inactive", updated.Status)
+	}
+}
+
+func TestDomainsService_Delete_ViewerForbidden(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	sched := &fakeScheduler{}
+	svc := newTestService(pc, sched)
+	ds := svc.DomainsService()
+
+	tenantA := createTenant(t, ctx, pc, "a@delete-viewer.com")
+	d := seedDomain(t, ctx, pc, tenantA, "delete-viewer.example.com")
+
+	if err := ds.Delete(ctx, principalWithRole(tenantA, "viewer"), d.Uid); !errors.Is(
+		err,
+		service.ErrForbidden,
+	) {
+		t.Fatalf("viewer Delete = %v, want ErrForbidden", err)
+	}
+	if got := sched.StatsRefreshes(); len(got) != 0 {
+		t.Errorf("stats refreshes on forbidden delete = %v, want none", got)
+	}
+	// The domain still exists.
+	if _, err := ds.Get(ctx, ownerPrincipal(tenantA), d.Uid); err != nil {
+		t.Errorf("domain missing after forbidden delete: %v", err)
+	}
+}
+
+func TestDomainsService_Delete_ManagerSucceeds(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	sched := &fakeScheduler{}
+	svc := newTestService(pc, sched)
+	ds := svc.DomainsService()
+
+	tenantA := createTenant(t, ctx, pc, "a@delete-manager.com")
+	d := seedDomain(t, ctx, pc, tenantA, "delete-manager.example.com")
+
+	if err := ds.Delete(ctx, principalWithRole(tenantA, "manager"), d.Uid); err != nil {
+		t.Fatalf("manager Delete: %v", err)
+	}
+	if _, err := ds.Get(ctx, ownerPrincipal(tenantA), d.Uid); !errors.Is(err, service.ErrNotFound) {
+		t.Errorf("domain present after manager delete = %v, want ErrNotFound", err)
 	}
 }
 

@@ -126,13 +126,14 @@ func (h *Handlers) shell(ctx context.Context, active string) (templates.AppShell
 		tenantName = p.Email
 	}
 	return templates.AppShellProps{
-		TenantName:   tenantName,
-		UserEmail:    p.Email,
-		UserInitials: initials(p.Email),
-		ActiveNav:    active,
-		AppVersion:   version.Get(),
-		ResolverOK:   true,
-		CSRFToken:    CSRFTokenFrom(ctx),
+		TenantName:       tenantName,
+		UserEmail:        p.Email,
+		UserInitials:     initials(p.Email),
+		ActiveNav:        active,
+		AppVersion:       version.Get(),
+		ResolverOK:       true,
+		CSRFToken:        CSRFTokenFrom(ctx),
+		CanManageDomains: service.OwnerOrManager(p),
 	}, nil
 }
 

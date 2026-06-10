@@ -25,9 +25,20 @@ func requireRole(p *auth.Principal, roles ...string) error {
 	return msgErr(ErrForbidden, "insufficient permissions")
 }
 
+// OwnerOrManager reports whether p may perform owner/manager-gated actions. It is
+// the single source of truth for that boundary: the ownerOrManager guard derives
+// from it (API enforcement) and the UI derives control visibility from it, so the
+// two surfaces cannot drift.
+func OwnerOrManager(p *auth.Principal) bool {
+	return requireRole(p, string(store.UserRoleOwner), string(store.UserRoleManager)) == nil
+}
+
 // ownerOrManager gates an action to owners and managers.
 func ownerOrManager(p *auth.Principal) error {
-	return requireRole(p, string(store.UserRoleOwner), string(store.UserRoleManager))
+	if !OwnerOrManager(p) {
+		return msgErr(ErrForbidden, "insufficient permissions")
+	}
+	return nil
 }
 
 // requireCanGrant returns ErrForbidden unless p may assign targetRole — an actor
