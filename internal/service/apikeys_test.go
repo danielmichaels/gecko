@@ -161,6 +161,64 @@ func TestAPIKeysService_List_TenantScoped(t *testing.T) {
 	}
 }
 
+// TestAPIKeysService_ListMine_UserScoped verifies ListMine returns only the
+// caller's own keys, not other members' keys in the same tenant.
+func TestAPIKeysService_ListMine_UserScoped(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	authSvc, keysSvc := setupAPIKeysService(t, pc)
+	signupUser(t, authSvc, "owner@a.com", "supersecret")
+	pOwner := principalForEmail(t, ctx, pc, "owner@a.com")
+	inviteMember(t, ctx, pc, authSvc, pOwner, "mgr@a.com", "manager")
+	pMgr := principalForEmail(t, ctx, pc, "mgr@a.com")
+
+	if _, err = keysSvc.Create(ctx, pOwner, "owner-key"); err != nil {
+		t.Fatalf("create owner key: %v", err)
+	}
+	if _, err = keysSvc.Create(ctx, pMgr, "mgr-key"); err != nil {
+		t.Fatalf("create mgr key: %v", err)
+	}
+
+	ownerKeys, err := keysSvc.ListMine(ctx, pOwner)
+	if err != nil {
+		t.Fatalf("list owner keys: %v", err)
+	}
+	for _, k := range ownerKeys {
+		if k.UserID != pOwner.UserID {
+			t.Errorf("owner ListMine returned key owned by user %d", k.UserID)
+		}
+		if k.Name == "mgr-key" {
+			t.Error("owner ListMine should not contain the manager's key")
+		}
+	}
+
+	mgrKeys, err := keysSvc.ListMine(ctx, pMgr)
+	if err != nil {
+		t.Fatalf("list mgr keys: %v", err)
+	}
+	foundMgrKey := false
+	for _, k := range mgrKeys {
+		if k.UserID != pMgr.UserID {
+			t.Errorf("manager ListMine returned key owned by user %d", k.UserID)
+		}
+		if k.Name == "owner-key" {
+			t.Error("manager ListMine should not contain the owner's key")
+		}
+		if k.Name == "mgr-key" {
+			foundMgrKey = true
+		}
+	}
+	if !foundMgrKey {
+		t.Error("manager ListMine should contain 'mgr-key'")
+	}
+}
+
 // TestAPIKeysService_Revoke_HappyPath verifies owner can revoke an API key.
 func TestAPIKeysService_Revoke_HappyPath(t *testing.T) {
 	testhelpers.ParallelDBTest(t)

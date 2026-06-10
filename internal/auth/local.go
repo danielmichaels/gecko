@@ -39,7 +39,7 @@ func (p *localProvider) Authenticate(ctx context.Context, c Credentials) (*Princ
 		}
 		return nil, err
 	}
-	if err := bcrypt.CompareHashAndPassword([]byte(cred.PasswordHash), []byte(c.Password)); err != nil {
+	if err := VerifyPassword(cred.PasswordHash, c.Password); err != nil {
 		return nil, ErrInvalidCredentials
 	}
 	if user.Status != store.UserStatusActive {
@@ -62,6 +62,13 @@ func HashPassword(password string, cost int) (string, error) {
 		return "", err
 	}
 	return string(b), nil
+}
+
+// VerifyPassword reports whether plaintext matches a stored bcrypt hash. It
+// returns a non-nil error on mismatch so callers can branch on success without
+// inspecting bcrypt internals.
+func VerifyPassword(hash, password string) error {
+	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
 }
 
 func normaliseCost(cost int) int {

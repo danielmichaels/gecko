@@ -61,6 +61,43 @@ func (s *AuthService) Authenticate(
 	return p, nil
 }
 
+// minPasswordLength is the floor for a user-chosen password. It mirrors the
+// de-facto length used across signup/accept-invite flows; the browser enforces
+// it client-side, and this is the server-side backstop.
+const minPasswordLength = 8
+
+// ChangePassword re-hashes and stores a new password for the caller after
+// verifying their current one. An incorrect current password or a too-short new
+// password returns ErrInvalidInput (the caller is authenticated; these are
+// field-level validation failures, not authentication failures).
+func (s *AuthService) ChangePassword(
+	ctx context.Context,
+	p *auth.Principal,
+	current, next string,
+) error {
+	cred, err := s.DB.UserCredentialGetByUserID(ctx, p.UserID)
+	if err != nil {
+		return fmt.Errorf("change password: load credential: %w", err)
+	}
+	if err := auth.VerifyPassword(cred.PasswordHash, current); err != nil {
+		return msgErr(ErrInvalidInput, "current password is incorrect")
+	}
+	if len(next) < minPasswordLength {
+		return msgErr(ErrInvalidInput, "new password must be at least 8 characters")
+	}
+	hash, err := auth.HashPassword(next, s.Conf.Auth.BcryptCost)
+	if err != nil {
+		return fmt.Errorf("change password: hash: %w", err)
+	}
+	if err := s.DB.UserCredentialUpsert(ctx, store.UserCredentialUpsertParams{
+		UserID:       p.UserID,
+		PasswordHash: hash,
+	}); err != nil {
+		return fmt.Errorf("change password: upsert: %w", err)
+	}
+	return nil
+}
+
 // Login verifies credentials and mints an API key for CLI/programmatic use.
 // Returns ErrUnauthenticated for invalid credentials.
 func (s *AuthService) Login(ctx context.Context, email, password string) (LoginResult, error) {

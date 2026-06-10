@@ -56,6 +56,23 @@ func (s *APIKeysService) List(
 	return rows, nil
 }
 
+// ListMine returns the caller's own API keys (never their secrets). Any
+// authenticated member may list the keys they personally own; the query is
+// scoped to both tenant and user so members cannot see each other's keys.
+func (s *APIKeysService) ListMine(
+	ctx context.Context,
+	p *auth.Principal,
+) ([]store.ApiKeysListByUserRow, error) {
+	rows, err := s.DB.ApiKeysListByUser(ctx, store.ApiKeysListByUserParams{
+		TenantID: p.TenantID,
+		UserID:   p.UserID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
 // Revoke invalidates an API key in the caller's tenant. Owner/manager only.
 func (s *APIKeysService) Revoke(
 	ctx context.Context,

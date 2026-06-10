@@ -35,6 +35,12 @@ FROM api_keys
 WHERE tenant_id = $1
 ORDER BY created_at DESC;
 
+-- name: ApiKeysListByUser :many
+SELECT id, uid, tenant_id, user_id, name, prefix, last_used_at, expires_at, revoked_at, created_at
+FROM api_keys
+WHERE tenant_id = $1 AND user_id = $2
+ORDER BY created_at DESC;
+
 -- name: ApiKeyRevoke :one
 UPDATE api_keys
 SET revoked_at = NOW()

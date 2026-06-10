@@ -46,6 +46,48 @@ func TestAuth_APIKeyLifecycle(t *testing.T) {
 	}
 }
 
+func TestAuth_ChangePassword(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+	_, base := newAuthAPI(t, pc)
+
+	owner := signup(t, base, "owner@a.com", "supersecret")
+
+	// Wrong current password is rejected with 400.
+	if code := doJSON(t, http.MethodPost, base+"/api/auth/change-password", owner.APIKey,
+		map[string]string{"current_password": "wrongpass", "new_password": "brandnewpass"}, nil); code != http.StatusBadRequest {
+		t.Errorf("wrong current: status = %d, want 400", code)
+	}
+
+	// Too-short new password is rejected by request-schema validation (422) before
+	// reaching the handler; the service-layer length check is the backstop.
+	if code := doJSON(t, http.MethodPost, base+"/api/auth/change-password", owner.APIKey,
+		map[string]string{"current_password": "supersecret", "new_password": "short"}, nil); code != http.StatusUnprocessableEntity {
+		t.Errorf("weak new: status = %d, want 422", code)
+	}
+
+	// Happy path: change succeeds (204).
+	if code := doJSON(t, http.MethodPost, base+"/api/auth/change-password", owner.APIKey,
+		map[string]string{"current_password": "supersecret", "new_password": "brandnewpass"}, nil); code != http.StatusNoContent {
+		t.Fatalf("change password: status = %d, want 204", code)
+	}
+
+	// New password logs in; old password no longer does.
+	if code := doJSON(t, http.MethodPost, base+"/api/auth/login", "",
+		map[string]string{"email": "owner@a.com", "password": "brandnewpass"}, nil); code != http.StatusOK {
+		t.Errorf("login with new password: status = %d, want 200", code)
+	}
+	if code := doJSON(t, http.MethodPost, base+"/api/auth/login", "",
+		map[string]string{"email": "owner@a.com", "password": "supersecret"}, nil); code != http.StatusUnauthorized {
+		t.Errorf("login with old password: status = %d, want 401", code)
+	}
+}
+
 func TestAuth_CrossTenantIsolation(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()

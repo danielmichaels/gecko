@@ -89,15 +89,10 @@ func (h *Handlers) Routes() http.Handler {
 				"Manage teammates, roles, and pending invitations. Coming soon.",
 			),
 		)
-		r.Get(
-			"/settings",
-			h.handleComingSoon(
-				"settings",
-				"⚙",
-				"Settings",
-				"Workspace settings, API keys, and notification preferences. Coming soon.",
-			),
-		)
+		r.Get("/settings", h.handleSettingsGet)
+		r.Post("/settings/apikeys", h.handleAPIKeyCreate)
+		r.Delete("/settings/apikeys/{uid}", h.handleAPIKeyRevoke)
+		r.Post("/settings/password", h.handlePasswordChange)
 
 		r.Get("/domains", h.handleDomainsGet)
 		r.Post("/domains", h.handleDomainCreate)
