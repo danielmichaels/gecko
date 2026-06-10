@@ -45,6 +45,10 @@ const (
 	EntityDKIMFinding         = "dkim_finding"
 	EntityDMARCFinding        = "dmarc_finding"
 	EntityZoneTransferFinding = "zone_transfer_finding"
+	EntityCertificate         = "certificate"
+	EntityCertificateFinding  = "certificate_finding"
+	EntityDNSSEC              = "dnssec"
+	EntityDNSSECFinding       = "dnssec_finding"
 )
 
 // DomainIdentity is the stable identity stamped onto every observation. It is

@@ -11,6 +11,64 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const scannersGetCertificate = `-- name: ScannersGetCertificate :one
+SELECT id, uid, domain_id, not_before, not_after, issuer, issuer_org_name, issuer_country, subject, key_algorithm, key_strength, sans, dns_names, is_ca, issuer_cert_url, cipher_suite, tls_version, created_at, updated_at
+FROM certificates
+WHERE domain_id = $1
+`
+
+func (q *Queries) ScannersGetCertificate(ctx context.Context, domainID pgtype.Int4) (Certificates, error) {
+	row := q.db.QueryRow(ctx, scannersGetCertificate, domainID)
+	var i Certificates
+	err := row.Scan(
+		&i.ID,
+		&i.Uid,
+		&i.DomainID,
+		&i.NotBefore,
+		&i.NotAfter,
+		&i.Issuer,
+		&i.IssuerOrgName,
+		&i.IssuerCountry,
+		&i.Subject,
+		&i.KeyAlgorithm,
+		&i.KeyStrength,
+		&i.Sans,
+		&i.DnsNames,
+		&i.IsCa,
+		&i.IssuerCertUrl,
+		&i.CipherSuite,
+		&i.TlsVersion,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const scannersGetDNSSECResult = `-- name: ScannersGetDNSSECResult :one
+SELECT id, uid, domain_id, status, validation_error, has_dnskey, has_ds, has_rrsig, algorithms, created_at, updated_at
+FROM dnssec_scan_results
+WHERE domain_id = $1
+`
+
+func (q *Queries) ScannersGetDNSSECResult(ctx context.Context, domainID pgtype.Int4) (DnssecScanResults, error) {
+	row := q.db.QueryRow(ctx, scannersGetDNSSECResult, domainID)
+	var i DnssecScanResults
+	err := row.Scan(
+		&i.ID,
+		&i.Uid,
+		&i.DomainID,
+		&i.Status,
+		&i.ValidationError,
+		&i.HasDnskey,
+		&i.HasDs,
+		&i.HasRrsig,
+		&i.Algorithms,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const scannersGetZoneTransferAttempts = `-- name: ScannersGetZoneTransferAttempts :many
 SELECT id,
        uid,
@@ -56,6 +114,128 @@ func (q *Queries) ScannersGetZoneTransferAttempts(ctx context.Context, domainID 
 		return nil, err
 	}
 	return items, nil
+}
+
+const scannersStoreCertificate = `-- name: ScannersStoreCertificate :one
+INSERT INTO certificates (domain_id,
+                          not_before,
+                          not_after,
+                          issuer,
+                          issuer_org_name,
+                          issuer_country,
+                          subject,
+                          key_algorithm,
+                          key_strength,
+                          sans,
+                          dns_names,
+                          is_ca,
+                          issuer_cert_url,
+                          cipher_suite,
+                          tls_version)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+ON CONFLICT (domain_id)
+    DO UPDATE SET not_before      = $2,
+                  not_after       = $3,
+                  issuer          = $4,
+                  issuer_org_name = $5,
+                  issuer_country  = $6,
+                  subject         = $7,
+                  key_algorithm   = $8,
+                  key_strength    = $9,
+                  sans            = $10,
+                  dns_names       = $11,
+                  is_ca           = $12,
+                  issuer_cert_url = $13,
+                  cipher_suite    = $14,
+                  tls_version     = $15,
+                  updated_at      = NOW()
+RETURNING (xmax = 0)::boolean AS inserted
+`
+
+type ScannersStoreCertificateParams struct {
+	DomainID      pgtype.Int4        `json:"domain_id"`
+	NotBefore     pgtype.Timestamptz `json:"not_before"`
+	NotAfter      pgtype.Timestamptz `json:"not_after"`
+	Issuer        string             `json:"issuer"`
+	IssuerOrgName pgtype.Text        `json:"issuer_org_name"`
+	IssuerCountry pgtype.Text        `json:"issuer_country"`
+	Subject       string             `json:"subject"`
+	KeyAlgorithm  string             `json:"key_algorithm"`
+	KeyStrength   int32              `json:"key_strength"`
+	Sans          []string           `json:"sans"`
+	DnsNames      []string           `json:"dns_names"`
+	IsCa          bool               `json:"is_ca"`
+	IssuerCertUrl []string           `json:"issuer_cert_url"`
+	CipherSuite   string             `json:"cipher_suite"`
+	TlsVersion    string             `json:"tls_version"`
+}
+
+func (q *Queries) ScannersStoreCertificate(ctx context.Context, arg ScannersStoreCertificateParams) (bool, error) {
+	row := q.db.QueryRow(ctx, scannersStoreCertificate,
+		arg.DomainID,
+		arg.NotBefore,
+		arg.NotAfter,
+		arg.Issuer,
+		arg.IssuerOrgName,
+		arg.IssuerCountry,
+		arg.Subject,
+		arg.KeyAlgorithm,
+		arg.KeyStrength,
+		arg.Sans,
+		arg.DnsNames,
+		arg.IsCa,
+		arg.IssuerCertUrl,
+		arg.CipherSuite,
+		arg.TlsVersion,
+	)
+	var inserted bool
+	err := row.Scan(&inserted)
+	return inserted, err
+}
+
+const scannersStoreDNSSECResult = `-- name: ScannersStoreDNSSECResult :one
+INSERT INTO dnssec_scan_results (domain_id,
+                                 status,
+                                 validation_error,
+                                 has_dnskey,
+                                 has_ds,
+                                 has_rrsig,
+                                 algorithms)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (domain_id)
+    DO UPDATE SET status           = $2,
+                  validation_error = $3,
+                  has_dnskey       = $4,
+                  has_ds           = $5,
+                  has_rrsig        = $6,
+                  algorithms       = $7,
+                  updated_at       = NOW()
+RETURNING (xmax = 0)::boolean AS inserted
+`
+
+type ScannersStoreDNSSECResultParams struct {
+	DomainID        pgtype.Int4 `json:"domain_id"`
+	Status          string      `json:"status"`
+	ValidationError pgtype.Text `json:"validation_error"`
+	HasDnskey       bool        `json:"has_dnskey"`
+	HasDs           bool        `json:"has_ds"`
+	HasRrsig        bool        `json:"has_rrsig"`
+	Algorithms      []string    `json:"algorithms"`
+}
+
+func (q *Queries) ScannersStoreDNSSECResult(ctx context.Context, arg ScannersStoreDNSSECResultParams) (bool, error) {
+	row := q.db.QueryRow(ctx, scannersStoreDNSSECResult,
+		arg.DomainID,
+		arg.Status,
+		arg.ValidationError,
+		arg.HasDnskey,
+		arg.HasDs,
+		arg.HasRrsig,
+		arg.Algorithms,
+	)
+	var inserted bool
+	err := row.Scan(&inserted)
+	return inserted, err
 }
 
 const scannersStoreZoneTransferAttempt = `-- name: ScannersStoreZoneTransferAttempt :one

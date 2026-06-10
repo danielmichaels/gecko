@@ -433,6 +433,19 @@ type CaaRecords struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
+type CertificateFindings struct {
+	ID            int32              `json:"id"`
+	Uid           string             `json:"uid"`
+	DomainID      pgtype.Int4        `json:"domain_id"`
+	CertificateID pgtype.Int4        `json:"certificate_id"`
+	Severity      FindingSeverity    `json:"severity"`
+	Status        FindingStatus      `json:"status"`
+	IssueType     string             `json:"issue_type"`
+	Details       pgtype.Text        `json:"details"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Certificates struct {
 	ID            int32              `json:"id"`
 	Uid           string             `json:"uid"`
@@ -608,6 +621,20 @@ type DnssecFindings struct {
 	Details        pgtype.Text        `json:"details"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
+type DnssecScanResults struct {
+	ID              int32              `json:"id"`
+	Uid             string             `json:"uid"`
+	DomainID        pgtype.Int4        `json:"domain_id"`
+	Status          string             `json:"status"`
+	ValidationError pgtype.Text        `json:"validation_error"`
+	HasDnskey       bool               `json:"has_dnskey"`
+	HasDs           bool               `json:"has_ds"`
+	HasRrsig        bool               `json:"has_rrsig"`
+	Algorithms      []string           `json:"algorithms"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
 type DomainObservations struct {

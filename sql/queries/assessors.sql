@@ -19,6 +19,50 @@ ON CONFLICT (domain_id, nameserver)
                   transfer_details       = $9
 RETURNING (xmax = 0)::boolean AS inserted;
 
+-- name: AssessCreateCertificateFinding :one
+INSERT INTO certificate_findings (domain_id,
+                                  certificate_id,
+                                  severity,
+                                  status,
+                                  issue_type,
+                                  details)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (domain_id, issue_type)
+    DO UPDATE SET certificate_id = $2,
+                  severity       = $3,
+                  status         = $4,
+                  details        = $6
+RETURNING (xmax = 0)::boolean AS inserted;
+
+-- name: AssessGetCertificateFindingsByDomainUID :many
+SELECT cf.*
+FROM certificate_findings cf
+         JOIN domains d ON cf.domain_id = d.id
+WHERE d.uid = $1
+  AND d.tenant_id = $2
+ORDER BY cf.severity ASC, cf.created_at DESC;
+
+-- name: AssessCreateDNSSECFinding :one
+INSERT INTO dnssec_findings (domain_id,
+                             severity,
+                             status,
+                             issue_type,
+                             details)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (domain_id, issue_type)
+    DO UPDATE SET severity = $2,
+                  status   = $3,
+                  details  = $5
+RETURNING (xmax = 0)::boolean AS inserted;
+
+-- name: AssessGetDNSSECFindingsByDomainUID :many
+SELECT df.*
+FROM dnssec_findings df
+         JOIN domains d ON df.domain_id = d.id
+WHERE d.uid = $1
+  AND d.tenant_id = $2
+ORDER BY df.severity ASC, df.created_at DESC;
+
 -- name: AssessCreateSPFFinding :one
 INSERT INTO spf_findings (domain_id,
                           txt_record_id,
@@ -169,6 +213,12 @@ open_findings AS (
     UNION ALL
     SELECT domain_id, severity::text FROM zone_transfer_findings
         WHERE zone_transfer_possible = true AND domain_id = ANY(@domain_ids::int[])
+    UNION ALL
+    SELECT domain_id, severity::text FROM certificate_findings
+        WHERE status = 'open' AND domain_id = ANY(@domain_ids::int[])
+    UNION ALL
+    SELECT domain_id, severity::text FROM dnssec_findings
+        WHERE status = 'open' AND domain_id = ANY(@domain_ids::int[])
 )
 SELECT
     ids.domain_id::int AS domain_id,
@@ -246,7 +296,25 @@ FROM (SELECT sf.uid                AS finding_uid,
       FROM zone_transfer_findings zf
                JOIN domains d ON zf.domain_id = d.id
       WHERE d.tenant_id = @tenant_id
-        AND (@include_compliant::bool OR zf.zone_transfer_possible = true)) f
+        AND (@include_compliant::bool OR zf.zone_transfer_possible = true)
+
+      UNION ALL
+
+      SELECT cf.uid, d.uid, d.name, 'CERT'::text, cf.severity, cf.status,
+             cf.issue_type, NULL::text, cf.details, NULL::text, cf.created_at
+      FROM certificate_findings cf
+               JOIN domains d ON cf.domain_id = d.id
+      WHERE d.tenant_id = @tenant_id
+        AND (@include_compliant::bool OR cf.status = 'open')
+
+      UNION ALL
+
+      SELECT nf.uid, d.uid, d.name, 'DNSSEC'::text, nf.severity, nf.status,
+             nf.issue_type, NULL::text, nf.details, NULL::text, nf.created_at
+      FROM dnssec_findings nf
+               JOIN domains d ON nf.domain_id = d.id
+      WHERE d.tenant_id = @tenant_id
+        AND (@include_compliant::bool OR nf.status = 'open')) f
 ORDER BY f.domain_name ASC,
          CASE f.severity
              WHEN 'critical' THEN 1
@@ -286,6 +354,10 @@ FROM (
         SELECT domain_id, severity::text FROM dmarc_findings WHERE status = 'open'
         UNION ALL
         SELECT domain_id, severity::text FROM zone_transfer_findings WHERE zone_transfer_possible = true
+        UNION ALL
+        SELECT domain_id, severity::text FROM certificate_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM dnssec_findings WHERE status = 'open'
     ) f ON f.domain_id = d.id
     GROUP BY d.tenant_id, d.id
 ) agg

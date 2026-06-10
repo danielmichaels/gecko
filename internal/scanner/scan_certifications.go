@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/rsa"
 	"crypto/tls"
@@ -8,6 +9,10 @@ import (
 	"fmt"
 	"net"
 	"time"
+
+	"github.com/danielmichaels/gecko/internal/observer"
+	"github.com/danielmichaels/gecko/internal/store"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type CertificateResult struct {
@@ -27,7 +32,7 @@ type CertificateResult struct {
 	IsCA          bool
 }
 
-func (s *Scan) ScanCertificate(domain string) *CertificateResult {
+func (s *Scan) ScanCertificate(ctx context.Context, domain string) *CertificateResult {
 	conf := &tls.Config{
 		InsecureSkipVerify: true,
 	}
@@ -51,7 +56,7 @@ func (s *Scan) ScanCertificate(domain string) *CertificateResult {
 	if len(cert.Issuer.Country) > 0 {
 		country = cert.Issuer.Country[0]
 	}
-	return &CertificateResult{
+	result := &CertificateResult{
 		NotBefore:     cert.NotBefore,
 		NotAfter:      cert.NotAfter,
 		Issuer:        cert.Issuer.CommonName,
@@ -67,6 +72,62 @@ func (s *Scan) ScanCertificate(domain string) *CertificateResult {
 		CipherSuite:   tls.CipherSuiteName(conn.ConnectionState().CipherSuite),
 		TLSVersion:    getTLSVersion(conn.ConnectionState().Version),
 	}
+
+	s.storeCertificate(ctx, result)
+	return result
+}
+
+// storeCertificate upserts the certificate scan result into the live projection
+// table and emits its observation. It is a no-op without a real scan identity
+// (zero DomainID in unit tests).
+func (s *Scan) storeCertificate(ctx context.Context, result *CertificateResult) {
+	if s.identity.DomainID == 0 || s.store == nil {
+		return
+	}
+	_, err := s.store.ScannersStoreCertificate(ctx, store.ScannersStoreCertificateParams{
+		DomainID:      pgtype.Int4{Int32: s.identity.DomainID, Valid: true},
+		NotBefore:     pgtype.Timestamptz{Time: result.NotBefore, Valid: true},
+		NotAfter:      pgtype.Timestamptz{Time: result.NotAfter, Valid: true},
+		Issuer:        result.Issuer,
+		IssuerOrgName: pgtype.Text{String: result.IssuerOrgName, Valid: result.IssuerOrgName != ""},
+		IssuerCountry: pgtype.Text{String: result.IssuerCountry, Valid: result.IssuerCountry != ""},
+		Subject:       result.Subject,
+		KeyAlgorithm:  result.KeyAlgorithm,
+		KeyStrength:   int32(result.KeyStrength),
+		Sans:          nonNil(result.SANs),
+		DnsNames:      nonNil(result.DNSNames),
+		IsCa:          result.IsCA,
+		IssuerCertUrl: nonNil(result.IssuerCertURL),
+		CipherSuite:   result.CipherSuite,
+		TlsVersion:    result.TLSVersion,
+	})
+	if err != nil {
+		s.logger.Error("failed to store certificate", "error", err)
+		return
+	}
+
+	payload := observer.PayloadJSON(map[string]any{
+		"issuer":        result.Issuer,
+		"subject":       result.Subject,
+		"not_after":     result.NotAfter.UTC().Format(time.RFC3339),
+		"key_algorithm": result.KeyAlgorithm,
+		"key_strength":  result.KeyStrength,
+		"tls_version":   result.TLSVersion,
+	})
+	if err := observer.New(s.store).RecordFindingChange(
+		ctx, s.identity, observer.EntityCertificate, "certificate", payload,
+	); err != nil {
+		s.logger.Error("failed to emit certificate observation", "error", err)
+	}
+}
+
+// nonNil returns an empty slice for a nil input so NOT NULL array columns never
+// receive a NULL.
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }
 
 func getKeyStrength(cert *x509.Certificate) int {

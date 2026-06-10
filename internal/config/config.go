@@ -136,6 +136,12 @@ type appConf struct {
 	LogConcise         bool `env:"LOG_CONCISE,default=false"`
 	LogResponseHeaders bool `env:"LOG_RESPONSE_HEADERS,default=false"`
 	LogRequestHeaders  bool `env:"LOG_REQUEST_HEADERS,default=true"`
+
+	// Certificate expiry assessment tiers (days until not_after). A certificate
+	// already past not_after is critical; within High days is high; within Medium
+	// days is medium; anything further out is compliant.
+	CertExpiryHighDays   int `env:"CERT_EXPIRY_HIGH_DAYS,default=7"`
+	CertExpiryMediumDays int `env:"CERT_EXPIRY_MEDIUM_DAYS,default=30"`
 }
 type serverConf struct {
 	APIPort      int           `env:"API_SERVER_PORT,default=9090"`

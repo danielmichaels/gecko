@@ -150,3 +150,97 @@ func (w *AssessEmailSecurityWorker) Work(
 	)
 	return nil
 }
+
+type AssessCertificateArgs struct {
+	DomainJobArgs
+}
+
+func (AssessCertificateArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		Queue: queueAssessor,
+	}
+}
+func (AssessCertificateArgs) Kind() string { return "assess_certificate" }
+
+type AssessCertificateWorker struct {
+	river.WorkerDefaults[AssessCertificateArgs]
+	Logger   slog.Logger
+	Store    *store.Queries
+	PgxPool  *pgxpool.Pool
+	Resolver dnsclient.Resolver
+}
+
+func (w *AssessCertificateWorker) Work(
+	ctx context.Context,
+	job *river.Job[AssessCertificateArgs],
+) error {
+	ctx = tracing.WithNewTraceID(ctx, false)
+	start := time.Now()
+	w.Logger.InfoContext(ctx, "assess certificate started", "domain", job.Args.DomainUID)
+	a := assessor.NewAssessor(assessor.Config{
+		Logger:    &w.Logger,
+		Store:     w.Store,
+		DNSClient: w.Resolver,
+		Identity:  job.Args.Identity(),
+	})
+	if err := a.AssessCertificate(ctx, job.Args.DomainUID); err != nil {
+		return err
+	}
+
+	w.Logger.InfoContext(
+		ctx,
+		"assess certificate complete",
+		"domain",
+		job.Args.DomainUID,
+		"duration",
+		time.Since(start),
+	)
+	return nil
+}
+
+type AssessDNSSECArgs struct {
+	DomainJobArgs
+}
+
+func (AssessDNSSECArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		Queue: queueAssessor,
+	}
+}
+func (AssessDNSSECArgs) Kind() string { return "assess_dnssec" }
+
+type AssessDNSSECWorker struct {
+	river.WorkerDefaults[AssessDNSSECArgs]
+	Logger   slog.Logger
+	Store    *store.Queries
+	PgxPool  *pgxpool.Pool
+	Resolver dnsclient.Resolver
+}
+
+func (w *AssessDNSSECWorker) Work(
+	ctx context.Context,
+	job *river.Job[AssessDNSSECArgs],
+) error {
+	ctx = tracing.WithNewTraceID(ctx, false)
+	start := time.Now()
+	w.Logger.InfoContext(ctx, "assess dnssec started", "domain", job.Args.DomainUID)
+	a := assessor.NewAssessor(assessor.Config{
+		Logger:    &w.Logger,
+		Store:     w.Store,
+		DNSClient: w.Resolver,
+		Identity:  job.Args.Identity(),
+	})
+	if err := a.AssessDNSSEC(ctx, job.Args.DomainUID); err != nil {
+		return err
+	}
+
+	w.Logger.InfoContext(
+		ctx,
+		"assess dnssec complete",
+		"domain",
+		job.Args.DomainUID,
+		"duration",
+		time.Since(start),
+	)
+	return nil
+}
