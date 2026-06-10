@@ -19,7 +19,7 @@ import (
 func (s *Scan) ScanZoneTransfer(ctx context.Context, domainName string) (string, error) {
 	domain, err := s.store.DomainsGetByIdentifier(ctx, store.DomainsGetByIdentifierParams{
 		Name:     domainName,
-		TenantID: pgtype.Int4{Int32: 1, Valid: true}, // todo: replace with actual tenant ID
+		TenantID: pgtype.Int4{Int32: s.identity.TenantID, Valid: true},
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
