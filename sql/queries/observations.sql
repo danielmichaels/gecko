@@ -89,6 +89,53 @@ FROM target_scans t
          LEFT JOIN per_scan ps ON ps.scan_id = t.id
 ORDER BY t.started_at DESC, t.id DESC;
 
+-- name: ScansGetByTenantUID :one
+-- Single scan by (tenant_id, uid) with its per-scan change aggregate, for the
+-- scan-detail API. The (tenant_id, uid) WHERE gate is the isolation boundary: a
+-- cross-tenant or unknown uid returns no rows (pgx.ErrNoRows). Mirrors the
+-- aggregate columns of ScansListByTenant and additionally returns the internal
+-- scan id so the caller can fetch this scan's observations. Observation
+-- aggregation is bounded to the single target scan and rides idx_obs_scan.
+WITH target_scan AS (
+    SELECT s.id, s.uid, s.domain_uid, s.domain_name, s.source,
+           s.started_at, s.parent_scan_id
+    FROM scans s
+    WHERE s.tenant_id = @tenant_id
+      AND s.uid = @uid
+),
+change_counts AS (
+    SELECT o.scan_id, o.entity_type, o.change_type, count(*) AS n
+    FROM domain_observations o
+    WHERE o.scan_id IN (SELECT id FROM target_scan)
+    GROUP BY o.scan_id, o.entity_type, o.change_type
+),
+per_scan AS (
+    SELECT scan_id,
+           COALESCE(sum(n) FILTER (WHERE change_type = 'created'), 0) AS created,
+           COALESCE(sum(n) FILTER (WHERE change_type = 'updated'), 0) AS updated,
+           COALESCE(sum(n) FILTER (WHERE change_type = 'deleted'), 0) AS deleted,
+           jsonb_agg(jsonb_build_object(
+               'entity_type', entity_type,
+               'change_type', change_type,
+               'count', n) ORDER BY entity_type, change_type) AS breakdown
+    FROM change_counts
+    GROUP BY scan_id
+)
+SELECT t.id                           AS scan_id,
+       t.uid                          AS scan_uid,
+       t.domain_uid,
+       t.domain_name,
+       t.source,
+       t.started_at,
+       p.uid                          AS parent_scan_uid,
+       COALESCE(ps.created, 0)::int   AS created_count,
+       COALESCE(ps.updated, 0)::int   AS updated_count,
+       COALESCE(ps.deleted, 0)::int   AS deleted_count,
+       COALESCE(ps.breakdown, '[]'::jsonb) AS breakdown
+FROM target_scan t
+         LEFT JOIN scans p ON p.id = t.parent_scan_id
+         LEFT JOIN per_scan ps ON ps.scan_id = t.id;
+
 -- name: ObservationsCreate :one
 -- Append one change to the observation log.
 INSERT INTO domain_observations (tenant_id, domain_id, domain_uid, domain_name, scan_id, entity_type, entity_key,
@@ -131,10 +178,12 @@ WHERE tenant_id = $1
 ORDER BY observed_at DESC;
 
 -- name: ObservationsListByScan :many
--- All observations emitted during a single scan (scan-diff feature).
+-- All observations emitted during a single scan (scan-diff detail), tenant-scoped
+-- for defense-in-depth even though callers verify scan ownership first.
 SELECT id, tenant_id, domain_id, domain_uid, domain_name, scan_id, entity_type, entity_key, change_type, payload, observed_at
 FROM domain_observations
-WHERE scan_id = $1
+WHERE scan_id = sqlc.arg(scan_id)
+  AND tenant_id = sqlc.arg(tenant_id)
 ORDER BY entity_type, entity_key;
 
 -- name: ObservationsListTimelineByTenantDomainName :many

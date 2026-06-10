@@ -141,12 +141,19 @@ const observationsListByScan = `-- name: ObservationsListByScan :many
 SELECT id, tenant_id, domain_id, domain_uid, domain_name, scan_id, entity_type, entity_key, change_type, payload, observed_at
 FROM domain_observations
 WHERE scan_id = $1
+  AND tenant_id = $2
 ORDER BY entity_type, entity_key
 `
 
-// All observations emitted during a single scan (scan-diff feature).
-func (q *Queries) ObservationsListByScan(ctx context.Context, scanID pgtype.Int8) ([]DomainObservations, error) {
-	rows, err := q.db.Query(ctx, observationsListByScan, scanID)
+type ObservationsListByScanParams struct {
+	ScanID   pgtype.Int8 `json:"scan_id"`
+	TenantID int32       `json:"tenant_id"`
+}
+
+// All observations emitted during a single scan (scan-diff detail), tenant-scoped
+// for defense-in-depth even though callers verify scan ownership first.
+func (q *Queries) ObservationsListByScan(ctx context.Context, arg ObservationsListByScanParams) ([]DomainObservations, error) {
+	rows, err := q.db.Query(ctx, observationsListByScan, arg.ScanID, arg.TenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -406,6 +413,92 @@ func (q *Queries) ScansCreate(ctx context.Context, arg ScansCreateParams) (Scans
 		&i.ParentScanID,
 		&i.Source,
 		&i.StartedAt,
+	)
+	return i, err
+}
+
+const scansGetByTenantUID = `-- name: ScansGetByTenantUID :one
+WITH target_scan AS (
+    SELECT s.id, s.uid, s.domain_uid, s.domain_name, s.source,
+           s.started_at, s.parent_scan_id
+    FROM scans s
+    WHERE s.tenant_id = $1
+      AND s.uid = $2
+),
+change_counts AS (
+    SELECT o.scan_id, o.entity_type, o.change_type, count(*) AS n
+    FROM domain_observations o
+    WHERE o.scan_id IN (SELECT id FROM target_scan)
+    GROUP BY o.scan_id, o.entity_type, o.change_type
+),
+per_scan AS (
+    SELECT scan_id,
+           COALESCE(sum(n) FILTER (WHERE change_type = 'created'), 0) AS created,
+           COALESCE(sum(n) FILTER (WHERE change_type = 'updated'), 0) AS updated,
+           COALESCE(sum(n) FILTER (WHERE change_type = 'deleted'), 0) AS deleted,
+           jsonb_agg(jsonb_build_object(
+               'entity_type', entity_type,
+               'change_type', change_type,
+               'count', n) ORDER BY entity_type, change_type) AS breakdown
+    FROM change_counts
+    GROUP BY scan_id
+)
+SELECT t.id                           AS scan_id,
+       t.uid                          AS scan_uid,
+       t.domain_uid,
+       t.domain_name,
+       t.source,
+       t.started_at,
+       p.uid                          AS parent_scan_uid,
+       COALESCE(ps.created, 0)::int   AS created_count,
+       COALESCE(ps.updated, 0)::int   AS updated_count,
+       COALESCE(ps.deleted, 0)::int   AS deleted_count,
+       COALESCE(ps.breakdown, '[]'::jsonb) AS breakdown
+FROM target_scan t
+         LEFT JOIN scans p ON p.id = t.parent_scan_id
+         LEFT JOIN per_scan ps ON ps.scan_id = t.id
+`
+
+type ScansGetByTenantUIDParams struct {
+	TenantID int32  `json:"tenant_id"`
+	Uid      string `json:"uid"`
+}
+
+type ScansGetByTenantUIDRow struct {
+	ScanID        int64              `json:"scan_id"`
+	ScanUid       string             `json:"scan_uid"`
+	DomainUid     string             `json:"domain_uid"`
+	DomainName    string             `json:"domain_name"`
+	Source        DomainSource       `json:"source"`
+	StartedAt     pgtype.Timestamptz `json:"started_at"`
+	ParentScanUid pgtype.Text        `json:"parent_scan_uid"`
+	CreatedCount  int32              `json:"created_count"`
+	UpdatedCount  int32              `json:"updated_count"`
+	DeletedCount  int32              `json:"deleted_count"`
+	Breakdown     []byte             `json:"breakdown"`
+}
+
+// Single scan by (tenant_id, uid) with its per-scan change aggregate, for the
+// scan-detail API. The (tenant_id, uid) WHERE gate is the isolation boundary: a
+// cross-tenant or unknown uid returns no rows (pgx.ErrNoRows). Mirrors the
+// aggregate columns of ScansListByTenant and additionally returns the internal
+// scan id so the caller can fetch this scan's observations. Observation
+// aggregation is bounded to the single target scan and rides idx_obs_scan.
+func (q *Queries) ScansGetByTenantUID(ctx context.Context, arg ScansGetByTenantUIDParams) (ScansGetByTenantUIDRow, error) {
+	row := q.db.QueryRow(ctx, scansGetByTenantUID, arg.TenantID, arg.Uid)
+	var i ScansGetByTenantUIDRow
+	err := row.Scan(
+		&i.ScanID,
+		&i.ScanUid,
+		&i.DomainUid,
+		&i.DomainName,
+		&i.Source,
+		&i.StartedAt,
+		&i.ParentScanUid,
+		&i.CreatedCount,
+		&i.UpdatedCount,
+		&i.DeletedCount,
+		&i.Breakdown,
 	)
 	return i, err
 }
