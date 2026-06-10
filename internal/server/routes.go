@@ -21,7 +21,7 @@ import (
 func (app *Server) routes() http.Handler {
 	router := chi.NewMux()
 	router.Use(middleware.Recoverer)
-	router.Use(middleware.RealIP)
+	router.Use(middleware.ClientIPFromRemoteAddr)
 	router.Use(traceMiddleware)
 	router.Use(compressExceptSSE(5))
 	router.Use(httplog.RequestLogger(httpLogger(app.Conf)))
@@ -35,11 +35,12 @@ func (app *Server) routes() http.Handler {
 			Name: "X-API-Key",
 		},
 	}
-	api := humachi.New(router, cfg)
-	autopatch.AutoPatch(api)
-
 	cfg.Info.Title = "gecko API"
 	cfg.Info.Description = "API for the gecko application"
+	cfg.DocsRenderer = huma.DocsRendererScalar
+
+	api := humachi.New(router, cfg)
+	autopatch.AutoPatch(api)
 
 	router.Get("/scalar", app.handleScalarDocsGet)
 
@@ -220,6 +221,18 @@ func (app *Server) registerEndpoints(api huma.API) {
 		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
 		Middlewares:   huma.Middlewares{app.apiAuth(api)},
 	}, app.handleFindingsList)
+
+	// Scans handlers
+	huma.Register(api, huma.Operation{
+		OperationID:   "list_scans",
+		Method:        http.MethodGet,
+		Path:          "/api/scans",
+		Summary:       "List the tenant-wide scan feed (newest first)",
+		Tags:          []string{"Scans"},
+		DefaultStatus: http.StatusOK,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
+	}, app.handleScansList)
 
 	// Auth handlers (public: signup, login, accept-invite)
 	huma.Register(api, huma.Operation{
