@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/danielmichaels/gecko/internal/auth"
 	"github.com/danielmichaels/gecko/internal/store"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -135,6 +137,81 @@ type FlatScanView struct {
 type FlatScansResult struct {
 	Scans      []FlatScanView
 	TotalCount int64
+}
+
+// ScanObservationDetail is one observation row in a scan's diff detail: the
+// entity that changed, how it changed (change_type: created|updated|deleted), and
+// its recorded payload. UI-only glyph/class fields are intentionally excluded —
+// this is the machine-facing shape.
+type ScanObservationDetail struct {
+	ObservedAt time.Time
+	EntityType string
+	EntityKey  string
+	ChangeType string
+	Payload    json.RawMessage
+}
+
+// ScanDetailView is a single scan — its FlatScanView header and change aggregate
+// — plus the per-observation diff detail, for the scan-detail API.
+type ScanDetailView struct {
+	Observations []ScanObservationDetail
+	FlatScanView
+}
+
+// GetByUID returns one scan by its uid with its change aggregate and full
+// per-observation diff detail. Tenant isolation is the (tenant_id, uid) gate in
+// ScansGetByTenantUID — a cross-tenant or unknown uid yields ErrNotFound. The
+// header derivation (state, counts, breakdown) is reused from the list path via
+// mapScanRow/flatScanView so both endpoints stay in lockstep.
+func (s *ScansService) GetByUID(
+	ctx context.Context,
+	p *auth.Principal,
+	uid string,
+) (ScanDetailView, error) {
+	row, err := s.DB.ScansGetByTenantUID(ctx, store.ScansGetByTenantUIDParams{
+		TenantID: p.TenantID,
+		Uid:      uid,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ScanDetailView{}, ErrNotFound
+		}
+		return ScanDetailView{}, fmt.Errorf("get scan: %w", err)
+	}
+
+	head := flatScanView(mapScanRow(store.ScansListByTenantRow{
+		ScanUid:       row.ScanUid,
+		DomainUid:     row.DomainUid,
+		DomainName:    row.DomainName,
+		Source:        row.Source,
+		StartedAt:     row.StartedAt,
+		ParentScanUid: row.ParentScanUid,
+		CreatedCount:  row.CreatedCount,
+		UpdatedCount:  row.UpdatedCount,
+		DeletedCount:  row.DeletedCount,
+		Breakdown:     row.Breakdown,
+	}, time.Now()))
+
+	obsRows, err := s.DB.ObservationsListByScan(ctx, store.ObservationsListByScanParams{
+		ScanID:   pgtype.Int8{Int64: row.ScanID, Valid: true},
+		TenantID: p.TenantID,
+	})
+	if err != nil {
+		return ScanDetailView{}, fmt.Errorf("list scan observations: %w", err)
+	}
+
+	observations := make([]ScanObservationDetail, 0, len(obsRows))
+	for _, o := range obsRows {
+		observations = append(observations, ScanObservationDetail{
+			EntityType: o.EntityType,
+			EntityKey:  o.EntityKey,
+			ChangeType: o.ChangeType,
+			Payload:    json.RawMessage(o.Payload),
+			ObservedAt: o.ObservedAt.Time,
+		})
+	}
+
+	return ScanDetailView{FlatScanView: head, Observations: observations}, nil
 }
 
 // ListByTenantFlat returns the tenant scan feed as a flat, newest-first, paginated

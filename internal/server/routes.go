@@ -211,6 +211,16 @@ func (app *Server) registerEndpoints(api huma.API) {
 		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
 		Middlewares:   huma.Middlewares{app.apiAuth(api)},
 	}, app.handleScansList)
+	huma.Register(api, huma.Operation{
+		OperationID:   "get_scan",
+		Method:        http.MethodGet,
+		Path:          "/api/scans/{uid}",
+		Summary:       "Get a single scan with its per-observation diff detail",
+		Tags:          []string{"Scans"},
+		DefaultStatus: http.StatusOK,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
+	}, app.handleScanDetail)
 
 	// Auth handlers (public: signup, login, accept-invite)
 	huma.Register(api, huma.Operation{

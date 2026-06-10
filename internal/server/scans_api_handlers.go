@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -105,5 +107,63 @@ func (app *Server) handleScansList(
 	resp := &ScansListOutput{}
 	resp.Body.Pagination = &pagination
 	resp.Body.Scans = items
+	return resp, nil
+}
+
+// ScanObservationItem is one entity-level change recorded during a scan, the
+// machine-facing diff row.
+type ScanObservationItem struct {
+	ObservedAt time.Time       `json:"observed_at"`
+	EntityType string          `json:"entity_type"`
+	EntityKey  string          `json:"entity_key"`
+	ChangeType string          `json:"change_type"`
+	Payload    json.RawMessage `json:"payload"`
+}
+
+type ScanDetailInput struct {
+	UID string `path:"uid" example:"scan_00000001" doc:"Scan UID"`
+}
+
+type ScanDetailOutput struct {
+	Body struct {
+		Scan         ScanItem              `json:"scan"`
+		Observations []ScanObservationItem `json:"observations"`
+	}
+}
+
+// handleScanDetail serves a single scan by uid: its change aggregate (same shape
+// as a feed row) plus the full per-observation diff detail. Tenant-scoped — an
+// unknown or cross-tenant uid is a 404.
+func (app *Server) handleScanDetail(
+	ctx context.Context,
+	i *ScanDetailInput,
+) (*ScanDetailOutput, error) {
+	p, err := principalOrErr(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	detail, err := app.Svc.ScansService().GetByUID(ctx, p, i.UID)
+	if err != nil {
+		if errors.Is(err, service.ErrNotFound) {
+			return nil, huma.Error404NotFound("scan not found")
+		}
+		return nil, huma.Error500InternalServerError("failed to get scan", err)
+	}
+
+	observations := make([]ScanObservationItem, 0, len(detail.Observations))
+	for _, o := range detail.Observations {
+		observations = append(observations, ScanObservationItem{
+			EntityType: o.EntityType,
+			EntityKey:  o.EntityKey,
+			ChangeType: o.ChangeType,
+			Payload:    o.Payload,
+			ObservedAt: o.ObservedAt,
+		})
+	}
+
+	resp := &ScanDetailOutput{}
+	resp.Body.Scan = toScanItem(detail.FlatScanView)
+	resp.Body.Observations = observations
 	return resp, nil
 }
