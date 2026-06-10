@@ -31,17 +31,38 @@ templ AppShell(props AppShellProps) {
 					<span class="dot"></span>
 					{ props.TenantName }
 				</div>
-				<form
-					method="POST"
-					action="/app/logout"
-					style="display:inline"
-					data-on:submit__prevent={ postWithCSRF("/app/logout", props.CSRFToken) }
-				>
-					<button type="submit" class="user-chip" style="background:transparent;border:1px solid var(--line);cursor:pointer">
+				<div class="user-menu" data-signals='{"userMenu":false}'>
+					<button
+						type="button"
+						class="user-chip"
+						aria-haspopup="menu"
+						data-attr:aria-expanded="$userMenu"
+						data-on:click="$userMenu = !$userMenu"
+					>
 						<span class="avatar">{ props.UserInitials }</span>
 						<span>{ props.UserEmail } ▾</span>
 					</button>
-				</form>
+					<div
+						class="user-menu-backdrop"
+						style="display:none"
+						data-show="$userMenu"
+						data-on:click="$userMenu = false"
+					></div>
+					<div class="user-menu-pop" role="menu" style="display:none" data-show="$userMenu">
+						<a class="user-menu-item" role="menuitem" href="/app/settings">
+							<span class="ico">⚙</span> Settings
+						</a>
+						<div class="user-menu-sep"></div>
+						<button
+							type="button"
+							class="user-menu-item danger"
+							role="menuitem"
+							data-on:click={ logoutAction(props.CSRFToken) }
+						>
+							<span class="ico">⤴</span> Log out
+						</button>
+					</div>
+				</div>
 			</div>
 		</div>
 		<nav class="side">

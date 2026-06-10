@@ -12,6 +12,13 @@ func postWithCSRF(url, token string) string {
 	return fmt.Sprintf("@post('%s', {headers: {'X-CSRF-Token': '%s'}})", url, token)
 }
 
+// logoutAction returns the data-on:click expression for the user-menu logout item:
+// confirm, then POST to /app/logout with the CSRF token. The handler revokes the
+// session, clears the cookie, and SSE-redirects to the login page.
+func logoutAction(token string) string {
+	return "if(!confirm('Log out of gecko?')) return; " + postWithCSRF("/app/logout", token)
+}
+
 // postWithConfirm returns a data-on-click action that confirms before POSTing to
 // url with the CSRF token. Used for bulk/irreversible actions like rescan-all.
 func postWithConfirm(message, url, token string) string {

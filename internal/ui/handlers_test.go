@@ -1570,6 +1570,42 @@ func TestHandlerResetPassword_Post_InvalidToken(t *testing.T) {
 	}
 }
 
+func TestAppShell_UserMenu_LogoutAffordance(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+	cookie, _ := h.loginCookie(t, "usermenu@example.com", "pass1234")
+
+	rr := h.do(t, http.MethodGet, "/app/domains", nil, cookie, "")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET /app/domains: want 200, got %d", rr.Code)
+	}
+	body := rr.Body.String()
+
+	// The chip toggles a dropdown rather than navigating away.
+	if !strings.Contains(body, "user-menu") || !strings.Contains(body, "$userMenu") {
+		t.Error("app shell: user chip should toggle a dropdown menu")
+	}
+	// Logout is a confirmed, CSRF-bearing POST (the proven action pattern), not a
+	// bare <form action="/app/logout"> that navigates.
+	if !strings.Contains(body, "confirm(") {
+		t.Error("app shell: logout should prompt for confirmation")
+	}
+	if !strings.Contains(body, "@post(") || !strings.Contains(body, "/app/logout") ||
+		!strings.Contains(body, "X-CSRF-Token") {
+		t.Error("app shell: logout should POST /app/logout with a CSRF token")
+	}
+	if strings.Contains(body, `action="/app/logout"`) {
+		t.Error("app shell: the old navigating logout form should be gone")
+	}
+}
+
 // min is a small helper to avoid panics when slicing body for error messages.
 func min(a, b int) int {
 	if a < b {
