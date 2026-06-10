@@ -19,11 +19,13 @@ templ DomainDetailPage(props DomainDetailPageProps) {
 				</div>
 				<div class="page-head" style="margin-top:-6px">
 					<div class="sub">{ props.Type } · { props.Source } · added { props.Added } · scanned { props.Scanned }</div>
-					<button
-						class="btn"
-						type="button"
-						data-on:click={ postWithCSRF("/app/domains/"+props.UID+"/rescan", props.Shell.CSRFToken) }
-					>⟳ Rescan</button>
+					if props.Shell.CanManageDomains {
+						<button
+							class="btn"
+							type="button"
+							data-on:click={ postWithCSRF("/app/domains/"+props.UID+"/rescan", props.Shell.CSRFToken) }
+						>⟳ Rescan</button>
+					}
 				</div>
 				<div class="tabs">
 					<a data-on:click__prevent="$tab = 'records'" data-class="{'active': $tab === 'records'}">Records</a>

@@ -144,6 +144,37 @@ check 403 "viewer CANNOT create an API key (control)"
 req PUT "/api/users/$VIEWER_UID" "$OWNER_KEY" "{\"email\":\"$VIEWER_EMAIL\",\"role\":\"owner\"}"
 check 200 "owner CAN promote to owner (control)"
 
+# the promote above re-roled the viewer; mint a fresh viewer for the domain checks
+DGUARD_VIEWER_EMAIL="dguard-viewer+$TS@a.test"
+invite_accept "$DGUARD_VIEWER_EMAIL" viewer; DGUARD_VIEWER_KEY="$INVITED_KEY"
+
+# ── domain mutation role guard: viewers are read-only for domains ────────────────
+echo
+echo "Domains — ownerOrManager guard on create/update/delete"
+
+req POST /api/domains "$OWNER_KEY" "{\"domain\":\"guard-$TS.example.com\"}"
+check 201 "owner CAN create a domain (control)"
+DGUARD_UID="$(jqr .uid)"; need "$DGUARD_UID" "guarded domain uid"
+
+req POST /api/domains "$DGUARD_VIEWER_KEY" "{\"domain\":\"viewer-$TS.example.com\"}"
+check 403 "viewer CANNOT create a domain"
+
+req PUT "/api/domains/$DGUARD_UID" "$DGUARD_VIEWER_KEY" '{"status":"inactive"}'
+check 403 "viewer CANNOT update a domain"
+
+req DELETE "/api/domains/$DGUARD_UID" "$DGUARD_VIEWER_KEY"
+check 403 "viewer CANNOT delete a domain"
+
+# the forbidden delete left the domain intact
+req GET "/api/domains/$DGUARD_UID" "$OWNER_KEY"
+check 200 "domain survives the forbidden viewer delete (control)"
+
+req PUT "/api/domains/$DGUARD_UID" "$MGR_KEY" '{"status":"active"}'
+check 200 "manager CAN update a domain (control)"
+
+req DELETE "/api/domains/$DGUARD_UID" "$OWNER_KEY"
+check 204 "owner CAN delete a domain (control)"
+
 # ── last-owner guard: a tenant can never be orphaned ─────────────────────────────
 echo
 echo "Tenant integrity — withLastOwnerGuard (fresh sole-owner tenant)"

@@ -79,13 +79,14 @@ func TestDomainsPageRender(t *testing.T) {
 	var buf bytes.Buffer
 	props := templates.DomainsPageProps{
 		Shell: templates.AppShellProps{
-			TenantName:   "acme-corp",
-			UserEmail:    "daniel",
-			UserInitials: "DM",
-			ActiveNav:    "domains",
-			AppVersion:   "v0.3.1-alpha",
-			ResolverOK:   true,
-			CSRFToken:    "tok",
+			TenantName:       "acme-corp",
+			UserEmail:        "daniel",
+			UserInitials:     "DM",
+			ActiveNav:        "domains",
+			AppVersion:       "v0.3.1-alpha",
+			ResolverOK:       true,
+			CSRFToken:        "tok",
+			CanManageDomains: true,
 		},
 		Stats: templates.DomainsStats{
 			Tracked:  "3",
@@ -145,6 +146,46 @@ func TestDomainsPageRender(t *testing.T) {
 	}
 }
 
+// TestDomainsPageControlsGatedForViewer pins the page-chrome gate: a viewer
+// (CanManageDomains=false) sees the list but none of the mutation controls —
+// no rescan-all, no add-domain button, no add drawer. The server guard remains
+// the backstop; this keeps the UI honest about what the viewer may do.
+func TestDomainsPageControlsGatedForViewer(t *testing.T) {
+	var buf bytes.Buffer
+	props := templates.DomainsPageProps{
+		Shell: templates.AppShellProps{
+			ActiveNav:        "domains",
+			CSRFToken:        "tok",
+			CanManageDomains: false,
+		},
+		Stats:  templates.DomainsStats{Tracked: "1"},
+		Layout: "flat",
+		Domains: []templates.DomainRowView{
+			{UID: "dom_001", Name: "example.com", FindingsSeverity: "ok"},
+		},
+	}
+	if err := templates.DomainsPage(props).Render(context.Background(), &buf); err != nil {
+		t.Fatalf("DomainsPage render error: %v", err)
+	}
+	out := buf.String()
+	// The viewer still sees the list itself.
+	if !strings.Contains(out, "example.com") {
+		t.Error("expected the domain list to render for a viewer")
+	}
+	if strings.Contains(out, "Rescan all tracked domains?") {
+		t.Error("viewer must not see the rescan-all control")
+	}
+	if strings.Contains(out, "$drawerOpen = true") {
+		t.Error("viewer must not see the add-domain trigger")
+	}
+	if strings.Contains(out, `class="drawer"`) {
+		t.Error("viewer must not see the add-domain drawer")
+	}
+	if strings.Contains(out, "@delete(") {
+		t.Error("viewer must not see any row delete control")
+	}
+}
+
 func TestDomainTableBodyNestedRender(t *testing.T) {
 	props := templates.DomainsPageProps{
 		Layout: "nested",
@@ -177,7 +218,7 @@ func TestDomainTableBodyNestedRender(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	if err := templates.DomainTableBody(props, "tok").Render(context.Background(), &buf); err != nil {
+	if err := templates.DomainTableBody(props, "tok", true).Render(context.Background(), &buf); err != nil {
 		t.Fatalf("DomainTableBody render error: %v", err)
 	}
 	out := buf.String()
@@ -250,7 +291,7 @@ func TestDomainRowsFragmentRender(t *testing.T) {
 			LastScan:         "1h ago",
 		},
 	}
-	if err := templates.DomainRowsFragment(rows, "tok").Render(context.Background(), &buf); err != nil {
+	if err := templates.DomainRowsFragment(rows, "tok", true).Render(context.Background(), &buf); err != nil {
 		t.Fatalf("DomainRowsFragment render error: %v", err)
 	}
 	if !strings.Contains(buf.String(), "a.example.com") {
@@ -258,7 +299,7 @@ func TestDomainRowsFragmentRender(t *testing.T) {
 	}
 
 	var empty bytes.Buffer
-	if err := templates.DomainRowsFragment(nil, "tok").Render(context.Background(), &empty); err != nil {
+	if err := templates.DomainRowsFragment(nil, "tok", true).Render(context.Background(), &empty); err != nil {
 		t.Fatalf("DomainRowsFragment empty render error: %v", err)
 	}
 	if !strings.Contains(empty.String(), "trow-empty") {
@@ -277,7 +318,7 @@ func TestDomainRowRender(t *testing.T) {
 		FindingsSeverity: "warn",
 		LastScan:         "3d ago",
 	}
-	err := templates.DomainRow(row, "csrf-tok").Render(context.Background(), &buf)
+	err := templates.DomainRow(row, "csrf-tok", true).Render(context.Background(), &buf)
 	if err != nil {
 		t.Fatalf("DomainRow render error: %v", err)
 	}
@@ -287,6 +328,40 @@ func TestDomainRowRender(t *testing.T) {
 	}
 	if !strings.Contains(out, "domain-row-dom_002") {
 		t.Error("expected row id in DomainRow output")
+	}
+	// canManage=true renders the delete control (the ✕ button).
+	if !strings.Contains(out, "✕") {
+		t.Error("expected delete control for a manager")
+	}
+}
+
+// TestDomainRowDeleteGatedByRole pins the per-row delete control to owner/manager:
+// a viewer (canManage=false) sees the row but no delete button, mirroring the
+// service-layer guard so the hidden control matches what the API would reject.
+func TestDomainRowDeleteGatedByRole(t *testing.T) {
+	row := templates.DomainRowView{
+		UID:              "dom_003",
+		Name:             "viewer.example.com",
+		Severity:         "ok",
+		RecordCount:      "3",
+		FindingsLabel:    "healthy",
+		FindingsSeverity: "ok",
+		LastScan:         "2h ago",
+	}
+
+	var viewer bytes.Buffer
+	if err := templates.DomainRow(row, "tok", false).Render(context.Background(), &viewer); err != nil {
+		t.Fatalf("DomainRow viewer render error: %v", err)
+	}
+	vout := viewer.String()
+	if !strings.Contains(vout, "viewer.example.com") {
+		t.Error("expected the row itself to render for a viewer")
+	}
+	if strings.Contains(vout, "✕") {
+		t.Error("viewer must not see the delete control")
+	}
+	if strings.Contains(vout, "@delete(") {
+		t.Error("viewer output should not wire a delete action")
 	}
 }
 

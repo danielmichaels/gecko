@@ -33,6 +33,11 @@ const maxListDomains = 5000
 // bounds the flat-list DOM, not the underlying fetch.
 const flatPageSize = 50
 
+// permissionDeniedDesc is the toast body shown when a viewer attempts a domain
+// mutation. The controls are hidden for viewers, so this is the backstop for a
+// forged or stale request rather than the primary feedback path.
+const permissionDeniedDesc = "You don't have permission to modify domains"
+
 // handleDomainsGet renders the full domains list page.
 func (h *Handlers) handleDomainsGet(w http.ResponseWriter, r *http.Request) {
 	p, ok := PrincipalFrom(r.Context())
@@ -133,6 +138,7 @@ func (h *Handlers) handleDomainsGet(w http.ResponseWriter, r *http.Request) {
 	if isDatastar {
 		sse := datastar.NewSSE(w, r)
 		csrf := CSRFTokenFrom(r.Context())
+		canManage := service.OwnerOrManager(p)
 		if layout == "flat" {
 			// DOM pagination over the in-memory filtered set: offset 0 replaces the
 			// list, a later offset appends the next page. The offset signal is
@@ -155,7 +161,7 @@ func (h *Handlers) handleDomainsGet(w http.ResponseWriter, r *http.Request) {
 			}
 			if start == 0 || len(page) > 0 {
 				_ = sse.PatchElementTempl(
-					templates.DomainRowsFragment(page, csrf),
+					templates.DomainRowsFragment(page, csrf, canManage),
 					datastar.WithSelectorID("domains-rows"),
 					mode,
 				)
@@ -171,7 +177,7 @@ func (h *Handlers) handleDomainsGet(w http.ResponseWriter, r *http.Request) {
 					Layout:  layout,
 					Domains: rows,
 					Groups:  groups,
-				}, csrf),
+				}, csrf, canManage),
 				datastar.WithSelectorID("domains-rows"),
 				datastar.WithModeInner(),
 			)
@@ -301,6 +307,10 @@ func (h *Handlers) handleDomainCreate(w http.ResponseWriter, r *http.Request) {
 		Domain: form.NewDomain,
 	})
 	if err != nil {
+		if errors.Is(err, service.ErrForbidden) {
+			pushToast(sse, newToast("warn", "NOTICE", "Permission denied", permissionDeniedDesc))
+			return
+		}
 		if errors.Is(err, service.ErrConflict) {
 			pushToast(sse, newToast("warn", "NOTICE", "Domain already tracked", form.NewDomain))
 			return
@@ -327,7 +337,7 @@ func (h *Handlers) handleDomainCreate(w http.ResponseWriter, r *http.Request) {
 			Layout:  "nested",
 			Domains: rows,
 			Groups:  groupDomainsByApex(rows),
-		}, CSRFTokenFrom(r.Context())),
+		}, CSRFTokenFrom(r.Context()), service.OwnerOrManager(p)),
 		datastar.WithSelectorID("domains-rows"),
 		datastar.WithModeInner(),
 	)
@@ -354,6 +364,11 @@ func (h *Handlers) handleDomainDelete(w http.ResponseWriter, r *http.Request) {
 	sse := datastar.NewSSE(w, r)
 
 	err := h.svc.DomainsService().Delete(r.Context(), p, uid)
+	if errors.Is(err, service.ErrForbidden) {
+		// Leave the row in place; the viewer never had permission to remove it.
+		pushToast(sse, newToast("warn", "NOTICE", "Permission denied", permissionDeniedDesc))
+		return
+	}
 	if err != nil && !errors.Is(err, service.ErrNotFound) {
 		h.log.Error("domain delete", "error", err, "uid", uid)
 	}
@@ -613,6 +628,10 @@ func (h *Handlers) handleDomainRescan(w http.ResponseWriter, r *http.Request) {
 	d, err := h.svc.DomainsService().Update(r.Context(), p, uid, service.DomainsUpdateParams{})
 	if err != nil {
 		sse := datastar.NewSSE(w, r)
+		if errors.Is(err, service.ErrForbidden) {
+			pushToast(sse, newToast("warn", "NOTICE", "Permission denied", permissionDeniedDesc))
+			return
+		}
 		if errors.Is(err, service.ErrNotFound) {
 			pushToast(sse, newToast("warn", "NOTICE", "Domain not found", "nothing to rescan"))
 			return
@@ -658,6 +677,12 @@ func (h *Handlers) handleDomainsRescanAll(w http.ResponseWriter, r *http.Request
 	for _, d := range result.Domains {
 		updated, uErr := h.svc.DomainsService().
 			Update(r.Context(), p, d.Uid, service.DomainsUpdateParams{})
+		if errors.Is(uErr, service.ErrForbidden) {
+			// Role is per-principal, not per-domain: the first rejection means every
+			// rescan would be rejected. Stop and surface a single toast.
+			pushToast(sse, newToast("warn", "NOTICE", "Permission denied", permissionDeniedDesc))
+			return
+		}
 		if uErr != nil {
 			h.log.Warn("domains rescan all: update", "error", uErr, "uid", d.Uid)
 			continue
@@ -669,7 +694,7 @@ func (h *Handlers) handleDomainsRescanAll(w http.ResponseWriter, r *http.Request
 		view.FindingsSeverity = "info"
 
 		_ = sse.PatchElementTempl(
-			templates.DomainRow(view, csrfToken),
+			templates.DomainRow(view, csrfToken, service.OwnerOrManager(p)),
 			datastar.WithSelectorID("domain-row-"+d.Uid),
 		)
 	}

@@ -43,9 +43,9 @@ type PostgresContainer struct {
 }
 
 type sharedTemplateState struct {
-	once sync.Once
-	name string
 	err  error
+	name string
+	once sync.Once
 }
 
 var (
@@ -250,22 +250,26 @@ func templateHash() (string, error) {
 }
 
 func hashEmbeddedMigrations(h hash.Hash) error {
-	return fs.WalkDir(assets.EmbeddedAssets, "migrations", func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
+	return fs.WalkDir(
+		assets.EmbeddedAssets,
+		"migrations",
+		func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				return nil
+			}
+			b, err := assets.EmbeddedAssets.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			_, _ = h.Write([]byte(path))
+			_, _ = h.Write([]byte{0})
+			_, _ = h.Write(b)
 			return nil
-		}
-		b, err := assets.EmbeddedAssets.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		_, _ = h.Write([]byte(path))
-		_, _ = h.Write([]byte{0})
-		_, _ = h.Write(b)
-		return nil
-	})
+		},
+	)
 }
 
 func ensureTemplateDatabase(ctx context.Context, adminURL, templateName string) error {
@@ -291,21 +295,14 @@ func ensureTemplateDatabase(ctx context.Context, adminURL, templateName string) 
 			return err
 		}
 		if err := prepareTemplateDatabase(ctx, connStr); err != nil {
-			_, _ = conn.ExecContext(ctx, "DROP DATABASE IF EXISTS "+quoteIdent(templateName)+" WITH (FORCE)")
+			_, _ = conn.ExecContext(
+				ctx,
+				"DROP DATABASE IF EXISTS "+quoteIdent(templateName)+" WITH (FORCE)",
+			)
 			return err
 		}
 		return nil
 	})
-}
-
-func prepareDatabase(
-	ctx context.Context,
-	connStr string,
-) (*pgxpool.Pool, *store.Queries, error) {
-	if err := prepareTemplateDatabase(ctx, connStr); err != nil {
-		return nil, nil, err
-	}
-	return connectDatabase(ctx, connStr)
 }
 
 func prepareTemplateDatabase(ctx context.Context, connStr string) error {

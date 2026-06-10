@@ -22,7 +22,11 @@ import (
 // newAuthAPI builds a real Server over the test container and serves it via httptest
 // so requests exercise the full chi → huma → apiAuth → handler chain. RC is nil; the
 // auth/read/delete paths under test never enqueue a job.
-func newAuthAPI(t *testing.T, pc *testhelpers.PostgresContainer) (*Server, string) {
+func newAuthAPI(
+	t *testing.T,
+	pc *testhelpers.PostgresContainer,
+	sched ...service.DomainScanScheduler,
+) (*Server, string) {
 	t.Helper()
 	cfg := config.AppConfig()
 	cfg.Auth.BcryptCost = 4 // fast hashing for tests
@@ -31,12 +35,16 @@ func newAuthAPI(t *testing.T, pc *testhelpers.PostgresContainer) (*Server, strin
 	if err != nil {
 		t.Fatalf("new provider: %v", err)
 	}
+	var scheduler service.DomainScanScheduler
+	if len(sched) > 0 {
+		scheduler = sched[0]
+	}
 	svc := service.NewWithScheduler(
 		cfg,
 		slog.New(slog.DiscardHandler),
 		pc.Queries,
 		pc.Pool,
-		nil,
+		scheduler,
 		provider,
 	)
 	testCSRFKey := make([]byte, 32) // deterministic zero-filled key for tests

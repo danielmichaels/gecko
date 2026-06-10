@@ -223,6 +223,9 @@ func (s *DomainsService) Create(
 	p *auth.Principal,
 	params DomainsCreateParams,
 ) (store.Domains, error) {
+	if err := ownerOrManager(p); err != nil {
+		return store.Domains{}, err
+	}
 	name := dnsrecords.CanonicalizeDomain(params.Domain)
 
 	status := store.DomainStatusActive
@@ -303,6 +306,9 @@ func (s *DomainsService) Update(
 	uid string,
 	params DomainsUpdateParams,
 ) (store.Domains, error) {
+	if err := ownerOrManager(p); err != nil {
+		return store.Domains{}, err
+	}
 	existing, err := s.DB.DomainsGetByID(ctx, store.DomainsGetByIDParams{
 		Uid:      uid,
 		TenantID: pgtype.Int4{Int32: p.TenantID, Valid: true},
@@ -379,6 +385,9 @@ func (s *DomainsService) Delete(
 	p *auth.Principal,
 	uid string,
 ) error {
+	if err := ownerOrManager(p); err != nil {
+		return err
+	}
 	_, err := s.DB.DomainsDeleteByID(ctx, store.DomainsDeleteByIDParams{
 		Uid:      uid,
 		TenantID: pgtype.Int4{Int32: p.TenantID, Valid: true},

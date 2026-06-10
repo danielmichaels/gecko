@@ -11,11 +11,13 @@ templ DomainsPage(props DomainsPageProps) {
 							{ props.Stats.Tracked } tracked · { props.Stats.Critical } critical · { props.Stats.Warnings } warnings
 						</div>
 					</div>
-					<button
-						class="btn-ghost btn"
-						type="button"
-						data-on:click={ postWithConfirm("Rescan all tracked domains?", "/app/domains/rescan", props.Shell.CSRFToken) }
-					>⟳ Rescan all</button>
+					if props.Shell.CanManageDomains {
+						<button
+							class="btn-ghost btn"
+							type="button"
+							data-on:click={ postWithConfirm("Rescan all tracked domains?", "/app/domains/rescan", props.Shell.CSRFToken) }
+						>⟳ Rescan all</button>
+					}
 				</div>
 				<div class="stats">
 					<div class="stat">
@@ -65,11 +67,13 @@ templ DomainsPage(props DomainsPageProps) {
 							data-on:click="$layout = 'flat'; $offset = 0; @get('/app/domains')"
 						><span class="gly">≡</span> Flat</button>
 					</div>
-					<button
-						class="btn btn-add"
-						type="button"
-						data-on:click="$drawerOpen = true"
-					>+ Add domain</button>
+					if props.Shell.CanManageDomains {
+						<button
+							class="btn btn-add"
+							type="button"
+							data-on:click="$drawerOpen = true"
+						>+ Add domain</button>
+					}
 				</div>
 				<div class="result-meta" id="result-meta">{ props.Stats.Tracked } domains</div>
 				<div class="domain-table">
@@ -81,35 +85,37 @@ templ DomainsPage(props DomainsPageProps) {
 						<span></span>
 					</div>
 					<div id="domains-rows">
-						@DomainTableBody(props, props.Shell.CSRFToken)
+						@DomainTableBody(props, props.Shell.CSRFToken, props.Shell.CanManageDomains)
 					</div>
 				</div>
 				@DomainsLoadMore(false)
-				<div class="scrim" data-class="{'open': $drawerOpen}" data-on:click="$drawerOpen = false"></div>
-				<aside class="drawer" data-class="{'open': $drawerOpen}">
-					<div class="drawer-h">
-						<h3>Add domain</h3>
-						<span class="x" data-on:click="$drawerOpen = false">✕</span>
-					</div>
-					<div class="drawer-b">
-						<div>
-							<span class="lbl">Domain</span>
-							<div class="in">
-								<span class="lead">domain ⟶</span>
-								<input placeholder="example.com" data-bind="newDomain"/>
-							</div>
-							<p class="hint">Enter an apex or subdomain. Gecko resolves its DNS facts and assesses them on the next scan.</p>
+				if props.Shell.CanManageDomains {
+					<div class="scrim" data-class="{'open': $drawerOpen}" data-on:click="$drawerOpen = false"></div>
+					<aside class="drawer" data-class="{'open': $drawerOpen}">
+						<div class="drawer-h">
+							<h3>Add domain</h3>
+							<span class="x" data-on:click="$drawerOpen = false">✕</span>
 						</div>
-					</div>
-					<div class="drawer-f">
-						<button class="btn-ghost btn" type="button" data-on:click="$drawerOpen = false">Cancel</button>
-						<button
-							class="btn"
-							type="button"
-							data-on:click={ postWithCSRF("/app/domains", props.Shell.CSRFToken) }
-						>+ Add domain</button>
-					</div>
-				</aside>
+						<div class="drawer-b">
+							<div>
+								<span class="lbl">Domain</span>
+								<div class="in">
+									<span class="lead">domain ⟶</span>
+									<input placeholder="example.com" data-bind="newDomain"/>
+								</div>
+								<p class="hint">Enter an apex or subdomain. Gecko resolves its DNS facts and assesses them on the next scan.</p>
+							</div>
+						</div>
+						<div class="drawer-f">
+							<button class="btn-ghost btn" type="button" data-on:click="$drawerOpen = false">Cancel</button>
+							<button
+								class="btn"
+								type="button"
+								data-on:click={ postWithCSRF("/app/domains", props.Shell.CSRFToken) }
+							>+ Add domain</button>
+						</div>
+					</aside>
+				}
 			</div>
 		}
 	}
@@ -131,14 +137,14 @@ templ DomainsLoadMore(show bool) {
 // layouts. Flat reuses today's exact per-domain rows; nested renders apex groups
 // with collapse toggles. The layout choice arrives as a server-rendered prop
 // (driven by the $layout signal sent to the handler).
-templ DomainTableBody(props DomainsPageProps, csrfToken string) {
+templ DomainTableBody(props DomainsPageProps, csrfToken string, canManage bool) {
 	if props.Layout == "flat" {
-		@DomainRowsFragment(props.Domains, csrfToken)
+		@DomainRowsFragment(props.Domains, csrfToken, canManage)
 	} else if len(props.Groups) == 0 {
 		<div class="trow-empty">no domains match your search</div>
 	} else {
 		for _, g := range props.Groups {
-			@DomainGroupRow(g, csrfToken)
+			@DomainGroupRow(g, csrfToken, canManage)
 		}
 	}
 }
@@ -146,7 +152,7 @@ templ DomainTableBody(props DomainsPageProps, csrfToken string) {
 // DomainGroupRow renders one apex group: the apex header row (whose click
 // toggles the group via the $collapsed array signal) followed by its child rows
 // as grid siblings so column alignment is preserved.
-templ DomainGroupRow(g DomainGroupView, csrfToken string) {
+templ DomainGroupRow(g DomainGroupView, csrfToken string, canManage bool) {
 	<div
 		class={ "trow", "apex", g.RollupSeverity }
 		data-class={ collapsedClass(g.Apex) }
@@ -183,14 +189,14 @@ templ DomainGroupRow(g DomainGroupView, csrfToken string) {
 		<span class="chev">→</span>
 	</div>
 	for i, c := range g.Children {
-		@DomainChildRow(c, g.Apex, i == len(g.Children)-1, csrfToken)
+		@DomainChildRow(c, g.Apex, i == len(g.Children)-1, csrfToken, canManage)
 	}
 }
 
 // DomainChildRow renders a subdomain under its apex: indented with a tree
 // connector, showing only the label in bold against the dimmed apex. Hidden when
 // the parent group is collapsed (data-show keyed on the same $collapsed signal).
-templ DomainChildRow(c DomainRowView, apex string, last bool, csrfToken string) {
+templ DomainChildRow(c DomainRowView, apex string, last bool, csrfToken string, canManage bool) {
 	<div
 		class={ "trow", "child", c.FindingsSeverity, templ.KV("last", last) }
 		id={ "domain-row-" + c.UID }
@@ -213,11 +219,13 @@ templ DomainChildRow(c DomainRowView, apex string, last bool, csrfToken string) 
 			<span class="cell-mono">{ c.LastScan }</span>
 		</a>
 		<span class="chev" style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
-			<button
-				type="button"
-				style="background:transparent;border:0;color:var(--txt-faint);cursor:pointer;font-size:13px;padding:2px 6px;border-radius:4px"
-				data-on:click={ deleteRowWithConfirm("/app/domains/"+c.UID, csrfToken) }
-			>✕</button>
+			if canManage {
+				<button
+					type="button"
+					style="background:transparent;border:0;color:var(--txt-faint);cursor:pointer;font-size:13px;padding:2px 6px;border-radius:4px"
+					data-on:click={ deleteRowWithConfirm("/app/domains/"+c.UID, csrfToken) }
+				>✕</button>
+			}
 			→
 		</span>
 	</div>
@@ -234,17 +242,17 @@ templ RollupDots(severities []string) {
 
 // DomainRowsFragment renders the inner content of #domains-rows: every domain
 // row, or an empty-state line. Shared by the full page and the search SSE patch.
-templ DomainRowsFragment(domains []DomainRowView, csrfToken string) {
+templ DomainRowsFragment(domains []DomainRowView, csrfToken string, canManage bool) {
 	if len(domains) == 0 {
 		<div class="trow-empty">no domains match your search</div>
 	} else {
 		for _, d := range domains {
-			@DomainRow(d, csrfToken)
+			@DomainRow(d, csrfToken, canManage)
 		}
 	}
 }
 
-templ DomainRow(d DomainRowView, csrfToken string) {
+templ DomainRow(d DomainRowView, csrfToken string, canManage bool) {
 	<div
 		class={ "trow", d.Severity }
 		id={ "domain-row-" + d.UID }
@@ -266,11 +274,13 @@ templ DomainRow(d DomainRowView, csrfToken string) {
 			<span class="cell-mono">{ d.LastScan }</span>
 		</a>
 		<span class="chev" style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
-			<button
-				type="button"
-				style="background:transparent;border:0;color:var(--txt-faint);cursor:pointer;font-size:13px;padding:2px 6px;border-radius:4px"
-				data-on:click={ deleteRowWithConfirm("/app/domains/"+d.UID, csrfToken) }
-			>✕</button>
+			if canManage {
+				<button
+					type="button"
+					style="background:transparent;border:0;color:var(--txt-faint);cursor:pointer;font-size:13px;padding:2px 6px;border-radius:4px"
+					data-on:click={ deleteRowWithConfirm("/app/domains/"+d.UID, csrfToken) }
+				>✕</button>
+			}
 			→
 		</span>
 	</div>
