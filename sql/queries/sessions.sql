@@ -27,3 +27,10 @@ WHERE token_hash = $1;
 DELETE
 FROM sessions
 WHERE token_hash = $1;
+
+-- name: SessionRevokeAllForUser :exec
+-- Invalidates every session for a user; called after a password reset so a
+-- forgotten/compromised credential cannot survive on an existing session.
+DELETE
+FROM sessions
+WHERE user_id = $1;

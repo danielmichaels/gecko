@@ -10,6 +10,7 @@ import (
 	"github.com/danielmichaels/gecko/internal/auth"
 	"github.com/danielmichaels/gecko/internal/config"
 	"github.com/danielmichaels/gecko/internal/jobs"
+	"github.com/danielmichaels/gecko/internal/mailer"
 	"github.com/danielmichaels/gecko/internal/service"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/danielmichaels/gecko/internal/testhelpers"
@@ -24,6 +25,7 @@ type fakeScheduler struct {
 	mu             sync.Mutex
 	calls          int
 	statsRefreshes []int32
+	emails         []mailer.Message
 }
 
 func (f *fakeScheduler) Schedule(
@@ -56,6 +58,19 @@ func (f *fakeScheduler) StatsRefreshes() []int32 {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]int32(nil), f.statsRefreshes...)
+}
+
+func (f *fakeScheduler) EnqueueEmail(_ context.Context, _ pgx.Tx, msg mailer.Message) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.emails = append(f.emails, msg)
+	return nil
+}
+
+func (f *fakeScheduler) Emails() []mailer.Message {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]mailer.Message(nil), f.emails...)
 }
 
 // ownerPrincipal returns a synthetic owner principal for the given tenant.

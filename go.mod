@@ -27,6 +27,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.35.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.35.0
 	github.com/weppos/publicsuffix-go v0.50.3-0.20260104170930-90713dec78f2
+	github.com/wneessen/go-mail v0.7.3
 	golang.org/x/crypto v0.52.0
 	golang.org/x/net v0.55.0
 	golang.org/x/sync v0.20.0

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/joeshaw/envdecode"
 )
@@ -35,6 +36,22 @@ func TestAuthDefaults(t *testing.T) {
 	}
 	if cfg.Auth.OIDCIssuer != "" {
 		t.Errorf("Auth.OIDCIssuer default = %q, want empty", cfg.Auth.OIDCIssuer)
+	}
+}
+
+func TestMailDefaults(t *testing.T) {
+	cfg := AppConfig()
+	if cfg.Mail.Driver != "log" {
+		t.Errorf("Mail.Driver default = %q, want log", cfg.Mail.Driver)
+	}
+	if cfg.Mail.SMTPPort != 1025 {
+		t.Errorf("Mail.SMTPPort default = %d, want 1025", cfg.Mail.SMTPPort)
+	}
+	if cfg.Mail.FromAddr != "noreply@gecko.local" {
+		t.Errorf("Mail.FromAddr default = %q, want noreply@gecko.local", cfg.Mail.FromAddr)
+	}
+	if cfg.Auth.ResetTTL != time.Hour {
+		t.Errorf("Auth.ResetTTL default = %s, want 1h", cfg.Auth.ResetTTL)
 	}
 }
 

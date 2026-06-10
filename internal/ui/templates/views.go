@@ -37,6 +37,12 @@ func inviteSignals(token string) string {
 	return fmt.Sprintf(`{"token":"%s","password":"","name":""}`, token)
 }
 
+// resetSignals returns a JSON signals string for the reset-password form, with the
+// token pre-populated so it travels in the POST body.
+func resetSignals(token string) string {
+	return fmt.Sprintf(`{"token":"%s","newPassword":""}`, token)
+}
+
 // toggleCollapse returns a datastar expression that toggles an apex key in the
 // $collapsed array signal. A single array signal is used because datastar
 // signals are a fixed object — per-group keys are not dynamically addable.
@@ -103,6 +109,25 @@ type AppShellProps struct {
 type LoginPageProps struct {
 	CSRFToken string
 	Error     string
+	// ShowSignup gates the "create an account" link; mirrors SIGNUP_ENABLED.
+	ShowSignup bool
+}
+
+// SignupPageProps holds data for the self-service signup page.
+type SignupPageProps struct {
+	Error string
+}
+
+// ForgotPasswordPageProps holds data for the request-password-reset page.
+type ForgotPasswordPageProps struct {
+	SuccessMsg string
+	Error      string
+}
+
+// ResetPasswordPageProps holds data for the set-new-password page.
+type ResetPasswordPageProps struct {
+	Token string
+	Error string
 }
 
 // AcceptInvitePageProps holds data for the accept-invitation page.

@@ -58,8 +58,18 @@ type uiHarness struct {
 }
 
 // newUIHarness builds a real Service + Handlers over a test Postgres container
-// and returns an http.Handler with routes mounted at /app.
+// and returns an http.Handler with routes mounted at /app. Signup is enabled.
 func newUIHarness(t *testing.T, pc *testhelpers.PostgresContainer) *uiHarness {
+	t.Helper()
+	return newUIHarnessWithSignup(t, pc, true)
+}
+
+// newUIHarnessWithSignup is newUIHarness with explicit SIGNUP_ENABLED control.
+func newUIHarnessWithSignup(
+	t *testing.T,
+	pc *testhelpers.PostgresContainer,
+	signupEnabled bool,
+) *uiHarness {
 	t.Helper()
 
 	cfg := config.AppConfig()
@@ -88,7 +98,7 @@ func newUIHarness(t *testing.T, pc *testhelpers.PostgresContainer) *uiHarness {
 	}
 
 	app := ui.New(svc.AuthService(), cookieCfg, csrfKey, nil)
-	h := ui.NewHandlers(svc, app, cookieCfg, nil)
+	h := ui.NewHandlers(svc, app, cookieCfg, nil, signupEnabled)
 
 	root := chi.NewRouter()
 	root.Mount("/app", h.Routes())
@@ -1265,6 +1275,298 @@ func TestDomainsGet_FlatLoadMorePaginates(t *testing.T) {
 	}
 	if strings.Contains(b2, "Load more") {
 		t.Error("flat page 2: load-more trigger should be gone at the end of the list")
+	}
+}
+
+func TestHandlerLogin_Get_SignupLinkGating(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	enabled := newUIHarnessWithSignup(t, pc, true)
+	rrOn := enabled.do(t, http.MethodGet, "/app/login", nil, "", "")
+	if !strings.Contains(rrOn.Body.String(), "/app/signup") {
+		t.Error("login with signup enabled: should link to /app/signup")
+	}
+
+	disabled := newUIHarnessWithSignup(t, pc, false)
+	rrOff := disabled.do(t, http.MethodGet, "/app/login", nil, "", "")
+	if strings.Contains(rrOff.Body.String(), "/app/signup") {
+		t.Error("login with signup disabled: should not link to /app/signup")
+	}
+}
+
+func TestHandlerSignup_Get(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	enabled := newUIHarnessWithSignup(t, pc, true)
+	rr := enabled.do(t, http.MethodGet, "/app/signup", nil, "", "")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET /app/signup enabled: want 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "Create account") {
+		t.Error("GET /app/signup enabled: body should contain 'Create account'")
+	}
+
+	disabled := newUIHarnessWithSignup(t, pc, false)
+	rrOff := disabled.do(t, http.MethodGet, "/app/signup", nil, "", "")
+	if rrOff.Code != http.StatusOK {
+		t.Fatalf("GET /app/signup disabled: want 200, got %d", rrOff.Code)
+	}
+	if !strings.Contains(rrOff.Body.String(), "Signup Disabled") {
+		t.Error("GET /app/signup disabled: body should show the disabled notice")
+	}
+}
+
+func TestHandlerSignup_Post_Success(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+	body, _ := json.Marshal(map[string]string{
+		"email":      "newowner@example.com",
+		"password":   "password123",
+		"name":       "New Owner",
+		"tenantName": "Acme",
+	})
+	rr := h.do(t, http.MethodPost, "/app/signup", body, "", "")
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("POST /app/signup: want 200 (SSE), got %d\nbody: %s", rr.Code, rr.Body.String())
+	}
+	var sessionCookie *http.Cookie
+	for _, c := range rr.Result().Cookies() {
+		if c.Name == h.cookieCfg.Name {
+			sessionCookie = c
+		}
+	}
+	if sessionCookie == nil || sessionCookie.Value == "" {
+		t.Fatal("POST /app/signup: expected a session Set-Cookie")
+	}
+	if !strings.Contains(rr.Body.String(), "/app/domains") {
+		t.Errorf(
+			"POST /app/signup: SSE body should redirect to /app/domains, got: %s",
+			rr.Body.String(),
+		)
+	}
+}
+
+func TestHandlerSignup_Post_Disabled(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarnessWithSignup(t, pc, false)
+	body, _ := json.Marshal(map[string]string{"email": "x@example.com", "password": "password123"})
+	rr := h.do(t, http.MethodPost, "/app/signup", body, "", "")
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("POST /app/signup disabled: want 200 (SSE), got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "signup is disabled") {
+		t.Errorf(
+			"POST /app/signup disabled: body should contain disabled error, got: %s",
+			rr.Body.String(),
+		)
+	}
+	for _, c := range rr.Result().Cookies() {
+		if c.Name == h.cookieCfg.Name && c.MaxAge > 0 {
+			t.Error("POST /app/signup disabled: no session cookie should be set")
+		}
+	}
+}
+
+func TestHandlerSignup_Post_DuplicateEmail(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+	h.loginCookie(t, "dupe@example.com", "password123")
+
+	body, _ := json.Marshal(
+		map[string]string{"email": "dupe@example.com", "password": "password123"},
+	)
+	rr := h.do(t, http.MethodPost, "/app/signup", body, "", "")
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("POST /app/signup dup: want 200 (SSE), got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "email already registered") {
+		t.Errorf(
+			"POST /app/signup dup: body should contain conflict error, got: %s",
+			rr.Body.String(),
+		)
+	}
+}
+
+func TestHandlerForgotPassword_Get(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+	rr := h.do(t, http.MethodGet, "/app/forgot-password", nil, "", "")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET /app/forgot-password: want 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "Reset your password") {
+		t.Error("GET /app/forgot-password: body should contain the reset heading")
+	}
+}
+
+func TestHandlerForgotPassword_Post_AlwaysSucceeds(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+	// Same neutral response whether the address exists or not.
+	for _, email := range []string{"ghost@example.com", "real-forgot@example.com"} {
+		if email == "real-forgot@example.com" {
+			h.loginCookie(t, email, "password123")
+		}
+		body, _ := json.Marshal(map[string]string{"email": email})
+		rr := h.do(t, http.MethodPost, "/app/forgot-password", body, "", "")
+		if rr.Code != http.StatusOK {
+			t.Fatalf("POST /app/forgot-password %s: want 200, got %d", email, rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), "forgot-success") {
+			t.Errorf(
+				"POST /app/forgot-password %s: body should contain the neutral success message",
+				email,
+			)
+		}
+	}
+}
+
+func TestHandlerResetPassword_Get(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+
+	rrNo := h.do(t, http.MethodGet, "/app/reset-password", nil, "", "")
+	if !strings.Contains(rrNo.Body.String(), "Invalid Reset Link") {
+		t.Error("GET /app/reset-password without token: should show invalid-link notice")
+	}
+
+	rrTok := h.do(t, http.MethodGet, "/app/reset-password?token=abc123", nil, "", "")
+	if !strings.Contains(rrTok.Body.String(), "Set a new password") {
+		t.Error("GET /app/reset-password?token=: should render the reset form")
+	}
+}
+
+func TestHandlerResetPassword_Post_Success(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+	cookie, _ := h.loginCookie(t, "resetweb@example.com", "oldpassword")
+	user, err := pc.Queries.UserGetByEmail(ctx, "resetweb@example.com")
+	if err != nil {
+		t.Fatalf("lookup user: %v", err)
+	}
+
+	rawToken, genErr := auth.GenerateToken()
+	if genErr != nil {
+		t.Fatalf("generate token: %v", genErr)
+	}
+	if _, err := pc.Queries.PasswordResetTokenCreate(ctx, store.PasswordResetTokenCreateParams{
+		UserID:    user.ID,
+		TokenHash: auth.HashToken(rawToken),
+		ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true},
+	}); err != nil {
+		t.Fatalf("seed reset token: %v", err)
+	}
+
+	body, _ := json.Marshal(map[string]string{"token": rawToken, "newPassword": "freshpassword"})
+	rr := h.do(t, http.MethodPost, "/app/reset-password", body, "", "")
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf(
+			"POST /app/reset-password: want 200 (SSE), got %d\nbody: %s",
+			rr.Code,
+			rr.Body.String(),
+		)
+	}
+	if !strings.Contains(rr.Body.String(), "/app/login") {
+		t.Errorf(
+			"POST /app/reset-password: SSE body should redirect to /app/login, got: %s",
+			rr.Body.String(),
+		)
+	}
+	// The pre-existing session was revoked by the reset.
+	if _, resolveErr := h.svc.AuthService().ResolveSession(ctx, cookie); resolveErr == nil {
+		t.Error("POST /app/reset-password: prior session should be revoked")
+	}
+	if _, err := h.svc.AuthService().Authenticate(ctx, "resetweb@example.com", "freshpassword"); err != nil {
+		t.Errorf("authenticate with new password: %v", err)
+	}
+}
+
+func TestHandlerResetPassword_Post_InvalidToken(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+	body, _ := json.Marshal(map[string]string{"token": "bogus", "newPassword": "freshpassword"})
+	rr := h.do(t, http.MethodPost, "/app/reset-password", body, "", "")
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("POST /app/reset-password invalid: want 200 (SSE), got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "reset-error") {
+		t.Errorf(
+			"POST /app/reset-password invalid: body should contain reset-error, got: %s",
+			rr.Body.String(),
+		)
 	}
 }
 

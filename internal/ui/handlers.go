@@ -20,28 +20,33 @@ import (
 
 // Handlers holds dependencies for browser-facing route handlers.
 type Handlers struct {
-	svc       *service.Service
-	app       *App
-	log       *slog.Logger
-	cookieCfg CookieConfig
+	svc           *service.Service
+	app           *App
+	log           *slog.Logger
+	cookieCfg     CookieConfig
+	signupEnabled bool
 }
 
 // NewHandlers constructs a Handlers value wiring the service, middleware App,
-// cookie config, and logger together.
+// cookie config, and logger together. signupEnabled mirrors SIGNUP_ENABLED so the
+// browser signup route and the login-page link are hidden when self-service signup
+// is off.
 func NewHandlers(
 	svc *service.Service,
 	app *App,
 	cookieCfg CookieConfig,
 	log *slog.Logger,
+	signupEnabled bool,
 ) *Handlers {
 	if log == nil {
 		log = slog.Default()
 	}
 	return &Handlers{
-		svc:       svc,
-		app:       app,
-		cookieCfg: cookieCfg,
-		log:       log,
+		svc:           svc,
+		app:           app,
+		cookieCfg:     cookieCfg,
+		log:           log,
+		signupEnabled: signupEnabled,
 	}
 }
 
@@ -59,6 +64,12 @@ func (h *Handlers) Routes() http.Handler {
 	r.Post("/login", h.handleLoginPost)
 	r.Get("/invite", h.handleInviteGet)
 	r.Post("/invite", h.handleInvitePost)
+	r.Get("/signup", h.handleSignupGet)
+	r.Post("/signup", h.handleSignupPost)
+	r.Get("/forgot-password", h.handleForgotPasswordGet)
+	r.Post("/forgot-password", h.handleForgotPasswordPost)
+	r.Get("/reset-password", h.handleResetPasswordGet)
+	r.Post("/reset-password", h.handleResetPasswordPost)
 
 	// Protected routes — require a valid session and a matching CSRF token.
 	r.Group(func(r chi.Router) {
@@ -131,7 +142,163 @@ func (h *Handlers) shell(ctx context.Context, active string) (templates.AppShell
 
 // handleLoginGet renders the login page.
 func (h *Handlers) handleLoginGet(w http.ResponseWriter, r *http.Request) {
-	renderPage(w, r, templates.LoginPage(templates.LoginPageProps{}))
+	renderPage(w, r, templates.LoginPage(templates.LoginPageProps{ShowSignup: h.signupEnabled}))
+}
+
+// authErrorPatch returns an SSE error element for the given target id and message,
+// matching the inline-error styling used by the login and invite forms.
+func authErrorPatch(id, msg string) string {
+	return `<div id="` + id + `" style="color:var(--crit);font-family:var(--mono);font-size:12.5px;background:var(--crit-bg);border:1px solid var(--crit);border-radius:8px;padding:10px 14px;margin-bottom:12px;">` + msg + `</div>`
+}
+
+// handleSignupGet renders the signup page, or a disabled notice when self-service
+// signup is off.
+func (h *Handlers) handleSignupGet(w http.ResponseWriter, r *http.Request) {
+	if !h.signupEnabled {
+		renderPage(w, r, templates.ComingSoon(templates.ComingSoonProps{
+			Glyph: "⚠",
+			Title: "Signup Disabled",
+			Blurb: "Self-service signup is disabled. Ask an administrator for an invitation.",
+		}))
+		return
+	}
+	renderPage(w, r, templates.SignupPage(templates.SignupPageProps{}))
+}
+
+// handleSignupPost creates a new tenant + owner and starts a session, mirroring
+// handleInvitePost. Blocked with an inline error when signup is disabled.
+func (h *Handlers) handleSignupPost(w http.ResponseWriter, r *http.Request) {
+	if !h.signupEnabled {
+		sse := datastar.NewSSE(w, r)
+		_ = sse.PatchElements(authErrorPatch("signup-error", "signup is disabled"))
+		return
+	}
+	var form struct {
+		Email      string `json:"email"`
+		Password   string `json:"password"`
+		Name       string `json:"name"`
+		TenantName string `json:"tenantName"`
+	}
+	if err := datastar.ReadSignals(r, &form); err != nil {
+		h.log.Error("signup: read signals", "error", err)
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	p, err := h.svc.AuthService().SignupWeb(r.Context(), service.SignupParams{
+		Email:      form.Email,
+		Password:   form.Password,
+		Name:       form.Name,
+		TenantName: form.TenantName,
+	})
+	if err != nil {
+		sse := datastar.NewSSE(w, r)
+		switch {
+		case errors.Is(err, service.ErrConflict):
+			_ = sse.PatchElements(authErrorPatch("signup-error", "email already registered"))
+		default:
+			h.log.Error("signup: create", "error", err)
+			_ = sse.PatchElements(
+				authErrorPatch("signup-error", "something went wrong, please try again"),
+			)
+		}
+		return
+	}
+
+	rawToken, expiresAt, err := h.svc.AuthService().
+		MintSession(r.Context(), p, r.UserAgent(), clientIP(r))
+	if err != nil {
+		h.log.Error("signup: mint session", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Cookie must be written before NewSSE flushes headers.
+	SetSessionCookie(w, rawToken, expiresAt, h.cookieCfg)
+	sse := datastar.NewSSE(w, r)
+	_ = sse.Redirect("/app/domains")
+}
+
+// handleForgotPasswordGet renders the request-reset page.
+func (h *Handlers) handleForgotPasswordGet(w http.ResponseWriter, r *http.Request) {
+	renderPage(w, r, templates.ForgotPasswordPage(templates.ForgotPasswordPageProps{}))
+}
+
+// handleForgotPasswordPost requests a password-reset email. It always reports the
+// same success message regardless of whether the address is registered, so the
+// response never reveals account existence.
+func (h *Handlers) handleForgotPasswordPost(w http.ResponseWriter, r *http.Request) {
+	var form struct {
+		Email string `json:"email"`
+	}
+	if err := datastar.ReadSignals(r, &form); err != nil {
+		h.log.Error("forgot password: read signals", "error", err)
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	// The reset link's origin comes from trusted config, NOT request headers: a
+	// forged Host/X-Forwarded-Host would otherwise poison the emailed link and
+	// leak the token (reset poisoning). See AppConf.PublicBaseURL.
+	if err := h.svc.AuthService().RequestPasswordReset(r.Context(), form.Email, h.svc.Conf.AppConf.PublicBaseURL); err != nil {
+		// Fail open: log but still show the neutral success message so a failure
+		// can't be used to probe for registered addresses.
+		h.log.Error("forgot password: request reset", "error", err)
+	}
+
+	sse := datastar.NewSSE(w, r)
+	_ = sse.PatchElements(
+		`<div id="forgot-success" style="color:var(--ok);font-family:var(--mono);font-size:12.5px;background:var(--ok-bg);border:1px solid var(--ok);border-radius:8px;padding:10px 14px;margin-bottom:12px;">If an account exists for that email, a password reset link is on its way.</div>`,
+	)
+}
+
+// handleResetPasswordGet renders the set-new-password page for the given ?token=.
+func (h *Handlers) handleResetPasswordGet(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		renderPage(w, r, templates.ComingSoon(templates.ComingSoonProps{
+			Glyph: "⚠",
+			Title: "Invalid Reset Link",
+			Blurb: "No reset token provided. Request a new password reset link.",
+		}))
+		return
+	}
+	renderPage(w, r, templates.ResetPasswordPage(templates.ResetPasswordPageProps{Token: token}))
+}
+
+// handleResetPasswordPost consumes the reset token and sets the new password. On
+// success it redirects to login (sessions were revoked, so there is no auto-login).
+func (h *Handlers) handleResetPasswordPost(w http.ResponseWriter, r *http.Request) {
+	var form struct {
+		Token       string `json:"token"`
+		NewPassword string `json:"newPassword"`
+	}
+	if err := datastar.ReadSignals(r, &form); err != nil {
+		h.log.Error("reset password: read signals", "error", err)
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.svc.AuthService().ResetPassword(r.Context(), form.Token, form.NewPassword); err != nil {
+		sse := datastar.NewSSE(w, r)
+		switch {
+		case errors.Is(err, service.ErrNotFound):
+			_ = sse.PatchElements(
+				authErrorPatch("reset-error", "this reset link is invalid or has expired"),
+			)
+		case errors.Is(err, service.ErrInvalidInput):
+			_ = sse.PatchElements(authErrorPatch("reset-error", err.Error()))
+		default:
+			h.log.Error("reset password: reset", "error", err)
+			_ = sse.PatchElements(
+				authErrorPatch("reset-error", "something went wrong, please try again"),
+			)
+		}
+		return
+	}
+
+	sse := datastar.NewSSE(w, r)
+	_ = sse.Redirect("/app/login")
 }
 
 // handleLoginPost processes a datastar form POST for login.

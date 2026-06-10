@@ -77,7 +77,7 @@ func New(
 		AuthProvider: provider,
 		Svc:          svc,
 		UI:           uiApp,
-		UIHandlers:   ui.NewHandlers(svc, uiApp, cookieCfg, l),
+		UIHandlers:   ui.NewHandlers(svc, uiApp, cookieCfg, l, c.Auth.SignupEnabled),
 	}, nil
 }
 
