@@ -13,7 +13,6 @@ env:
   DOCKER_BUILD_SUMMARY: true
   DAGGER_VERSION: '0.21.3'
   DOCKERFILE: './zarf/docker/Dockerfile'
-  GITHUB_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
 
 jobs:
   lint:
@@ -69,6 +68,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
 
     steps:
       - uses: actions/checkout@master
@@ -78,7 +79,7 @@ jobs:
         id: tags
         run: |
           if [[ $GITHUB_REF == refs/tags/* ]]; then
-            echo "tags={GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            echo "tags=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           else
             echo "tags=latest" >> $GITHUB_OUTPUT
           fi

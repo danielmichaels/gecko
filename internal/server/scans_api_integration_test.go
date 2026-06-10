@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"testing"
 	"time"
@@ -82,9 +83,35 @@ func (r scansListResp) hasScan(uid string) bool {
 	return false
 }
 
-// TestScansAPI exercises the /api/scans feed through the full chi → huma → apiAuth
-// chain: tenant isolation, the default 7-day window (and the all-time escape hatch),
-// source filtering, and missing-key rejection.
+type scansDetailResp struct {
+	Scan struct {
+		ScanUID      string `json:"scan_uid"`
+		DomainName   string `json:"domain_name"`
+		State        string `json:"state"`
+		TotalChanges int    `json:"total_changes"`
+		IsBaseline   bool   `json:"is_baseline"`
+	} `json:"scan"`
+	Observations []struct {
+		EntityType string          `json:"entity_type"`
+		EntityKey  string          `json:"entity_key"`
+		ChangeType string          `json:"change_type"`
+		Payload    json.RawMessage `json:"payload"`
+	} `json:"observations"`
+}
+
+func (r scansDetailResp) hasObservation(entityKey, changeType string) bool {
+	for _, o := range r.Observations {
+		if o.EntityKey == entityKey && o.ChangeType == changeType {
+			return true
+		}
+	}
+	return false
+}
+
+// TestScansAPI exercises the /api/scans feed and /api/scans/{uid} detail through
+// the full chi → huma → apiAuth chain: tenant isolation (feed and per-scan),
+// the default 7-day window (and the all-time escape hatch), source/q/changed_only
+// filtering, the per-scan observation diff, and missing-key rejection.
 func TestScansAPI(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -182,6 +209,81 @@ func TestScansAPI(t *testing.T) {
 	t.Run("no key rejected", func(t *testing.T) {
 		if code := doJSON(t, http.MethodGet, base+"/api/scans", "", nil, nil); code != http.StatusUnauthorized {
 			t.Errorf("no key status = %d, want 401", code)
+		}
+	})
+
+	t.Run("detail returns scan with observation diff", func(t *testing.T) {
+		var res scansDetailResp
+		if code := doJSON(t, http.MethodGet, base+"/api/scans/"+recent.Uid, a.APIKey, nil, &res); code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", code)
+		}
+		if res.Scan.ScanUID != recent.Uid {
+			t.Errorf("scan_uid = %q, want %q", res.Scan.ScanUID, recent.Uid)
+		}
+		if res.Scan.DomainName != "acme.com" {
+			t.Errorf("domain_name = %q, want acme.com", res.Scan.DomainName)
+		}
+		if !res.Scan.IsBaseline || res.Scan.State != "baseline" {
+			t.Errorf(
+				"state = %q baseline = %v, want baseline/true",
+				res.Scan.State,
+				res.Scan.IsBaseline,
+			)
+		}
+		if !res.hasObservation("a1", "created") {
+			t.Errorf("observations missing a1/created: %+v", res.Observations)
+		}
+	})
+
+	t.Run("detail cross-tenant 404", func(t *testing.T) {
+		if code := doJSON(t, http.MethodGet, base+"/api/scans/"+otherScan.Uid, a.APIKey, nil, nil); code != http.StatusNotFound {
+			t.Errorf("A -> B scan status = %d, want 404", code)
+		}
+	})
+
+	t.Run("detail unknown uid 404", func(t *testing.T) {
+		if code := doJSON(t, http.MethodGet, base+"/api/scans/scan_doesnotexist", a.APIKey, nil, nil); code != http.StatusNotFound {
+			t.Errorf("unknown uid status = %d, want 404", code)
+		}
+	})
+
+	t.Run("detail no key rejected", func(t *testing.T) {
+		if code := doJSON(t, http.MethodGet, base+"/api/scans/"+recent.Uid, "", nil, nil); code != http.StatusUnauthorized {
+			t.Errorf("no key status = %d, want 401", code)
+		}
+	})
+
+	t.Run("changed_only hides clean re-scans, keeps baselines", func(t *testing.T) {
+		clean := seedScanRow(
+			t, ctx, pc, tenantA, acme,
+			store.DomainSourceUserSupplied,
+			pgtype.Int8{Int64: recent.ID, Valid: true},
+		)
+
+		var res scansListResp
+		if code := doJSON(t, http.MethodGet, base+"/api/scans?changed_only=true&window_days=0", a.APIKey, nil, &res); code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", code)
+		}
+		if res.hasScan(clean.Uid) {
+			t.Errorf("clean re-scan %s present under changed_only", clean.Uid)
+		}
+		if !res.hasScan(recent.Uid) {
+			t.Errorf("baseline scan %s dropped under changed_only", recent.Uid)
+		}
+	})
+
+	t.Run("q filters by domain substring", func(t *testing.T) {
+		var res scansListResp
+		if code := doJSON(t, http.MethodGet, base+"/api/scans?q=acme&window_days=0", a.APIKey, nil, &res); code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", code)
+		}
+		if len(res.Scans) == 0 {
+			t.Fatal("q=acme returned no scans")
+		}
+		for _, s := range res.Scans {
+			if s.DomainName != "acme.com" {
+				t.Errorf("q=acme returned domain %q", s.DomainName)
+			}
 		}
 	})
 }
