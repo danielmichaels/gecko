@@ -71,6 +71,87 @@ func scanByUID(res service.TenantScansResult, uid string) (service.ScanRunView, 
 	return service.ScanRunView{}, false
 }
 
+func flatScanByUID(res service.FlatScansResult, uid string) (service.FlatScanView, bool) {
+	for _, s := range res.Scans {
+		if s.ScanUID == uid {
+			return s, true
+		}
+	}
+	return service.FlatScanView{}, false
+}
+
+func TestScansService_ListByTenantFlat(t *testing.T) {
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc := newTestService(pc, &fakeScheduler{})
+	ss := svc.ScansService()
+
+	tenantA := createTenant(t, ctx, pc, "a-owner@example.com")
+	tenantB := createTenant(t, ctx, pc, "b-owner@example.com")
+	pA := ownerPrincipal(tenantA)
+
+	acme := seedDomain(t, ctx, pc, tenantA, "acme.com")
+	baseline := seedScan(t, ctx, pc, tenantA, acme, store.DomainSourceUserSupplied, pgtype.Int8{})
+	seedObservation(t, ctx, pc, tenantA, acme, baseline.ID, "a_record", "a1", "created")
+	changed := seedScan(t, ctx, pc, tenantA, acme, store.DomainSourceUserSupplied,
+		pgtype.Int8{Int64: baseline.ID, Valid: true})
+	seedObservation(t, ctx, pc, tenantA, acme, changed.ID, "a_record", "a1", "updated")
+	clean := seedScan(t, ctx, pc, tenantA, acme, store.DomainSourceUserSupplied,
+		pgtype.Int8{Int64: changed.ID, Valid: true})
+
+	other := seedDomain(t, ctx, pc, tenantB, "other.com")
+	otherScan := seedScan(t, ctx, pc, tenantB, other, store.DomainSourceUserSupplied, pgtype.Int8{})
+	seedObservation(t, ctx, pc, tenantB, other, otherScan.ID, "a_record", "a1", "created")
+
+	t.Run("tenant isolation and total", func(t *testing.T) {
+		res, err := ss.ListByTenantFlat(ctx, pA, service.ScansListOptions{}, 25, 0)
+		if err != nil {
+			t.Fatalf("ListByTenantFlat: %v", err)
+		}
+		if res.TotalCount != 3 {
+			t.Errorf("total = %d, want 3", res.TotalCount)
+		}
+		if _, ok := flatScanByUID(res, otherScan.Uid); ok {
+			t.Fatalf("tenant A leaked tenant B scan %s", otherScan.Uid)
+		}
+	})
+
+	t.Run("pagination slices but total is unpaginated", func(t *testing.T) {
+		page1, err := ss.ListByTenantFlat(ctx, pA, service.ScansListOptions{}, 2, 0)
+		if err != nil {
+			t.Fatalf("page1: %v", err)
+		}
+		if page1.TotalCount != 3 || len(page1.Scans) != 2 {
+			t.Errorf("page1 total/len = %d/%d, want 3/2", page1.TotalCount, len(page1.Scans))
+		}
+		page2, err := ss.ListByTenantFlat(ctx, pA, service.ScansListOptions{}, 2, 2)
+		if err != nil {
+			t.Fatalf("page2: %v", err)
+		}
+		if page2.TotalCount != 3 || len(page2.Scans) != 1 {
+			t.Errorf("page2 total/len = %d/%d, want 3/1", page2.TotalCount, len(page2.Scans))
+		}
+	})
+
+	t.Run("changed_only keeps baseline, drops clean", func(t *testing.T) {
+		res, err := ss.ListByTenantFlat(ctx, pA, service.ScansListOptions{ChangedOnly: true}, 25, 0)
+		if err != nil {
+			t.Fatalf("changed only: %v", err)
+		}
+		if _, ok := flatScanByUID(res, clean.Uid); ok {
+			t.Errorf("clean scan present under changed_only")
+		}
+		if _, ok := flatScanByUID(res, baseline.Uid); !ok {
+			t.Errorf("baseline scan dropped under changed_only")
+		}
+	})
+}
+
 func TestScansService_ListByTenant_IsolationAndAggregates(t *testing.T) {
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)

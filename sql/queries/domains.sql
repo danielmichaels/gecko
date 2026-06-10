@@ -189,20 +189,6 @@ WHERE tenant_id = $1
 ORDER BY created_at DESC
 LIMIT $3 OFFSET $4;
 
--- name: DomainsListAll :many
--- fixme: List all domains (no auth, for development/debugging only - avoid in production)
-SELECT id,
-       uid,
-       tenant_id,
-       name,
-       domain_type,
-       source,
-       status,
-       created_at,
-       updated_at
-FROM domains
-ORDER BY created_at DESC;
-
 -- name: DomainsDeleteCount :one
 WITH RECURSIVE domain_tree AS (
     -- Base case: the domain we're deleting

@@ -47,6 +47,7 @@ SELECT sf.*
 FROM spf_findings sf
          JOIN domains d ON sf.domain_id = d.id
 WHERE d.uid = $1
+  AND d.tenant_id = $2
 ORDER BY sf.severity ASC, sf.created_at DESC;
 
 -- name: AssessCreateDKIMFinding :one
@@ -97,6 +98,7 @@ SELECT df.*
 FROM dkim_findings df
          JOIN domains d ON df.domain_id = d.id
 WHERE d.uid = $1
+  AND d.tenant_id = $2
 ORDER BY df.severity ASC, df.created_at DESC;
 
 -- name: AssessCreateDMARCFinding :one
@@ -129,6 +131,7 @@ SELECT df.*
 FROM dmarc_findings df
          JOIN domains d ON df.domain_id = d.id
 WHERE d.uid = $1
+  AND d.tenant_id = $2
 ORDER BY df.severity ASC, df.created_at DESC;
 
 -- name: AssessGetZoneTransferFindings :many
@@ -143,6 +146,7 @@ SELECT ztf.*
 FROM zone_transfer_findings ztf
          JOIN domains d ON ztf.domain_id = d.id
 WHERE d.uid = $1
+  AND d.tenant_id = $2
 ORDER BY ztf.severity ASC, ztf.created_at DESC;
 
 -- name: DomainsListFindingsSummary :many

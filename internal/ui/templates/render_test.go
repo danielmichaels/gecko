@@ -510,8 +510,8 @@ func TestRecordsTableRender(t *testing.T) {
 		Title: "DNS records",
 		Count: "3 · A MX TXT",
 		Rows: []templates.RecordRowView{
-			{Type: "A", Value: "93.184.216.34", TTL: "3600", Flagged: false},
-			{Type: "TXT", Value: "v=spf1 +all", TTL: "300", Flagged: true},
+			{Type: "A", Value: "93.184.216.34"},
+			{Type: "TXT", Value: "v=spf1 +all"},
 		},
 	}
 	err := templates.RecordsTable(v).Render(context.Background(), &buf)
@@ -522,8 +522,8 @@ func TestRecordsTableRender(t *testing.T) {
 	if !strings.Contains(out, "93.184.216.34") {
 		t.Error("expected record value in RecordsTable output")
 	}
-	if !strings.Contains(out, "flag") {
-		t.Error("expected flagged record class in RecordsTable output")
+	if !strings.Contains(out, "v=spf1 +all") {
+		t.Error("expected TXT record value in RecordsTable output")
 	}
 }
 

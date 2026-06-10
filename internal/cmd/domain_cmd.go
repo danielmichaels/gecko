@@ -298,8 +298,8 @@ func (d *DomainRecordsCmd) Run(g *Globals, dc *DomainCmd) error {
 
 	var apiErr huma.ErrorModel
 	var recordsResp struct {
-		Pagination *server.PaginationMetadata `json:"pagination"`
-		Records    dto.AllRecords             `json:"records"`
+		Count   int64          `json:"count"`
+		Records dto.AllRecords `json:"records"`
 	}
 
 	err := requestWithSpinner(
@@ -344,7 +344,7 @@ func (d *DomainRecordsCmd) Run(g *Globals, dc *DomainCmd) error {
 
 		// Summary
 		fmt.Println("\n---")
-		fmt.Printf("Total Records: %d\n", recordsResp.Pagination.Total)
+		fmt.Printf("Total Records: %d\n", recordsResp.Count)
 	}
 
 	return nil

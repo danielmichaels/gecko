@@ -769,60 +769,57 @@ func relativeTime(t pgtype.Timestamptz) string {
 }
 
 // recordRows flattens dto.AllRecords into a slice of RecordRowView.
-// TTL is rendered as "—" because it is not modeled in the current store schema.
 func recordRows(all dto.AllRecords) []templates.RecordRowView {
 	var rows []templates.RecordRowView
 
 	for _, r := range all.A {
-		rows = append(rows, templates.RecordRowView{Type: "A", Value: r.IPv4Address, TTL: "—"})
+		rows = append(rows, templates.RecordRowView{Type: "A", Value: r.IPv4Address})
 	}
 	for _, r := range all.AAAA {
-		rows = append(rows, templates.RecordRowView{Type: "AAAA", Value: r.IPv6Address, TTL: "—"})
+		rows = append(rows, templates.RecordRowView{Type: "AAAA", Value: r.IPv6Address})
 	}
 	for _, r := range all.CNAME {
-		rows = append(rows, templates.RecordRowView{Type: "CNAME", Value: r.Target, TTL: "—"})
+		rows = append(rows, templates.RecordRowView{Type: "CNAME", Value: r.Target})
 	}
 	for _, r := range all.MX {
 		rows = append(rows, templates.RecordRowView{
 			Type:  "MX",
 			Value: fmt.Sprintf("%d %s", r.Preference, r.Target),
-			TTL:   "—",
 		})
 	}
 	for _, r := range all.TXT {
-		rows = append(rows, templates.RecordRowView{Type: "TXT", Value: r.Value, TTL: "—"})
+		rows = append(rows, templates.RecordRowView{Type: "TXT", Value: r.Value})
 	}
 	for _, r := range all.NS {
-		rows = append(rows, templates.RecordRowView{Type: "NS", Value: r.Nameserver, TTL: "—"})
+		rows = append(rows, templates.RecordRowView{Type: "NS", Value: r.Nameserver})
 	}
 	for _, r := range all.SOA {
-		rows = append(rows, templates.RecordRowView{Type: "SOA", Value: r.Nameserver, TTL: "—"})
+		rows = append(rows, templates.RecordRowView{Type: "SOA", Value: r.Nameserver})
 	}
 	for _, r := range all.PTR {
-		rows = append(rows, templates.RecordRowView{Type: "PTR", Value: r.Target, TTL: "—"})
+		rows = append(rows, templates.RecordRowView{Type: "PTR", Value: r.Target})
 	}
 	for _, r := range all.CAA {
 		rows = append(rows, templates.RecordRowView{
 			Type:  "CAA",
 			Value: fmt.Sprintf("%s %s", r.Tag, r.Value),
-			TTL:   "—",
 		})
 	}
 	for _, r := range all.SRV {
-		rows = append(rows, templates.RecordRowView{Type: "SRV", Value: r.Target, TTL: "—"})
+		rows = append(rows, templates.RecordRowView{Type: "SRV", Value: r.Target})
 	}
 	for _, r := range all.DNSKEY {
 		key := r.PublicKey
 		if len(key) > 40 {
 			key = key[:40] + "…"
 		}
-		rows = append(rows, templates.RecordRowView{Type: "DNSKEY", Value: key, TTL: "—"})
+		rows = append(rows, templates.RecordRowView{Type: "DNSKEY", Value: key})
 	}
 	for _, r := range all.DS {
-		rows = append(rows, templates.RecordRowView{Type: "DS", Value: r.Digest, TTL: "—"})
+		rows = append(rows, templates.RecordRowView{Type: "DS", Value: r.Digest})
 	}
 	for _, r := range all.RRSIG {
-		rows = append(rows, templates.RecordRowView{Type: "RRSIG", Value: r.SignerName, TTL: "—"})
+		rows = append(rows, templates.RecordRowView{Type: "RRSIG", Value: r.SignerName})
 	}
 
 	return rows

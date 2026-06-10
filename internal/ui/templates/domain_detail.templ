@@ -109,19 +109,10 @@ templ timelineSkeleton() {
 templ RecordsTable(v RecordsView) {
 	<div class="panel-h">{ v.Title } <span class="count">{ v.Count }</span></div>
 	for _, r := range v.Rows {
-		if r.Flagged {
-			<div class="rec flag">
-				<span class="type">{ r.Type }</span>
-				<span class="val">{ r.Value }</span>
-				<span class="ttl">{ r.TTL }</span>
-			</div>
-		} else {
-			<div class="rec">
-				<span class="type">{ r.Type }</span>
-				<span class="val">{ r.Value }</span>
-				<span class="ttl">{ r.TTL }</span>
-			</div>
-		}
+		<div class="rec">
+			<span class="type">{ r.Type }</span>
+			<span class="val">{ r.Value }</span>
+		</div>
 	}
 }
 

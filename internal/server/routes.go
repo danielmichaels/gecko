@@ -21,7 +21,7 @@ import (
 func (app *Server) routes() http.Handler {
 	router := chi.NewMux()
 	router.Use(middleware.Recoverer)
-	router.Use(middleware.RealIP)
+	router.Use(middleware.ClientIPFromRemoteAddr)
 	router.Use(traceMiddleware)
 	router.Use(compressExceptSSE(5))
 	router.Use(httplog.RequestLogger(httpLogger(app.Conf)))
@@ -35,13 +35,16 @@ func (app *Server) routes() http.Handler {
 			Name: "X-API-Key",
 		},
 	}
-	api := humachi.New(router, cfg)
-	autopatch.AutoPatch(api)
-
 	cfg.Info.Title = "gecko API"
 	cfg.Info.Description = "API for the gecko application"
+	cfg.DocsRenderer = huma.DocsRendererScalar
+	cfg.DocsRendererConfig = map[string]any{
+		"theme":      "default",
+		"hideModels": true,
+	}
 
-	router.Get("/scalar", app.handleScalarDocsGet)
+	api := humachi.New(router, cfg)
+	autopatch.AutoPatch(api)
 
 	app.registerEndpoints(api)
 	fileServer := http.FileServer(http.FS(assets.EmbeddedAssets))
@@ -53,30 +56,6 @@ func (app *Server) routes() http.Handler {
 	})
 
 	return router
-}
-
-// handleScalarDocsGet is an HTTP handler that serves the API reference documentation
-// for the application. It writes an HTML page that includes a script tag that loads
-// the Scalar API reference viewer, which will fetch the OpenAPI specification from
-// the "/openapi.json" endpoint.
-func (app *Server) handleScalarDocsGet(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html")
-	_, _ = w.Write([]byte(`<!doctype html>
-<html>
-  <head>
-    <title>API Reference</title>
-    <meta charset="utf-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1" />
-  </head>
-  <body>
-    <script
-      id="api-reference"
-      data-url="/openapi.json"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
-  </body>
-</html>`))
 }
 
 func (app *Server) registerEndpoints(api huma.API) {
@@ -197,6 +176,41 @@ func (app *Server) registerEndpoints(api huma.API) {
 		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
 		Middlewares:   huma.Middlewares{app.apiAuth(api)},
 	}, app.handleDomainTimeline)
+
+	// Findings handlers
+	huma.Register(api, huma.Operation{
+		OperationID:   "list_domain_findings",
+		Method:        http.MethodGet,
+		Path:          "/api/domains/{id}/findings",
+		Summary:       "List a domain's security findings",
+		Tags:          []string{"Findings"},
+		DefaultStatus: http.StatusOK,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
+	}, app.handleDomainFindings)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "list_findings",
+		Method:        http.MethodGet,
+		Path:          "/api/findings",
+		Summary:       "List all security findings across the tenant",
+		Tags:          []string{"Findings"},
+		DefaultStatus: http.StatusOK,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
+	}, app.handleFindingsList)
+
+	// Scans handlers
+	huma.Register(api, huma.Operation{
+		OperationID:   "list_scans",
+		Method:        http.MethodGet,
+		Path:          "/api/scans",
+		Summary:       "List the tenant-wide scan feed (newest first)",
+		Tags:          []string{"Scans"},
+		DefaultStatus: http.StatusOK,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
+	}, app.handleScansList)
 
 	// Auth handlers (public: signup, login, accept-invite)
 	huma.Register(api, huma.Operation{
