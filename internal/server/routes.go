@@ -38,11 +38,13 @@ func (app *Server) routes() http.Handler {
 	cfg.Info.Title = "gecko API"
 	cfg.Info.Description = "API for the gecko application"
 	cfg.DocsRenderer = huma.DocsRendererScalar
+	cfg.DocsRendererConfig = map[string]any{
+		"theme":      "default",
+		"hideModels": true,
+	}
 
 	api := humachi.New(router, cfg)
 	autopatch.AutoPatch(api)
-
-	router.Get("/scalar", app.handleScalarDocsGet)
 
 	app.registerEndpoints(api)
 	fileServer := http.FileServer(http.FS(assets.EmbeddedAssets))
@@ -54,30 +56,6 @@ func (app *Server) routes() http.Handler {
 	})
 
 	return router
-}
-
-// handleScalarDocsGet is an HTTP handler that serves the API reference documentation
-// for the application. It writes an HTML page that includes a script tag that loads
-// the Scalar API reference viewer, which will fetch the OpenAPI specification from
-// the "/openapi.json" endpoint.
-func (app *Server) handleScalarDocsGet(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html")
-	_, _ = w.Write([]byte(`<!doctype html>
-<html>
-  <head>
-    <title>API Reference</title>
-    <meta charset="utf-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1" />
-  </head>
-  <body>
-    <script
-      id="api-reference"
-      data-url="/openapi.json"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
-  </body>
-</html>`))
 }
 
 func (app *Server) registerEndpoints(api huma.API) {
