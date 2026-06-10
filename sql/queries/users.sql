@@ -23,6 +23,11 @@ SELECT id, uid, tenant_id, email, name, role, status, created_at, updated_at
 FROM users
 WHERE email = $1;
 
+-- name: UserGetByID :one
+SELECT id, uid, tenant_id, email, name, role, status, created_at, updated_at
+FROM users
+WHERE id = $1;
+
 -- name: UserGetInTenant :one
 SELECT id, uid, tenant_id, email, name, role, status, created_at, updated_at
 FROM users

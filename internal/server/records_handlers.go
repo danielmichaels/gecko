@@ -54,16 +54,17 @@ func (app *Server) handleRecordsHistory(
 
 type RecordsListOutput struct {
 	Body struct {
-		Pagination *PaginationMetadata `json:"pagination"`
-		Records    dto.AllRecords      `json:"records"`
+		Count   int64          `json:"count"`
+		Records dto.AllRecords `json:"records"`
 	}
 }
 
-// handleRecordsList handles the retrieval of DNS records for a domain.
+// handleRecordsList handles the retrieval of DNS records for a domain. The service
+// returns every record for the domain in one query (DNS record sets are bounded), so
+// the response carries a simple total Count rather than a paginated surface.
 func (app *Server) handleRecordsList(ctx context.Context, i *struct {
 	DomainID string `path:"id" example:"domain_00000001" doc:"Domain UID"`
 	QType    string `query:"qtype" example:"a,aaaa,cname,mx,txt,ns,doa,ptr,caa,srv,dnskey,ds,rrsig" doc:"Comma-separated list of record types to fetch. Not providing a qtype returns all record types."`
-	PaginationQuery
 },
 ) (*RecordsListOutput, error) {
 	p, err := principalOrErr(ctx)
@@ -71,7 +72,6 @@ func (app *Server) handleRecordsList(ctx context.Context, i *struct {
 		return nil, err
 	}
 
-	pageSize, pageNumber, _ := i.GetPaginationParams()
 	recordTypes := service.ParseRecordTypes(i.QType)
 
 	result, err := app.Svc.RecordsService().List(ctx, p, i.DomainID, recordTypes)
@@ -86,19 +86,8 @@ func (app *Server) handleRecordsList(ctx context.Context, i *struct {
 		return nil, huma.Error500InternalServerError("failed to list records", err)
 	}
 
-	pagination := NewPaginationMetadata(
-		result.TotalRecords,
-		pageSize,
-		pageNumber,
-		int32(len(recordTypes)),
-	)
-	return &RecordsListOutput{
-		Body: struct {
-			Pagination *PaginationMetadata `json:"pagination"`
-			Records    dto.AllRecords      `json:"records"`
-		}{
-			Pagination: &pagination,
-			Records:    result.Records,
-		},
-	}, nil
+	resp := &RecordsListOutput{}
+	resp.Body.Count = result.TotalRecords
+	resp.Body.Records = result.Records
+	return resp, nil
 }

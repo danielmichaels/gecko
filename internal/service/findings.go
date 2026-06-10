@@ -86,6 +86,14 @@ type FindingTotals struct {
 	DomainCount int
 }
 
+// FlatFindingsResult is the API-facing tenant-wide listing: a flat, paginated
+// slice of findings (each carrying its domain identity) plus the unpaginated
+// total for pagination metadata.
+type FlatFindingsResult struct {
+	Findings   []FindingView
+	TotalCount int64
+}
+
 // ListByDomain aggregates the four implemented finding types (SPF, DKIM, DMARC,
 // zone transfer) for a domain into a single severity-sorted list. Returns
 // ErrNotFound when the domain is not in the caller's tenant.
@@ -103,28 +111,41 @@ func (s *FindingsService) ListByDomain(
 
 	var findings []FindingView
 
-	if spf, err := s.DB.AssessGetSPFFindingByDomainID(ctx, domainUID); err == nil {
+	tenantID := pgtype.Int4{Int32: p.TenantID, Valid: true}
+	if spf, err := s.DB.AssessGetSPFFindingByDomainID(ctx, store.AssessGetSPFFindingByDomainIDParams{
+		Uid:      domainUID,
+		TenantID: tenantID,
+	}); err == nil {
 		for _, f := range spf {
 			findings = append(findings, mapEmailFinding(
 				"SPF", f.Severity, f.Status, f.IssueType, f.Details, f.SpfValue,
 			))
 		}
 	}
-	if dkim, err := s.DB.AssessDKIMFindingsByDomainID(ctx, domainUID); err == nil {
+	if dkim, err := s.DB.AssessDKIMFindingsByDomainID(ctx, store.AssessDKIMFindingsByDomainIDParams{
+		Uid:      domainUID,
+		TenantID: tenantID,
+	}); err == nil {
 		for _, f := range dkim {
 			findings = append(findings, mapEmailFinding(
 				"DKIM", f.Severity, f.Status, f.IssueType, f.Details, f.DkimValue,
 			))
 		}
 	}
-	if dmarc, err := s.DB.AssessGetDMARCFindingsByDomainID(ctx, domainUID); err == nil {
+	if dmarc, err := s.DB.AssessGetDMARCFindingsByDomainID(ctx, store.AssessGetDMARCFindingsByDomainIDParams{
+		Uid:      domainUID,
+		TenantID: tenantID,
+	}); err == nil {
 		for _, f := range dmarc {
 			findings = append(findings, mapEmailFinding(
 				"DMARC", f.Severity, f.Status, f.IssueType, f.Details, f.DmarcValue,
 			))
 		}
 	}
-	if zones, err := s.DB.AssessGetZoneTransferFindingsByDomainUID(ctx, domainUID); err == nil {
+	if zones, err := s.DB.AssessGetZoneTransferFindingsByDomainUID(ctx, store.AssessGetZoneTransferFindingsByDomainUIDParams{
+		Uid:      domainUID,
+		TenantID: tenantID,
+	}); err == nil {
 		for _, f := range zones {
 			findings = append(findings, mapZoneTransferFinding(f))
 		}
@@ -164,6 +185,42 @@ func (s *FindingsService) ListByTenant(
 		return TenantFindingsResult{}, err
 	}
 	return buildTenantFindings(rows, opts), nil
+}
+
+// ListByTenantFlat returns the tenant-wide findings as a flat, worst-first,
+// paginated slice for the REST API. It reuses ListByTenant's tenant-gated SQL,
+// filtering and worst-first ordering, then flattens the per-domain groups.
+//
+// FLAG: FindingsListByTenant is a 4-way UNION ALL scoped to the tenant; finding
+// counts per tenant are bounded (assessors write ~1 row per check per domain), so
+// pagination here is an in-memory slice. For tenants with O(10k+) domains this
+// should move to SQL-level LIMIT/OFFSET.
+func (s *FindingsService) ListByTenantFlat(
+	ctx context.Context,
+	p *auth.Principal,
+	opts FindingsListOptions,
+	pageSize, offset int32,
+) (FlatFindingsResult, error) {
+	grouped, err := s.ListByTenant(ctx, p, opts)
+	if err != nil {
+		return FlatFindingsResult{}, err
+	}
+
+	var all []FindingView
+	for _, g := range grouped.Groups {
+		all = append(all, g.Findings...)
+	}
+
+	total := int64(len(all))
+	lo := int(offset)
+	if lo > len(all) {
+		lo = len(all)
+	}
+	hi := lo + int(pageSize)
+	if hi > len(all) {
+		hi = len(all)
+	}
+	return FlatFindingsResult{Findings: all[lo:hi], TotalCount: total}, nil
 }
 
 // buildTenantFindings is the pure grouping/filter/sort/count layer over the raw

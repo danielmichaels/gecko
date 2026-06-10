@@ -167,6 +167,133 @@ func TestFindingsService_ListByTenant(t *testing.T) {
 	})
 }
 
+// TestFindingsService_ListByTenantFlat exercises the flat, paginated API listing:
+// cross-tenant isolation, the unpaginated total, the page slice, and filter parity
+// with the grouped path.
+func TestFindingsService_ListByTenantFlat(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc := newTestService(pc, &fakeScheduler{})
+	fs := svc.FindingsService()
+
+	tenantA := createTenant(t, ctx, pc, "a-owner@example.com")
+	tenantB := createTenant(t, ctx, pc, "b-owner@example.com")
+	pA := ownerPrincipal(tenantA)
+	pB := ownerPrincipal(tenantB)
+
+	acme := seedDomain(t, ctx, pc, tenantA, "acme.com")
+	secret := seedDomain(t, ctx, pc, tenantB, "secret.io")
+
+	seedSPFFinding(
+		t,
+		ctx,
+		pc,
+		acme.ID,
+		store.FindingSeverityCritical,
+		store.FindingStatusOpen,
+		"missing_spf",
+	)
+	seedDMARCFinding(
+		t,
+		ctx,
+		pc,
+		acme.ID,
+		store.FindingSeverityHigh,
+		store.FindingStatusOpen,
+		"weak_dmarc_policy",
+	)
+	seedDKIMFinding(
+		t,
+		ctx,
+		pc,
+		acme.ID,
+		store.FindingSeverityMedium,
+		store.FindingStatusOpen,
+		"test_mode_enabled",
+	)
+	seedSPFFinding(
+		t,
+		ctx,
+		pc,
+		secret.ID,
+		store.FindingSeverityCritical,
+		store.FindingStatusOpen,
+		"missing_spf",
+	)
+
+	t.Run("tenant isolation", func(t *testing.T) {
+		res, err := fs.ListByTenantFlat(ctx, pA, service.FindingsListOptions{}, 25, 0)
+		if err != nil {
+			t.Fatalf("ListByTenantFlat(A): %v", err)
+		}
+		if res.TotalCount != 3 {
+			t.Errorf("total = %d, want 3", res.TotalCount)
+		}
+		for _, f := range res.Findings {
+			if f.DomainName == "secret.io" {
+				t.Fatalf("tenant A leaked tenant B finding for %q", f.DomainName)
+			}
+		}
+
+		resB, err := fs.ListByTenantFlat(ctx, pB, service.FindingsListOptions{}, 25, 0)
+		if err != nil {
+			t.Fatalf("ListByTenantFlat(B): %v", err)
+		}
+		if resB.TotalCount != 1 || resB.Findings[0].DomainName != "secret.io" {
+			t.Fatalf("tenant B = %d findings, want 1 (secret.io)", resB.TotalCount)
+		}
+	})
+
+	t.Run("pagination slices but total is unpaginated", func(t *testing.T) {
+		page1, err := fs.ListByTenantFlat(ctx, pA, service.FindingsListOptions{}, 2, 0)
+		if err != nil {
+			t.Fatalf("page1: %v", err)
+		}
+		if page1.TotalCount != 3 || len(page1.Findings) != 2 {
+			t.Errorf("page1 total/len = %d/%d, want 3/2", page1.TotalCount, len(page1.Findings))
+		}
+		page2, err := fs.ListByTenantFlat(ctx, pA, service.FindingsListOptions{}, 2, 2)
+		if err != nil {
+			t.Fatalf("page2: %v", err)
+		}
+		if page2.TotalCount != 3 || len(page2.Findings) != 1 {
+			t.Errorf("page2 total/len = %d/%d, want 3/1", page2.TotalCount, len(page2.Findings))
+		}
+	})
+
+	t.Run("offset past end returns empty", func(t *testing.T) {
+		res, err := fs.ListByTenantFlat(ctx, pA, service.FindingsListOptions{}, 25, 100)
+		if err != nil {
+			t.Fatalf("offset past end: %v", err)
+		}
+		if res.TotalCount != 3 || len(res.Findings) != 0 {
+			t.Errorf("total/len = %d/%d, want 3/0", res.TotalCount, len(res.Findings))
+		}
+	})
+
+	t.Run("severity filter parity", func(t *testing.T) {
+		res, err := fs.ListByTenantFlat(
+			ctx,
+			pA,
+			service.FindingsListOptions{Severity: "crit"},
+			25,
+			0,
+		)
+		if err != nil {
+			t.Fatalf("severity filter: %v", err)
+		}
+		if res.TotalCount != 1 || res.Findings[0].Tier != "crit" {
+			t.Errorf("crit filter total = %d, want 1 crit finding", res.TotalCount)
+		}
+	})
+}
+
 func groupNames(groups []service.DomainFindingGroup) []string {
 	out := make([]string, len(groups))
 	for i, g := range groups {

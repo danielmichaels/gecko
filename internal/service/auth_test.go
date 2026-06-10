@@ -241,6 +241,50 @@ func TestAuthService_AcceptInvite_HappyPath(t *testing.T) {
 	}
 }
 
+func TestAuthService_InviteContextFromToken_InviterEmail(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc := newAuthSvc(t, pc)
+	signupUser(t, svc, "owner@company.com", "password123")
+	ownerUser, err := pc.Queries.UserGetByEmail(ctx, "owner@company.com")
+	if err != nil {
+		t.Fatalf("lookup owner: %v", err)
+	}
+
+	t.Run("populates inviter email", func(t *testing.T) {
+		token := seedInvitation(t, ctx, pc, ownerUser.TenantID.Int32, "invited@company.com",
+			store.UserRoleViewer, pgtype.Int4{Int32: ownerUser.ID, Valid: true})
+		ic, err := svc.InviteContextFromToken(ctx, token)
+		if err != nil {
+			t.Fatalf("invite context: %v", err)
+		}
+		if ic.InviterEmail != "owner@company.com" {
+			t.Errorf("inviter email = %q, want owner@company.com", ic.InviterEmail)
+		}
+		if ic.InviteeEmail != "invited@company.com" {
+			t.Errorf("invitee email = %q, want invited@company.com", ic.InviteeEmail)
+		}
+	})
+
+	t.Run("empty when inviter unset", func(t *testing.T) {
+		token := seedInvitation(t, ctx, pc, ownerUser.TenantID.Int32, "noinviter@company.com",
+			store.UserRoleViewer, pgtype.Int4{})
+		ic, err := svc.InviteContextFromToken(ctx, token)
+		if err != nil {
+			t.Fatalf("invite context: %v", err)
+		}
+		if ic.InviterEmail != "" {
+			t.Errorf("inviter email = %q, want empty", ic.InviterEmail)
+		}
+	})
+}
+
 func TestAuthService_AcceptInvite_InvalidToken(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()

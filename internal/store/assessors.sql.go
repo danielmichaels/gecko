@@ -198,11 +198,17 @@ SELECT df.id, df.uid, df.domain_id, df.txt_record_id, df.severity, df.status, df
 FROM dkim_findings df
          JOIN domains d ON df.domain_id = d.id
 WHERE d.uid = $1
+  AND d.tenant_id = $2
 ORDER BY df.severity ASC, df.created_at DESC
 `
 
-func (q *Queries) AssessDKIMFindingsByDomainID(ctx context.Context, uid string) ([]DkimFindings, error) {
-	rows, err := q.db.Query(ctx, assessDKIMFindingsByDomainID, uid)
+type AssessDKIMFindingsByDomainIDParams struct {
+	Uid      string      `json:"uid"`
+	TenantID pgtype.Int4 `json:"tenant_id"`
+}
+
+func (q *Queries) AssessDKIMFindingsByDomainID(ctx context.Context, arg AssessDKIMFindingsByDomainIDParams) ([]DkimFindings, error) {
+	rows, err := q.db.Query(ctx, assessDKIMFindingsByDomainID, arg.Uid, arg.TenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -319,11 +325,17 @@ SELECT df.id, df.uid, df.domain_id, df.txt_record_id, df.severity, df.status, df
 FROM dmarc_findings df
          JOIN domains d ON df.domain_id = d.id
 WHERE d.uid = $1
+  AND d.tenant_id = $2
 ORDER BY df.severity ASC, df.created_at DESC
 `
 
-func (q *Queries) AssessGetDMARCFindingsByDomainID(ctx context.Context, uid string) ([]DmarcFindings, error) {
-	rows, err := q.db.Query(ctx, assessGetDMARCFindingsByDomainID, uid)
+type AssessGetDMARCFindingsByDomainIDParams struct {
+	Uid      string      `json:"uid"`
+	TenantID pgtype.Int4 `json:"tenant_id"`
+}
+
+func (q *Queries) AssessGetDMARCFindingsByDomainID(ctx context.Context, arg AssessGetDMARCFindingsByDomainIDParams) ([]DmarcFindings, error) {
+	rows, err := q.db.Query(ctx, assessGetDMARCFindingsByDomainID, arg.Uid, arg.TenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -360,11 +372,17 @@ SELECT sf.id, sf.uid, sf.domain_id, sf.txt_record_id, sf.severity, sf.status, sf
 FROM spf_findings sf
          JOIN domains d ON sf.domain_id = d.id
 WHERE d.uid = $1
+  AND d.tenant_id = $2
 ORDER BY sf.severity ASC, sf.created_at DESC
 `
 
-func (q *Queries) AssessGetSPFFindingByDomainID(ctx context.Context, uid string) ([]SpfFindings, error) {
-	rows, err := q.db.Query(ctx, assessGetSPFFindingByDomainID, uid)
+type AssessGetSPFFindingByDomainIDParams struct {
+	Uid      string      `json:"uid"`
+	TenantID pgtype.Int4 `json:"tenant_id"`
+}
+
+func (q *Queries) AssessGetSPFFindingByDomainID(ctx context.Context, arg AssessGetSPFFindingByDomainIDParams) ([]SpfFindings, error) {
+	rows, err := q.db.Query(ctx, assessGetSPFFindingByDomainID, arg.Uid, arg.TenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -481,11 +499,17 @@ SELECT ztf.id, ztf.uid, ztf.domain_id, ztf.ns_record_id, ztf.severity, ztf.statu
 FROM zone_transfer_findings ztf
          JOIN domains d ON ztf.domain_id = d.id
 WHERE d.uid = $1
+  AND d.tenant_id = $2
 ORDER BY ztf.severity ASC, ztf.created_at DESC
 `
 
-func (q *Queries) AssessGetZoneTransferFindingsByDomainUID(ctx context.Context, uid string) ([]ZoneTransferFindings, error) {
-	rows, err := q.db.Query(ctx, assessGetZoneTransferFindingsByDomainUID, uid)
+type AssessGetZoneTransferFindingsByDomainUIDParams struct {
+	Uid      string      `json:"uid"`
+	TenantID pgtype.Int4 `json:"tenant_id"`
+}
+
+func (q *Queries) AssessGetZoneTransferFindingsByDomainUID(ctx context.Context, arg AssessGetZoneTransferFindingsByDomainUIDParams) ([]ZoneTransferFindings, error) {
+	rows, err := q.db.Query(ctx, assessGetZoneTransferFindingsByDomainUID, arg.Uid, arg.TenantID)
 	if err != nil {
 		return nil, err
 	}

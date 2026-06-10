@@ -198,6 +198,29 @@ func (app *Server) registerEndpoints(api huma.API) {
 		Middlewares:   huma.Middlewares{app.apiAuth(api)},
 	}, app.handleDomainTimeline)
 
+	// Findings handlers
+	huma.Register(api, huma.Operation{
+		OperationID:   "list_domain_findings",
+		Method:        http.MethodGet,
+		Path:          "/api/domains/{id}/findings",
+		Summary:       "List a domain's security findings",
+		Tags:          []string{"Findings"},
+		DefaultStatus: http.StatusOK,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
+	}, app.handleDomainFindings)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "list_findings",
+		Method:        http.MethodGet,
+		Path:          "/api/findings",
+		Summary:       "List all security findings across the tenant",
+		Tags:          []string{"Findings"},
+		DefaultStatus: http.StatusOK,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
+	}, app.handleFindingsList)
+
 	// Auth handlers (public: signup, login, accept-invite)
 	huma.Register(api, huma.Operation{
 		OperationID:   "signup",

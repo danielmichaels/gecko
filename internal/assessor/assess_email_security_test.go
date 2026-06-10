@@ -585,7 +585,13 @@ func TestAssessEmailSecurity_DMARC(t *testing.T) {
 			}
 
 			// Get the findings from the database
-			findings, err := pgContainer.Queries.AssessGetDMARCFindingsByDomainID(ctx, domain.Uid)
+			findings, err := pgContainer.Queries.AssessGetDMARCFindingsByDomainID(
+				ctx,
+				store.AssessGetDMARCFindingsByDomainIDParams{
+					Uid:      domain.Uid,
+					TenantID: pgtype.Int4{Int32: 1, Valid: true},
+				},
+			)
 			if err != nil {
 				t.Fatalf("Failed to get DMARC findings: %v", err)
 			}

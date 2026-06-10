@@ -278,6 +278,7 @@ func (s *AuthService) AcceptInviteWeb(
 // InviteContext holds the display fields for the accept-invitation page.
 type InviteContext struct {
 	InviteeEmail string
+	InviterEmail string
 	Role         string
 	Expiry       string
 	TenantName   string
@@ -300,6 +301,11 @@ func (s *AuthService) InviteContextFromToken(
 	}
 	if tenant, err := s.DB.TenantGetByID(ctx, inv.TenantID); err == nil {
 		ic.TenantName = tenant.Name
+	}
+	if inv.InvitedBy.Valid {
+		if inviter, err := s.DB.UserGetByID(ctx, inv.InvitedBy.Int32); err == nil {
+			ic.InviterEmail = inviter.Email
+		}
 	}
 	return ic, nil
 }

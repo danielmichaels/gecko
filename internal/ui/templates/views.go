@@ -180,10 +180,8 @@ type DomainDetailPageProps struct {
 
 // RecordRowView is the presentation model for one DNS record row.
 type RecordRowView struct {
-	Type    string
-	Value   string
-	TTL     string
-	Flagged bool
+	Type  string
+	Value string
 }
 
 // RecordsView is the lazy-loaded fragment for the records panel.
