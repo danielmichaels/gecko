@@ -524,4 +524,20 @@ body{
 .set-secret-row .btn{margin:0;white-space:nowrap}
 .set-pw-btn{width:auto;margin-top:20px}
 
-@media(max-width:760px){.app{grid-template-columns:1fr}.side{display:none}.auth,.detail-grid,.stats{grid-template-columns:1fr}.toast-stack{left:14px;right:14px;width:auto}.set-key-meta{margin-left:0;width:100%}}
+/* ---------- Team ---------- */
+.team-member{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line-soft);flex-wrap:wrap}
+.team-member:first-child{border-top:0}
+.team-member .avatar{flex:none}
+.team-id{display:flex;flex-direction:column;min-width:0}
+.team-id .em{font-family:var(--mono);font-size:13px;color:var(--txt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.team-id .nm{font-size:11px;color:var(--txt-faint)}
+.team-role{display:flex;align-items:center}
+.team-meta{display:flex;gap:14px;align-items:center;margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--txt-faint)}
+.role-sel{appearance:none;font-family:var(--mono);font-size:12px;color:var(--txt);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px 22px 5px 9px;cursor:pointer;outline:none}
+.role-sel:hover{border-color:var(--brand-dim)}
+.badge.role-owner{color:var(--brand);background:var(--brand-soft)}
+.team-invite.expired{opacity:.55}
+.row-x{cursor:pointer;color:var(--txt-faint);font-family:var(--mono);width:26px;height:26px;display:grid;place-items:center;border-radius:6px;flex:none}
+.row-x:hover{background:var(--crit-bg);color:var(--crit)}
+
+@media(max-width:760px){.app{grid-template-columns:1fr}.side{display:none}.auth,.detail-grid,.stats{grid-template-columns:1fr}.toast-stack{left:14px;right:14px;width:auto}.set-key-meta{margin-left:0;width:100%}.team-meta{margin-left:0;width:100%}}

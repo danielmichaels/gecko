@@ -80,15 +80,12 @@ func (h *Handlers) Routes() http.Handler {
 				"A high-level overview of your fleet health and activity. Coming soon.",
 			),
 		)
-		r.Get(
-			"/team",
-			h.handleComingSoon(
-				"team",
-				"⊕",
-				"Team",
-				"Manage teammates, roles, and pending invitations. Coming soon.",
-			),
-		)
+		r.Get("/team", h.handleTeamGet)
+		r.Post("/team/invitations", h.handleTeamInviteCreate)
+		r.Delete("/team/invitations/{uid}", h.handleTeamInviteRevoke)
+		r.Put("/team/members/{uid}", h.handleTeamMemberRole)
+		r.Delete("/team/members/{uid}", h.handleTeamMemberRemove)
+
 		r.Get("/settings", h.handleSettingsGet)
 		r.Post("/settings/apikeys", h.handleAPIKeyCreate)
 		r.Delete("/settings/apikeys/{uid}", h.handleAPIKeyRevoke)
