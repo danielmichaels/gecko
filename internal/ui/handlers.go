@@ -207,7 +207,7 @@ func (h *Handlers) handleInviteGet(w http.ResponseWriter, r *http.Request) {
 	renderPage(w, r, templates.AcceptInvitePage(templates.AcceptInvitePageProps{
 		Token:        token,
 		TenantName:   ic.TenantName,
-		InviterEmail: "",
+		InviterEmail: ic.InviterEmail,
 		Role:         ic.Role,
 		InviteeEmail: ic.InviteeEmail,
 		Expiry:       ic.Expiry,

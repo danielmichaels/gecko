@@ -111,6 +111,89 @@ type TenantScansResult struct {
 	Totals       ScanTotals
 }
 
+// FlatScanView is the API-facing shape for one scan in the flat tenant feed. It
+// omits the UI-only presentation fields (TimelineURL, Segments, Pills, RelativeTime,
+// SourceLabel, AbsoluteTime, FullTime) that are meaningless outside the browser.
+type FlatScanView struct {
+	StartedAt     time.Time
+	ScanUID       string
+	DomainUID     string
+	DomainName    string
+	Source        string
+	ParentScanUID string
+	State         string
+	Changes       []ScanChange
+	CreatedCount  int
+	UpdatedCount  int
+	DeletedCount  int
+	TotalChanges  int
+	IsBaseline    bool
+}
+
+// FlatScansResult is the API-facing tenant-wide feed: a flat, newest-first,
+// paginated slice of scans plus the unpaginated total for pagination metadata.
+type FlatScansResult struct {
+	Scans      []FlatScanView
+	TotalCount int64
+}
+
+// ListByTenantFlat returns the tenant scan feed as a flat, newest-first, paginated
+// slice for the REST API. It reuses ListByTenant's tenant-gated, windowed, row-capped
+// SQL and its filtering, then flattens the day groups.
+//
+// FLAG: ScansListByTenant is bounded by a time window (Since) and a hard row cap
+// (scanRowLimit=200); its observation aggregation rides idx_obs_scan and does not
+// full-scan domain_observations. Pagination here is an in-memory slice over <=200
+// rows. If the row cap grows materially this should move to SQL-level pagination.
+func (s *ScansService) ListByTenantFlat(
+	ctx context.Context,
+	p *auth.Principal,
+	opts ScansListOptions,
+	pageSize, offset int32,
+) (FlatScansResult, error) {
+	grouped, err := s.ListByTenant(ctx, p, opts)
+	if err != nil {
+		return FlatScansResult{}, err
+	}
+
+	var all []FlatScanView
+	for _, day := range grouped.Days {
+		for _, v := range day.Scans {
+			all = append(all, flatScanView(v))
+		}
+	}
+
+	total := int64(len(all))
+	lo := int(offset)
+	if lo > len(all) {
+		lo = len(all)
+	}
+	hi := lo + int(pageSize)
+	if hi > len(all) {
+		hi = len(all)
+	}
+	return FlatScansResult{Scans: all[lo:hi], TotalCount: total}, nil
+}
+
+// flatScanView projects a presentation ScanRunView down to its API fields.
+func flatScanView(v ScanRunView) FlatScanView {
+	return FlatScanView{
+		StartedAt:     v.StartedAt,
+		ScanUID:       v.ScanUID,
+		DomainUID:     v.DomainUID,
+		DomainName:    v.DomainName,
+		Source:        v.Source,
+		ParentScanUID: v.ParentScanUID,
+		State:         v.State,
+		Changes:       v.Changes,
+		CreatedCount:  v.CreatedCount,
+		UpdatedCount:  v.UpdatedCount,
+		DeletedCount:  v.DeletedCount,
+		TotalChanges:  v.TotalChanges,
+		IsBaseline:    v.IsBaseline,
+	}
+}
+
 // ListByTenant returns the tenant's reverse-chronological scan feed with per-scan
 // change aggregates. Tenant isolation is the WHERE s.tenant_id gate inside
 // ScansListByTenant — never a Go-side filter.

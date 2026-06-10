@@ -1,5 +1,9 @@
 package server
 
+// maxPageSize bounds any list endpoint's page size so a caller cannot request an
+// unbounded result set (e.g. page_size=1000000) against heavier findings/scans queries.
+const maxPageSize int32 = 100
+
 // PaginationQuery represents the query parameters for paginating a list of domains.
 // PageSize specifies the number of domains to return per page, with a default of 20.
 // PageNumber specifies the page offset for pagination, with a default of 1.
@@ -13,6 +17,9 @@ type PaginationQuery struct {
 func (p *PaginationQuery) GetPageSize() int32 {
 	if p.PageSize <= 0 {
 		return 25 // Default page size
+	}
+	if p.PageSize > maxPageSize {
+		return maxPageSize
 	}
 	return p.PageSize
 }

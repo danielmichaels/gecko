@@ -542,63 +542,6 @@ func (q *Queries) DomainsInsert(ctx context.Context, arg DomainsInsertParams) (D
 	return i, err
 }
 
-const domainsListAll = `-- name: DomainsListAll :many
-SELECT id,
-       uid,
-       tenant_id,
-       name,
-       domain_type,
-       source,
-       status,
-       created_at,
-       updated_at
-FROM domains
-ORDER BY created_at DESC
-`
-
-type DomainsListAllRow struct {
-	ID         int32              `json:"id"`
-	Uid        string             `json:"uid"`
-	TenantID   pgtype.Int4        `json:"tenant_id"`
-	Name       string             `json:"name"`
-	DomainType DomainType         `json:"domain_type"`
-	Source     DomainSource       `json:"source"`
-	Status     DomainStatus       `json:"status"`
-	CreatedAt  pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
-}
-
-// fixme: List all domains (no auth, for development/debugging only - avoid in production)
-func (q *Queries) DomainsListAll(ctx context.Context) ([]DomainsListAllRow, error) {
-	rows, err := q.db.Query(ctx, domainsListAll)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []DomainsListAllRow{}
-	for rows.Next() {
-		var i DomainsListAllRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Uid,
-			&i.TenantID,
-			&i.Name,
-			&i.DomainType,
-			&i.Source,
-			&i.Status,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const domainsListByTenantID = `-- name: DomainsListByTenantID :many
 SELECT id,
        uid,
