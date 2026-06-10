@@ -76,7 +76,7 @@ type SecurityWarnings struct {
 func (a *Assessor) AssessZoneTransfer(ctx context.Context, domainUID string) error {
 	domain, err := a.store.DomainsGetByIdentifier(ctx, store.DomainsGetByIdentifierParams{
 		Uid:      domainUID,
-		TenantID: pgtype.Int4{Int32: 1, Valid: true}, // todo: replace with actual tenant ID
+		TenantID: pgtype.Int4{Int32: a.identity.TenantID, Valid: true},
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -99,94 +99,175 @@ func (a *Assessor) AssessZoneTransfer(ctx context.Context, domainUID string) err
 		a.logger.ErrorContext(ctx, "Failed to retrieve zone transfer attempts", "error", err)
 		return err
 	}
-	successfulAssessments := 0
+	nsIDByHost := a.nsRecordIDsByHost(ctx, domain.ID)
+
+	assessed := 0
 	for _, attempt := range attempts {
+		nsRecordID := nsRecordIDFor(attempt.Nameserver, nsIDByHost)
+		var recorded bool
 		if attempt.WasSuccessful {
-			var transferData dnsrecords.ZoneTransferData
-			if err := json.Unmarshal(attempt.ResponseData, &transferData); err != nil {
-				a.logger.ErrorContext(
-					ctx,
-					"Failed to unmarshal zone transfer data",
-					"error",
-					err,
-					"nameserver",
-					attempt.Nameserver,
-				)
-				continue
-			}
-			assessment := ExtractZoneTransferAssessment(&transferData)
-
-			recordData := extractRecordDataByType(&transferData)
-			findings := FindingsContainer{
-				PrimaryFinding: Finding{
-					Title: fmt.Sprintf(
-						"Zone transfer (%s) allowed from nameserver %s",
-						attempt.TransferType,
-						attempt.Nameserver,
-					),
-					Severity: string(store.FindingSeverityCritical),
-					Details: fmt.Sprintf(
-						"Zone transfer (%s) allowed from nameserver %s. This can leak internal DNS information to attackers.",
-						attempt.TransferType,
-						attempt.Nameserver,
-					),
-				},
-				Assessment: assessment,
-				RecordData: recordData,
-			}
-
-			findings.SensitiveInfo = collectSensitiveInfoFindings(assessment)
-			findings.InternalExposure = collectInternalExposureFindings(assessment)
-			findings.SecurityIssues = collectSecurityFlagFindings(assessment)
-			findingsJSON, err := json.Marshal(findings)
-			if err != nil {
-				a.logger.ErrorContext(ctx, "Failed to marshal findings data", "error", err)
-				continue
-			}
-
-			_, sErr := a.store.StoreZoneTransferFinding(ctx, store.StoreZoneTransferFindingParams{
-				DomainID:             pgtype.Int4{Int32: domain.ID, Valid: true},
-				Severity:             store.FindingSeverityCritical,
-				Status:               store.FindingStatusOpen,
-				Nameserver:           attempt.Nameserver,
-				ZoneTransferPossible: true,
-				TransferType:         attempt.TransferType,
-				TransferDetails:      findingsJSON,
-			})
-			if sErr != nil {
-				a.logger.ErrorContext(ctx, "Failed to store zone transfer finding", "error", sErr)
-				continue
-			}
-			payload := observer.PayloadJSON(map[string]any{
-				"nameserver":             attempt.Nameserver,
-				"transfer_type":          string(attempt.TransferType),
-				"severity":               string(store.FindingSeverityCritical),
-				"zone_transfer_possible": true,
-			})
-			if oErr := observer.New(a.store).RecordFindingChange(
-				ctx, a.identity, observer.EntityZoneTransferFinding, attempt.Nameserver, payload,
-			); oErr != nil {
-				a.logger.WarnContext(ctx, "failed to emit zone transfer finding observation",
-					"nameserver", attempt.Nameserver, "error", oErr)
-			}
-			successfulAssessments++
+			recorded = a.recordExposedFinding(ctx, domain.ID, attempt, nsRecordID)
+		} else {
+			recorded = a.recordRefusedFinding(ctx, domain.ID, attempt, nsRecordID)
+		}
+		if recorded {
+			assessed++
 		}
 	}
 
-	if successfulAssessments > 0 {
-		a.logger.InfoContext(
-			ctx,
-			"Successfully assessed zone transfers",
-			"domain",
-			domain.Uid,
-			"count",
-			successfulAssessments,
-		)
+	if len(attempts) == 0 {
+		a.logger.InfoContext(ctx, "No zone transfer attempts found to assess", "domain", domain.Uid)
 		return nil
 	}
-	a.logger.InfoContext(ctx, "No zone transfer attempts found to assess", "domain", domain.Uid)
-
+	a.logger.InfoContext(
+		ctx,
+		"Successfully assessed zone transfers",
+		"domain",
+		domain.Uid,
+		"count",
+		assessed,
+	)
 	return nil
+}
+
+// nsRecordIDsByHost maps a domain's NS hostnames to their ns_records row IDs so
+// zone-transfer findings can link back to the originating NS record. A load
+// failure is non-fatal: findings are still written with a null FK.
+func (a *Assessor) nsRecordIDsByHost(ctx context.Context, domainID int32) map[string]int32 {
+	rows, err := a.store.RecordsGetNSByDomainID(ctx, pgtype.Int4{Int32: domainID, Valid: true})
+	if err != nil {
+		a.logger.WarnContext(ctx, "failed to load NS records for finding linkage", "error", err)
+		return nil
+	}
+	byHost := make(map[string]int32, len(rows))
+	for _, r := range rows {
+		byHost[r.Nameserver] = r.ID
+	}
+	return byHost
+}
+
+// nsRecordIDFor resolves the ns_records FK for a stored attempt nameserver,
+// which is formatted as host:port. An unmatched nameserver yields a null FK
+// rather than an error.
+func nsRecordIDFor(attemptNameserver string, byHost map[string]int32) pgtype.Int4 {
+	host := attemptNameserver
+	if h, _, err := net.SplitHostPort(attemptNameserver); err == nil {
+		host = h
+	}
+	if id, ok := byHost[host]; ok {
+		return pgtype.Int4{Int32: id, Valid: true}
+	}
+	return pgtype.Int4{Valid: false}
+}
+
+// recordExposedFinding analyses a successful zone transfer, stores the critical
+// finding with its extracted assessment, and emits its observation. Returns true
+// when the finding row was written.
+func (a *Assessor) recordExposedFinding(
+	ctx context.Context,
+	domainID int32,
+	attempt store.ZoneTransferAttempts,
+	nsRecordID pgtype.Int4,
+) bool {
+	var transferData dnsrecords.ZoneTransferData
+	if err := json.Unmarshal(attempt.ResponseData, &transferData); err != nil {
+		a.logger.ErrorContext(ctx, "Failed to unmarshal zone transfer data",
+			"error", err, "nameserver", attempt.Nameserver)
+		return false
+	}
+	assessment := ExtractZoneTransferAssessment(&transferData)
+	findings := FindingsContainer{
+		PrimaryFinding: Finding{
+			Title: fmt.Sprintf(
+				"Zone transfer (%s) allowed from nameserver %s",
+				attempt.TransferType,
+				attempt.Nameserver,
+			),
+			Severity: string(store.FindingSeverityCritical),
+			Details: fmt.Sprintf(
+				"Zone transfer (%s) allowed from nameserver %s. This can leak internal DNS information to attackers.",
+				attempt.TransferType,
+				attempt.Nameserver,
+			),
+		},
+		Assessment: assessment,
+		RecordData: extractRecordDataByType(&transferData),
+	}
+	findings.SensitiveInfo = collectSensitiveInfoFindings(assessment)
+	findings.InternalExposure = collectInternalExposureFindings(assessment)
+	findings.SecurityIssues = collectSecurityFlagFindings(assessment)
+	findingsJSON, err := json.Marshal(findings)
+	if err != nil {
+		a.logger.ErrorContext(ctx, "Failed to marshal findings data", "error", err)
+		return false
+	}
+
+	_, sErr := a.store.StoreZoneTransferFinding(ctx, store.StoreZoneTransferFindingParams{
+		DomainID:             pgtype.Int4{Int32: domainID, Valid: true},
+		NsRecordID:           nsRecordID,
+		Severity:             store.FindingSeverityCritical,
+		Status:               store.FindingStatusOpen,
+		Nameserver:           attempt.Nameserver,
+		ZoneTransferPossible: true,
+		TransferType:         attempt.TransferType,
+		TransferDetails:      findingsJSON,
+	})
+	if sErr != nil {
+		a.logger.ErrorContext(ctx, "Failed to store zone transfer finding", "error", sErr)
+		return false
+	}
+	payload := observer.PayloadJSON(map[string]any{
+		"nameserver":             attempt.Nameserver,
+		"transfer_type":          string(attempt.TransferType),
+		"severity":               string(store.FindingSeverityCritical),
+		"zone_transfer_possible": true,
+	})
+	if oErr := observer.New(a.store).RecordFindingChange(
+		ctx, a.identity, observer.EntityZoneTransferFinding, attempt.Nameserver, payload,
+	); oErr != nil {
+		a.logger.WarnContext(ctx, "failed to emit zone transfer finding observation",
+			"nameserver", attempt.Nameserver, "error", oErr)
+	}
+	return true
+}
+
+// recordRefusedFinding stores a passing/compliant finding for a nameserver that
+// correctly refused the zone transfer and emits its observation. Returns true
+// when the finding row was written.
+func (a *Assessor) recordRefusedFinding(
+	ctx context.Context,
+	domainID int32,
+	attempt store.ZoneTransferAttempts,
+	nsRecordID pgtype.Int4,
+) bool {
+	details := fmt.Sprintf("Zone transfer refused by %s", attempt.Nameserver)
+	_, err := a.store.StoreZoneTransferFinding(ctx, store.StoreZoneTransferFindingParams{
+		DomainID:             pgtype.Int4{Int32: domainID, Valid: true},
+		NsRecordID:           nsRecordID,
+		Severity:             store.FindingSeverityInfo,
+		Status:               store.FindingStatusCompliant,
+		Nameserver:           attempt.Nameserver,
+		ZoneTransferPossible: false,
+		TransferType:         attempt.TransferType,
+		Details:              pgtype.Text{String: details, Valid: true},
+	})
+	if err != nil {
+		a.logger.ErrorContext(ctx, "Failed to store refused zone transfer finding", "error", err)
+		return false
+	}
+	payload := observer.PayloadJSON(map[string]any{
+		"nameserver":             attempt.Nameserver,
+		"transfer_type":          string(attempt.TransferType),
+		"severity":               string(store.FindingSeverityInfo),
+		"zone_transfer_possible": false,
+	})
+	if oErr := observer.New(a.store).RecordFindingChange(
+		ctx, a.identity, observer.EntityZoneTransferFinding, attempt.Nameserver, payload,
+	); oErr != nil {
+		a.logger.WarnContext(ctx, "failed to emit zone transfer finding observation",
+			"nameserver", attempt.Nameserver, "error", oErr)
+	}
+	return true
 }
 
 // extractRecordDataByType categorizes DNS records from a zone transfer by their record type.
