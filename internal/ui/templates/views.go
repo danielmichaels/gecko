@@ -1,6 +1,9 @@
 package templates
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // postWithCSRF returns a datastar data-on-click action string that POSTs to url
 // carrying the CSRF token in the X-CSRF-Token header.
@@ -491,6 +494,136 @@ type APIKeyRowView struct {
 type APIKeySecretView struct {
 	Name string
 	Raw  string
+}
+
+// TeamPageProps holds data for the team-management page. CanManage gates the
+// owner/manager-only controls (invite, change role, remove, revoke), mirroring
+// the service-layer guard; the 403 remains the authoritative backstop. ActorRole
+// is the caller's role, used to cap the grantable-role options.
+type TeamPageProps struct {
+	ActorRole string
+	Shell     AppShellProps
+	Members   []MemberRowView
+	Invites   []InviteRowView
+	Stats     TeamStats
+	CanManage bool
+}
+
+// TeamStats holds the four stat-strip counts for the team page.
+type TeamStats struct {
+	Members  int
+	Owners   int
+	Managers int
+	Pending  int
+}
+
+// MemberRowView is the presentation model for one team member. Manageable is true
+// when the caller outranks-or-equals this member (service.requireCanManage); only
+// then are the role select and remove control rendered.
+type MemberRowView struct {
+	UID         string
+	Email       string
+	Name        string
+	Initials    string
+	Role        string
+	Status      string
+	StatusClass string
+	Joined      string
+	Manageable  bool
+}
+
+// InviteRowView is the presentation model for one pending invitation. Expired is
+// true once the invite is past its expiry; it renders dimmed with an "expired"
+// badge but can still be revoked to clear the row.
+type InviteRowView struct {
+	UID       string
+	Email     string
+	Role      string
+	InvitedBy string
+	Expires   string
+	Expired   bool
+}
+
+// InviteLinkView carries a freshly created invitation's one-time accept URL for
+// the reveal panel. With no mailer wired, this link is the only delivery channel,
+// and the plaintext token exists only on the create response — rendered into
+// #team-invite-secret once and never reproducible.
+type InviteLinkView struct {
+	Email string
+	URL   string
+}
+
+// roleRank mirrors service/authz.go's privilege ordering for UI gating only. The
+// service stays the authoritative guard; this just decides which controls and
+// options to render. superadmin outranks owner but is never offered as grantable.
+var roleRank = map[string]int{"viewer": 1, "manager": 2, "owner": 3, "superadmin": 4}
+
+// grantableRoles returns the roles the actor may assign — every role at or below
+// their own rank, excluding superadmin. Mirrors service.requireCanGrant so the UI
+// never offers an option the API would reject with a 403.
+func grantableRoles(actorRole string) []string {
+	out := make([]string, 0, 3)
+	for _, r := range []string{"viewer", "manager", "owner"} {
+		if roleRank[r] <= roleRank[actorRole] {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// roleBadgeClass maps a role to its badge accent class. viewer renders neutral.
+func roleBadgeClass(role string) string {
+	switch role {
+	case "owner":
+		return "role-owner"
+	case "manager":
+		return "info"
+	default:
+		return ""
+	}
+}
+
+// changeMemberRole returns the data-on:change action that PUTs the newly selected
+// role for a member. uid and token are JSON-encoded into JS string literals (HTML
+// escaping alone does not protect a JS-attribute context — the DOM reverses it
+// before datastar evaluates), and the chosen role is read live from el.value.
+func changeMemberRole(uid, token string) string {
+	uidJSON, _ := json.Marshal(uid)
+	tokenJSON, _ := json.Marshal(token)
+	return fmt.Sprintf(
+		"@put('/app/team/members/'+%s+'?role='+encodeURIComponent(el.value), {headers: {'X-CSRF-Token': %s}})",
+		uidJSON,
+		tokenJSON,
+	)
+}
+
+// removeMember returns the confirm-then-DELETE action for removing a member. Every
+// interpolated value (uid, email, token) is JSON-encoded into a JS string literal
+// so a crafted email cannot break out of the expression.
+func removeMember(uid, email, token string) string {
+	uidJSON, _ := json.Marshal(uid)
+	emailJSON, _ := json.Marshal(email)
+	tokenJSON, _ := json.Marshal(token)
+	return fmt.Sprintf(
+		"if(!confirm('Remove '+%s+' from the team?')) return; @delete('/app/team/members/'+%s, {headers: {'X-CSRF-Token': %s}})",
+		emailJSON,
+		uidJSON,
+		tokenJSON,
+	)
+}
+
+// revokeInvite returns the confirm-then-DELETE action for revoking a pending
+// invitation, JSON-encoding every interpolated value as a JS string literal.
+func revokeInvite(uid, email, token string) string {
+	uidJSON, _ := json.Marshal(uid)
+	emailJSON, _ := json.Marshal(email)
+	tokenJSON, _ := json.Marshal(token)
+	return fmt.Sprintf(
+		"if(!confirm('Revoke the invitation for '+%s+'?')) return; @delete('/app/team/invitations/'+%s, {headers: {'X-CSRF-Token': %s}})",
+		emailJSON,
+		uidJSON,
+		tokenJSON,
+	)
 }
 
 // ComingSoonProps holds data for the coming-soon placeholder page.
