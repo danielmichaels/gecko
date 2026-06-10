@@ -189,7 +189,7 @@ func AppShell(props AppShellProps) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "<a class=\"soon\" href=\"/app/team\"><span class=\"ico\">⊕</span> Team <span class=\"soon-tag\">SOON</span></a> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "<a href=\"/app/team\"><span class=\"ico\">⊕</span> Team</a> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
