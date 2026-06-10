@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/danielmichaels/gecko/internal/dnsrecords"
+	"github.com/danielmichaels/gecko/internal/observer"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/danielmichaels/gecko/internal/testhelpers"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -37,8 +38,16 @@ func TestAssessZoneTransfer(t *testing.T) {
 		t.Fatalf("Failed to get domain: %v", err)
 	}
 
-	// Create assessor with the logger
-	assessor := NewAssessor(Config{Store: pgContainer.Queries, Logger: testhelpers.TestLogger})
+	// Create assessor with an identity for the seeded tenant-1 domain
+	ident := observer.DomainIdentity{
+		TenantID:   1,
+		DomainID:   domain.ID,
+		DomainUID:  domain.Uid,
+		DomainName: domain.Name,
+	}
+	assessor := NewAssessor(
+		Config{Store: pgContainer.Queries, Logger: testhelpers.TestLogger, Identity: ident},
+	)
 
 	// Create mock zone transfer data
 	mockZoneTransferData := createMockZoneTransferData()
@@ -188,6 +197,97 @@ func TestAssessZoneTransfer(t *testing.T) {
 	}
 	if _, ok := findingsContainer.RecordData["TXT"]; !ok {
 		t.Error("Expected TXT records in raw record data")
+	}
+}
+
+// TestAssessZoneTransferRefusedNonDefaultTenant exercises the three issue #28
+// fixes together on a tenant other than 1: the assessor must look the domain up
+// by the identity's tenant (a), write a passing/compliant finding when every
+// nameserver refuses (b), and link the finding to its NS record (c).
+func TestAssessZoneTransferRefusedNonDefaultTenant(t *testing.T) {
+	ctx := context.Background()
+	pgContainer, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("Failed to create postgres container: %v", err)
+	}
+	defer pgContainer.Close(ctx)
+
+	domain, err := pgContainer.Queries.DomainsGetByID(
+		ctx,
+		store.DomainsGetByIDParams{
+			Uid:      "domain_00000002",
+			TenantID: pgtype.Int4{Int32: 2, Valid: true},
+		},
+	)
+	if err != nil {
+		t.Fatalf("Failed to get tenant-2 domain: %v", err)
+	}
+
+	nsRecord, err := pgContainer.Queries.RecordsCreateNS(ctx, store.RecordsCreateNSParams{
+		DomainID:   pgtype.Int4{Int32: domain.ID, Valid: true},
+		Nameserver: "ns1.example-two.test.",
+	})
+	if err != nil {
+		t.Fatalf("Failed to create NS record: %v", err)
+	}
+
+	_, err = pgContainer.Queries.ScannersStoreZoneTransferAttempt(
+		ctx,
+		store.ScannersStoreZoneTransferAttemptParams{
+			DomainID:      pgtype.Int4{Int32: domain.ID, Valid: true},
+			Nameserver:    "ns1.example-two.test.:53",
+			TransferType:  store.TransferTypeAXFRIXFR,
+			WasSuccessful: false,
+			ErrorMessage:  pgtype.Text{String: "Transfer refused or failed", Valid: true},
+		},
+	)
+	if err != nil {
+		t.Fatalf("Failed to store refused zone transfer attempt: %v", err)
+	}
+
+	ident := observer.DomainIdentity{
+		TenantID:   2,
+		DomainID:   domain.ID,
+		DomainUID:  domain.Uid,
+		DomainName: domain.Name,
+	}
+	assessor := NewAssessor(
+		Config{Store: pgContainer.Queries, Logger: testhelpers.TestLogger, Identity: ident},
+	)
+
+	if err := assessor.AssessZoneTransfer(ctx, domain.Uid); err != nil {
+		t.Fatalf("AssessZoneTransfer failed for tenant-2 domain: %v", err)
+	}
+
+	findings, err := pgContainer.Queries.AssessGetZoneTransferFindings(
+		ctx,
+		pgtype.Int4{Int32: domain.ID, Valid: true},
+	)
+	if err != nil {
+		t.Fatalf("Failed to get zone transfer findings: %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("Expected exactly 1 refused finding, got %d", len(findings))
+	}
+
+	finding := findings[0]
+	if finding.ZoneTransferPossible {
+		t.Error("Expected ZoneTransferPossible to be false for a refused transfer")
+	}
+	if finding.Severity != store.FindingSeverityInfo {
+		t.Errorf("Expected severity info, got %s", finding.Severity)
+	}
+	if finding.Status != store.FindingStatusCompliant {
+		t.Errorf("Expected status compliant, got %s", finding.Status)
+	}
+	if !finding.Details.Valid || finding.Details.String == "" {
+		t.Error("Expected refused finding to carry a non-empty Details message")
+	}
+	if !finding.NsRecordID.Valid {
+		t.Fatal("Expected NsRecordID to be populated")
+	}
+	if finding.NsRecordID.Int32 != nsRecord.ID {
+		t.Errorf("Expected NsRecordID %d, got %d", nsRecord.ID, finding.NsRecordID.Int32)
 	}
 }
 

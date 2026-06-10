@@ -16,9 +16,12 @@ type fakeResolver struct {
 	aaaaReturn  []string
 	aaaaOK      bool
 
-	calledCNAME []string
-	calledA     []string
-	calledAAAA  []string
+	zoneTransferReturn *dnsrecords.ZoneTransferResult
+
+	calledCNAME        []string
+	calledA            []string
+	calledAAAA         []string
+	calledZoneTransfer []string
 }
 
 func (f *fakeResolver) LookupCNAME(target string) ([]string, bool) {
@@ -46,7 +49,11 @@ func (f *fakeResolver) LookupWithStatus(string, uint16) ([]string, dnsclient.Res
 }
 func (f *fakeResolver) IsZoneApex(string) bool      { return false }
 func (f *fakeResolver) ValidateDNSSEC(string) error { return nil }
-func (f *fakeResolver) AttemptZoneTransfer(string) *dnsrecords.ZoneTransferResult {
+func (f *fakeResolver) AttemptZoneTransfer(domain string) *dnsrecords.ZoneTransferResult {
+	f.calledZoneTransfer = append(f.calledZoneTransfer, domain)
+	if f.zoneTransferReturn != nil {
+		return f.zoneTransferReturn
+	}
 	return &dnsrecords.ZoneTransferResult{}
 }
 

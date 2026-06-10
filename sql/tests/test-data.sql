@@ -23,3 +23,21 @@ SELECT
     'domain_' || LPAD(d.id::text, 8, '0')
 FROM domain_data d
 ON CONFLICT (tenant_id, name) DO NOTHING;
+
+-- Second tenant to exercise multi-tenant code paths (issue #28)
+INSERT INTO tenants (name, uid)
+VALUES ('Test Tenant Two', 'tenant_00000002');
+
+WITH domain_data (id, name) AS (
+    VALUES (2, 'example-two.test')
+)
+INSERT INTO domains (tenant_id, name, domain_type, source, status, uid)
+SELECT
+    (SELECT id FROM tenants WHERE uid = 'tenant_00000002'),
+    d.name,
+    'tld',
+    'user_supplied',
+    'active',
+    'domain_' || LPAD(d.id::text, 8, '0')
+FROM domain_data d
+ON CONFLICT (tenant_id, name) DO NOTHING;
