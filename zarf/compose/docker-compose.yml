@@ -34,6 +34,14 @@ services:
       - PGPORT=5432
     networks:
       - gecko
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: always
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+    networks:
+      - gecko
 volumes:
   gecko_db:
 

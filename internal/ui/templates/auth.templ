@@ -35,6 +35,143 @@ templ LoginPage(props LoginPageProps) {
 						data-on:click="@post('/app/login')"
 					>Sign in &#x2192;</button>
 				</div>
+				<p class="lead" style="margin-top:14px">
+					<a href="/app/forgot-password">Forgot password?</a>
+				</p>
+				if props.ShowSignup {
+					<p class="lead" style="margin-top:6px">
+						No account? <a href="/app/signup">Create one</a>
+					</p>
+				}
+			</div>
+		</div>
+	}
+}
+
+templ SignupPage(props SignupPageProps) {
+	@Page("gecko - Sign up") {
+		<div class="auth">
+			<div class="auth-aside">
+				<div>
+					<div class="brand" style="margin-bottom:30px">
+						<span class="logo">🦎</span>
+						<span>ge<b>cko</b></span>
+					</div>
+					<p class="big">Start tracking<br/>your DNS in<br/><b>minutes</b>.</p>
+					<p class="tagline">Create a workspace and add your first domain. Continuous DNS reconnaissance from the moment you sign up.</p>
+				</div>
+				<div class="scan-deco"></div>
+			</div>
+			<div class="auth-form">
+				<h2>Create your workspace</h2>
+				<p class="lead">Sign up to start scanning your domains.</p>
+				if props.Error != "" {
+					<div id="signup-error" style="color:var(--crit);font-family:var(--mono);font-size:12.5px;background:var(--crit-bg);border:1px solid var(--crit);border-radius:8px;padding:10px 14px;margin-bottom:12px;">
+						{ props.Error }
+					</div>
+				} else {
+					<div id="signup-error" style="display:none"></div>
+				}
+				<div data-signals='{"email":"","password":"","name":"","tenantName":""}'>
+					<label class="lbl">Email</label>
+					<input class="inp" type="email" placeholder="you@example.com" data-bind="email"/>
+					<label class="lbl">Workspace name (optional)</label>
+					<input class="inp" type="text" placeholder="Acme Inc" data-bind="tenantName"/>
+					<label class="lbl">Display name (optional)</label>
+					<input class="inp" type="text" placeholder="Your name" data-bind="name"/>
+					<label class="lbl">Choose a password</label>
+					<input class="inp" type="password" placeholder="..." data-bind="password"/>
+					<button
+						class="btn"
+						type="button"
+						data-on:click="@post('/app/signup')"
+					>Create account &#x2192;</button>
+				</div>
+				<p class="lead" style="margin-top:14px">
+					Already have an account? <a href="/app/login">Sign in</a>
+				</p>
+			</div>
+		</div>
+	}
+}
+
+templ ForgotPasswordPage(props ForgotPasswordPageProps) {
+	@Page("gecko - Forgot password") {
+		<div class="auth">
+			<div class="auth-aside">
+				<div>
+					<div class="brand" style="margin-bottom:30px">
+						<span class="logo">🦎</span>
+						<span>ge<b>cko</b></span>
+					</div>
+					<p class="big">Locked out?<br/>Let&#39;s get you<br/><b>back in</b>.</p>
+					<p class="tagline">Enter your email and we&#39;ll send a link to reset your password.</p>
+				</div>
+				<div class="scan-deco"></div>
+			</div>
+			<div class="auth-form">
+				<h2>Reset your password</h2>
+				<p class="lead">We&#39;ll email you a reset link.</p>
+				if props.SuccessMsg != "" {
+					<div id="forgot-success" style="color:var(--ok);font-family:var(--mono);font-size:12.5px;background:var(--ok-bg);border:1px solid var(--ok);border-radius:8px;padding:10px 14px;margin-bottom:12px;">
+						{ props.SuccessMsg }
+					</div>
+				} else {
+					<div id="forgot-success" style="display:none"></div>
+				}
+				<div data-signals='{"email":""}'>
+					<label class="lbl">Email</label>
+					<input class="inp" type="email" placeholder="you@example.com" data-bind="email"/>
+					<button
+						class="btn"
+						type="button"
+						data-on:click="@post('/app/forgot-password')"
+					>Send reset link &#x2192;</button>
+				</div>
+				<p class="lead" style="margin-top:14px">
+					<a href="/app/login">Back to sign in</a>
+				</p>
+			</div>
+		</div>
+	}
+}
+
+templ ResetPasswordPage(props ResetPasswordPageProps) {
+	@Page("gecko - Reset password") {
+		<div class="auth">
+			<div class="auth-aside">
+				<div>
+					<div class="brand" style="margin-bottom:30px">
+						<span class="logo">🦎</span>
+						<span>ge<b>cko</b></span>
+					</div>
+					<p class="big">Choose a<br/>new<br/><b>password</b>.</p>
+					<p class="tagline">Set a new password to regain access. This will sign you out of all other sessions.</p>
+				</div>
+				<div class="scan-deco"></div>
+			</div>
+			<div class="auth-form">
+				<h2>Set a new password</h2>
+				<p class="lead">Enter a new password for your account.</p>
+				if props.Error != "" {
+					<div id="reset-error" style="color:var(--crit);font-family:var(--mono);font-size:12.5px;background:var(--crit-bg);border:1px solid var(--crit);border-radius:8px;padding:10px 14px;margin-bottom:12px;">
+						{ props.Error }
+					</div>
+				} else {
+					<div id="reset-error" style="display:none"></div>
+				}
+				<div data-signals={ resetSignals(props.Token) }>
+					<label class="lbl">New password</label>
+					<input class="inp" type="password" placeholder="..." data-bind="newPassword"/>
+					<button
+						class="btn"
+						type="button"
+						data-on:click="@post('/app/reset-password')"
+					>Update password &#x2192;</button>
+				</div>
+				<p class="lead" style="margin-top:14px">
+					<a href="/app/login">Back to sign in</a>
+				</p>
 			</div>
 		</div>
 	}

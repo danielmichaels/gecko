@@ -1,14 +1,17 @@
 package config
 
 import (
+	"errors"
 	"log"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/joeshaw/envdecode"
 )
 
 type Conf struct {
+	Mail    mailConf
 	Db      dbConf
 	Auth    authConf
 	AppConf appConf
@@ -48,9 +51,23 @@ type authConf struct {
 	InviteTTL time.Duration `env:"AUTH_INVITE_TTL,default=168h"`
 	// SessionTTL bounds cookie-session lifetime.
 	SessionTTL time.Duration `env:"AUTH_SESSION_TTL,default=720h"`
+	// ResetTTL bounds how long a password-reset token stays valid.
+	ResetTTL time.Duration `env:"AUTH_RESET_TTL,default=1h"`
 	// SignupEnabled toggles self-service tenant signup.
 	SignupEnabled       bool `env:"SIGNUP_ENABLED,default=true"`
 	SessionCookieSecure bool `env:"AUTH_SESSION_COOKIE_SECURE,default=true"`
+}
+
+type mailConf struct {
+	// Driver selects the mail backend: "smtp" (go-mail), "log" (dev — logs the
+	// envelope), or "noop" (tests — discards). Default keeps CI and non-Compose
+	// runs working without an SMTP server.
+	Driver   string `env:"MAIL_DRIVER,default=log"`
+	SMTPHost string `env:"SMTP_HOST,default=localhost"`
+	SMTPUser string `env:"SMTP_USERNAME,default="`
+	SMTPPass string `env:"SMTP_PASSWORD,default="`
+	FromAddr string `env:"MAIL_FROM,default=noreply@gecko.local"`
+	SMTPPort int    `env:"SMTP_PORT,default=1025"`
 }
 
 type appConf struct {
@@ -58,6 +75,12 @@ type appConf struct {
 	// internal/auth; this field is retained only so StrictDecode keeps parsing any
 	// existing X_API_KEY env var. Not used by middleware.
 	XApiKey string `env:"X_API_KEY,default=changeme"`
+	// PublicBaseURL is the trusted public origin (scheme+host) used to build
+	// absolute links in outbound email (e.g. password-reset). It MUST NOT be
+	// derived from request headers: an attacker-controlled Host/X-Forwarded-Host
+	// would poison the reset link and leak the token (reset poisoning). Empty
+	// yields a host-less relative link rather than an attacker-controlled one.
+	PublicBaseURL string `env:"APP_PUBLIC_URL,default="`
 	// needs to be removed or made into a list a slice
 	DNSServers              []string `env:"DNS_SERVERS,default=8.8.8.8:53;1.1.1.1:53;9.9.9.9:53"`
 	SubfinderSources        []string `env:"SUBFINDER_SOURCES,default="`
@@ -119,6 +142,21 @@ type serverConf struct {
 	TimeoutRead  time.Duration `env:"SERVER_TIMEOUT_READ,default=5s"`
 	TimeoutIdle  time.Duration `env:"SERVER_TIMEOUT_IDLE,default=5s"`
 	TimeoutWrite time.Duration `env:"SERVER_TIMEOUT_WRITE,default=5s"`
+}
+
+// Validate checks runtime preconditions a process must satisfy before it can
+// serve. It is deliberately NOT called from AppConfig: tests and CLI commands
+// load config without these set, so enforcement lives at the server entrypoint
+// (serve_cmd) which calls this. Returns the first failing precondition.
+func (c *Conf) Validate() error {
+	// Only the smtp driver delivers real mail, so a missing public origin is only
+	// a problem there; log/noop never put the link in front of a user.
+	if c.Mail.Driver == "smtp" && strings.TrimSpace(c.AppConf.PublicBaseURL) == "" {
+		return errors.New(
+			"APP_PUBLIC_URL must be set when MAIL_DRIVER=smtp: it is the trusted public origin for links in outbound email (password reset, welcome)",
+		)
+	}
+	return nil
 }
 
 // AppConfig Setup and install the applications' configuration environment variables

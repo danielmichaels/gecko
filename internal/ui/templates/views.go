@@ -12,6 +12,13 @@ func postWithCSRF(url, token string) string {
 	return fmt.Sprintf("@post('%s', {headers: {'X-CSRF-Token': '%s'}})", url, token)
 }
 
+// logoutAction returns the data-on:click expression for the user-menu logout item:
+// confirm, then POST to /app/logout with the CSRF token. The handler revokes the
+// session, clears the cookie, and SSE-redirects to the login page.
+func logoutAction(token string) string {
+	return "if(!confirm('Log out of gecko?')) return; " + postWithCSRF("/app/logout", token)
+}
+
 // postWithConfirm returns a data-on-click action that confirms before POSTing to
 // url with the CSRF token. Used for bulk/irreversible actions like rescan-all.
 func postWithConfirm(message, url, token string) string {
@@ -35,6 +42,12 @@ func deleteRowWithConfirm(url, token string) string {
 // inviteSignals returns a JSON signals string for the invite form.
 func inviteSignals(token string) string {
 	return fmt.Sprintf(`{"token":"%s","password":"","name":""}`, token)
+}
+
+// resetSignals returns a JSON signals string for the reset-password form, with the
+// token pre-populated so it travels in the POST body.
+func resetSignals(token string) string {
+	return fmt.Sprintf(`{"token":"%s","newPassword":""}`, token)
 }
 
 // toggleCollapse returns a datastar expression that toggles an apex key in the
@@ -103,6 +116,25 @@ type AppShellProps struct {
 type LoginPageProps struct {
 	CSRFToken string
 	Error     string
+	// ShowSignup gates the "create an account" link; mirrors SIGNUP_ENABLED.
+	ShowSignup bool
+}
+
+// SignupPageProps holds data for the self-service signup page.
+type SignupPageProps struct {
+	Error string
+}
+
+// ForgotPasswordPageProps holds data for the request-password-reset page.
+type ForgotPasswordPageProps struct {
+	SuccessMsg string
+	Error      string
+}
+
+// ResetPasswordPageProps holds data for the set-new-password page.
+type ResetPasswordPageProps struct {
+	Token string
+	Error string
 }
 
 // AcceptInvitePageProps holds data for the accept-invitation page.

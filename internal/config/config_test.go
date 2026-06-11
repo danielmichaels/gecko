@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/joeshaw/envdecode"
 )
@@ -35,6 +36,50 @@ func TestAuthDefaults(t *testing.T) {
 	}
 	if cfg.Auth.OIDCIssuer != "" {
 		t.Errorf("Auth.OIDCIssuer default = %q, want empty", cfg.Auth.OIDCIssuer)
+	}
+}
+
+func TestMailDefaults(t *testing.T) {
+	cfg := AppConfig()
+	if cfg.Mail.Driver != "log" {
+		t.Errorf("Mail.Driver default = %q, want log", cfg.Mail.Driver)
+	}
+	if cfg.Mail.SMTPPort != 1025 {
+		t.Errorf("Mail.SMTPPort default = %d, want 1025", cfg.Mail.SMTPPort)
+	}
+	if cfg.Mail.FromAddr != "noreply@gecko.local" {
+		t.Errorf("Mail.FromAddr default = %q, want noreply@gecko.local", cfg.Mail.FromAddr)
+	}
+	if cfg.Auth.ResetTTL != time.Hour {
+		t.Errorf("Auth.ResetTTL default = %s, want 1h", cfg.Auth.ResetTTL)
+	}
+}
+
+func TestValidate_PublicBaseURLRequiredForSMTP(t *testing.T) {
+	smtp := func(url string) *Conf {
+		c := &Conf{}
+		c.Mail.Driver = "smtp"
+		c.AppConf.PublicBaseURL = url
+		return c
+	}
+
+	if err := smtp("").Validate(); err == nil {
+		t.Error("smtp + empty APP_PUBLIC_URL should fail")
+	}
+	if err := smtp("   ").Validate(); err == nil {
+		t.Error("smtp + whitespace-only APP_PUBLIC_URL should fail")
+	}
+	if err := smtp("http://localhost:7070").Validate(); err != nil {
+		t.Errorf("smtp + set APP_PUBLIC_URL should pass, got: %v", err)
+	}
+
+	// Non-smtp drivers never deliver a link to a user, so APP_PUBLIC_URL is optional.
+	for _, driver := range []string{"log", "noop", ""} {
+		c := &Conf{}
+		c.Mail.Driver = driver
+		if err := c.Validate(); err != nil {
+			t.Errorf("driver %q + empty APP_PUBLIC_URL should pass, got: %v", driver, err)
+		}
 	}
 }
 

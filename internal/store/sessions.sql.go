@@ -104,6 +104,19 @@ func (q *Queries) SessionRevoke(ctx context.Context, tokenHash string) error {
 	return err
 }
 
+const sessionRevokeAllForUser = `-- name: SessionRevokeAllForUser :exec
+DELETE
+FROM sessions
+WHERE user_id = $1
+`
+
+// Invalidates every session for a user; called after a password reset so a
+// forgotten/compromised credential cannot survive on an existing session.
+func (q *Queries) SessionRevokeAllForUser(ctx context.Context, userID int32) error {
+	_, err := q.db.Exec(ctx, sessionRevokeAllForUser, userID)
+	return err
+}
+
 const sessionTouch = `-- name: SessionTouch :exec
 UPDATE sessions
 SET last_used_at = NOW()

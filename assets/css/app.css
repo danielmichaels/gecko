@@ -53,8 +53,18 @@ body{
 .topbar-right{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:12px;color:var(--txt-dim)}
 .tenant-chip{display:flex;align-items:center;gap:8px;padding:6px 11px;border:1px solid var(--line);border-radius:999px;background:var(--panel)}
 .tenant-chip .dot{width:7px;height:7px;border-radius:50%;background:var(--ok)}
-.user-chip{display:flex;align-items:center;gap:8px;padding:5px 6px 5px 11px;border:1px solid var(--line);border-radius:999px}
+.user-chip{display:flex;align-items:center;gap:8px;padding:5px 6px 5px 11px;border:1px solid var(--line);border-radius:999px;background:transparent;color:inherit;font:inherit;cursor:pointer}
+.user-chip:hover{border-color:var(--line);background:var(--panel)}
 .avatar{width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,#243247,#11202f);display:grid;place-items:center;font-family:var(--hud);font-size:11px;color:var(--brand)}
+.user-menu{position:relative}
+.user-menu-backdrop{position:fixed;inset:0;z-index:40}
+.user-menu-pop{position:absolute;top:calc(100% + 8px);right:0;z-index:41;min-width:180px;padding:6px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:2px}
+.user-menu-item{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border:0;border-radius:7px;background:transparent;color:var(--txt);font-family:var(--mono);font-size:12.5px;text-align:left;text-decoration:none;cursor:pointer}
+.user-menu-item:hover{background:var(--panel)}
+.user-menu-item .ico{width:14px;text-align:center;color:var(--txt-dim)}
+.user-menu-item.danger{color:var(--crit)}
+.user-menu-item.danger:hover{background:var(--crit-bg)}
+.user-menu-sep{height:1px;margin:4px 2px;background:var(--line)}
 
 .side{border-right:1px solid var(--line-soft);background:var(--bg-elev);padding:16px 12px;display:flex;flex-direction:column;min-height:0;overflow-y:auto}
 .nav-label{font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--txt-faint);text-transform:uppercase;padding:0 10px;margin:6px 0 8px}

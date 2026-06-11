@@ -7,6 +7,7 @@ import (
 
 	"github.com/danielmichaels/gecko/internal/config"
 	"github.com/danielmichaels/gecko/internal/dnsclient"
+	"github.com/danielmichaels/gecko/internal/mailer"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -28,6 +29,7 @@ type Config struct {
 	Logger      *slog.Logger
 	Store       *store.Queries
 	Resolver    dnsclient.Resolver
+	Mailer      mailer.Mailer
 	WorkerCount int
 	AddWorkers  bool
 }
@@ -153,6 +155,12 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 		// maintenance
 		river.AddWorker(rw, &PurgeDNSCacheWorker{Logger: *cfg.Logger, Store: cfg.Store})
 		river.AddWorker(rw, &RefreshTenantStatsWorker{Logger: *cfg.Logger, Store: cfg.Store})
+		// email
+		emailerOut := cfg.Mailer
+		if emailerOut == nil {
+			emailerOut = &mailer.LogMailer{Logger: cfg.Logger}
+		}
+		river.AddWorker(rw, &SendEmailWorker{Logger: *cfg.Logger, Mailer: emailerOut})
 		riverConfig.Workers = rw
 		riverConfig.Middleware = []rivertype.Middleware{
 			&CorrelationMiddleware{},

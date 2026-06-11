@@ -769,6 +769,16 @@ type OpenPortFindings struct {
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
+type PasswordResetTokens struct {
+	ID        int32              `json:"id"`
+	Uid       string             `json:"uid"`
+	UserID    int32              `json:"user_id"`
+	TokenHash string             `json:"token_hash"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	UsedAt    pgtype.Timestamptz `json:"used_at"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
 type PtrRecords struct {
 	ID        int32              `json:"id"`
 	Uid       string             `json:"uid"`

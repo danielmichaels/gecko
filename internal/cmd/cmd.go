@@ -16,6 +16,7 @@ import (
 	"github.com/danielmichaels/gecko/internal/config"
 	"github.com/danielmichaels/gecko/internal/jobs"
 	"github.com/danielmichaels/gecko/internal/logging"
+	"github.com/danielmichaels/gecko/internal/mailer"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -53,6 +54,7 @@ type Setup struct {
 	Ctx     context.Context
 	Cancel  context.CancelFunc
 	RC      *river.Client[pgx.Tx]
+	Mailer  mailer.Mailer
 }
 type SetupOption func(*Setup)
 
@@ -67,6 +69,7 @@ func WithRiver(workerCount int, addWorkers bool) SetupOption {
 			PgxPool:     s.PgxPool,
 			Logger:      s.Logger,
 			Store:       s.Store,
+			Mailer:      s.Mailer,
 			WorkerCount: workerCount,
 			AddWorkers:  addWorkers,
 		}
@@ -107,6 +110,13 @@ func NewSetup(service string, opts ...SetupOption) (*Setup, error) {
 		cancel()
 		return nil, err
 	}
+	m, err := mailer.New(cfg, logger)
+	if err != nil {
+		logger.Error("mailer error", "error", err)
+		db.Close()
+		cancel()
+		return nil, err
+	}
 	s := &Setup{
 		Config:  cfg,
 		Logger:  logger,
@@ -114,6 +124,7 @@ func NewSetup(service string, opts ...SetupOption) (*Setup, error) {
 		Store:   store.New(db),
 		Ctx:     ctx,
 		Cancel:  cancel,
+		Mailer:  m,
 	}
 	for _, opt := range opts {
 		opt(s)

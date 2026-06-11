@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/danielmichaels/gecko/internal/auth"
+	"github.com/danielmichaels/gecko/internal/mailer"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -125,19 +126,39 @@ type SignupParams struct {
 	TenantName string
 }
 
-// Signup creates a new tenant and its first owner, then mints a key.
-// Duplicate email raises ErrConflict. SignupEnabled is NOT checked here;
-// that policy gate stays in the handler to preserve the exact 403 message.
-func (s *AuthService) Signup(ctx context.Context, params SignupParams) (SignupResult, error) {
+// provisioned carries the identifiers of a freshly provisioned user/tenant,
+// shared by the signup and accept-invite flows to build their distinct results.
+type provisioned struct {
+	tenantUID string
+	email     string
+	role      store.UserRole
+	userID    int32
+	tenantID  int32
+}
+
+// withTxStep runs variant-specific work inside a provisioning transaction (e.g.
+// minting an API key atomically). The web variants pass nil.
+type withTxStep func(st *store.Queries, tenantID, userID int32) error
+
+// createTenantOwner runs the shared signup transaction: reject duplicate emails,
+// hash the password, create the tenant, provision the owner, store the credential,
+// run mintStep (if any) in-tx, and enqueue the welcome email. The only thing the
+// two public signup methods do differently is mintStep and how they shape the
+// result, keeping tenant creation identical across the API and browser paths.
+func (s *AuthService) createTenantOwner(
+	ctx context.Context,
+	params SignupParams,
+	mintStep withTxStep,
+) (provisioned, error) {
 	email := normaliseEmail(params.Email)
 	if _, err := s.DB.UserGetByEmail(ctx, email); err == nil {
-		return SignupResult{}, fmt.Errorf("%w: email already registered", ErrConflict)
+		return provisioned{}, fmt.Errorf("%w: email already registered", ErrConflict)
 	} else if !errors.Is(err, pgx.ErrNoRows) {
-		return SignupResult{}, fmt.Errorf("signup: lookup: %w", err)
+		return provisioned{}, fmt.Errorf("signup: lookup: %w", err)
 	}
 	hash, err := auth.HashPassword(params.Password, s.Conf.Auth.BcryptCost)
 	if err != nil {
-		return SignupResult{}, fmt.Errorf("signup: hash password: %w", err)
+		return provisioned{}, fmt.Errorf("signup: hash password: %w", err)
 	}
 	tenantName := strings.TrimSpace(params.TenantName)
 	if tenantName == "" {
@@ -146,14 +167,14 @@ func (s *AuthService) Signup(ctx context.Context, params SignupParams) (SignupRe
 
 	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return SignupResult{}, fmt.Errorf("signup: begin tx: %w", err)
+		return provisioned{}, fmt.Errorf("signup: begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	st := s.DB.WithTx(tx)
 
 	tenant, err := st.TenantCreate(ctx, tenantName)
 	if err != nil {
-		return SignupResult{}, fmt.Errorf("signup: create tenant: %w", err)
+		return provisioned{}, fmt.Errorf("signup: create tenant: %w", err)
 	}
 	user, err := st.UserProvision(ctx, store.UserProvisionParams{
 		TenantID: pgtype.Int4{Int32: tenant.ID, Valid: true},
@@ -163,29 +184,83 @@ func (s *AuthService) Signup(ctx context.Context, params SignupParams) (SignupRe
 	})
 	if err != nil {
 		if isUniqueViolation(err) {
-			return SignupResult{}, fmt.Errorf("%w: email already registered", ErrConflict)
+			return provisioned{}, fmt.Errorf("%w: email already registered", ErrConflict)
 		}
-		return SignupResult{}, fmt.Errorf("signup: provision user: %w", err)
+		return provisioned{}, fmt.Errorf("signup: provision user: %w", err)
 	}
 	if err := st.UserCredentialUpsert(ctx, store.UserCredentialUpsertParams{
 		UserID:       user.ID,
 		PasswordHash: hash,
 	}); err != nil {
-		return SignupResult{}, fmt.Errorf("signup: credential upsert: %w", err)
+		return provisioned{}, fmt.Errorf("signup: credential upsert: %w", err)
 	}
-	key, _, exp, err := s.mintAPIKey(ctx, st, tenant.ID, user.ID, "signup")
-	if err != nil {
-		return SignupResult{}, fmt.Errorf("signup: mint key: %w", err)
+	if mintStep != nil {
+		if err := mintStep(st, tenant.ID, user.ID); err != nil {
+			return provisioned{}, err
+		}
+	}
+	if s.emailer != nil {
+		welcome := welcomeEmail(email, tenant.Name, s.Conf.AppConf.PublicBaseURL)
+		if err := s.emailer.EnqueueEmail(ctx, tx, welcome); err != nil {
+			return provisioned{}, fmt.Errorf("signup: enqueue welcome email: %w", err)
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return SignupResult{}, fmt.Errorf("signup: commit: %w", err)
+		return provisioned{}, fmt.Errorf("signup: commit: %w", err)
+	}
+	return provisioned{
+		userID:    user.ID,
+		tenantID:  tenant.ID,
+		tenantUID: tenant.Uid,
+		email:     email,
+		role:      store.UserRoleOwner,
+	}, nil
+}
+
+// Signup creates a new tenant and its first owner, then mints a key.
+// Duplicate email raises ErrConflict. SignupEnabled is NOT checked here;
+// that policy gate stays in the handler to preserve the exact 403 message.
+func (s *AuthService) Signup(ctx context.Context, params SignupParams) (SignupResult, error) {
+	var key auth.APIKey
+	var exp pgtype.Timestamptz
+	p, err := s.createTenantOwner(
+		ctx,
+		params,
+		func(st *store.Queries, tenantID, userID int32) error {
+			k, _, e, mErr := s.mintAPIKey(ctx, st, tenantID, userID, "signup")
+			if mErr != nil {
+				return fmt.Errorf("signup: mint key: %w", mErr)
+			}
+			key, exp = k, e
+			return nil
+		},
+	)
+	if err != nil {
+		return SignupResult{}, err
 	}
 	return SignupResult{
 		RawKey:    key.Raw,
 		ExpiresAt: exp,
-		Email:     email,
-		Role:      string(store.UserRoleOwner),
-		TenantUID: tenant.Uid,
+		Email:     p.email,
+		Role:      string(p.role),
+		TenantUID: p.tenantUID,
+	}, nil
+}
+
+// SignupWeb creates a new tenant and its first owner without minting an API key.
+// Used by the browser flow, which mints a session instead. Duplicate email raises
+// ErrConflict. SignupEnabled is NOT checked here; that policy gate stays in the
+// handler.
+func (s *AuthService) SignupWeb(ctx context.Context, params SignupParams) (*auth.Principal, error) {
+	p, err := s.createTenantOwner(ctx, params, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &auth.Principal{
+		UserID:   p.userID,
+		TenantID: p.tenantID,
+		Email:    p.email,
+		Role:     string(p.role),
 	}, nil
 }
 
@@ -196,27 +271,30 @@ type AcceptInviteParams struct {
 	Name     string
 }
 
-// AcceptInvite consumes an invitation token, creating the user with the
-// invited role in the inviting tenant, and mints a key.
+// consumeInvitation runs the shared accept-invite transaction: resolve the token,
+// hash the password, provision the user with the invited role in the inviting
+// tenant, store the credential, mark the invitation accepted, and run mintStep (if
+// any) in-tx. The two public methods differ only in mintStep and result shape.
 // Invalid/expired token → ErrNotFound. Duplicate email → ErrConflict.
-func (s *AuthService) AcceptInvite(
+func (s *AuthService) consumeInvitation(
 	ctx context.Context,
 	params AcceptInviteParams,
-) (AcceptInviteResult, error) {
+	mintStep withTxStep,
+) (provisioned, error) {
 	inv, err := s.DB.InvitationGetByTokenHash(ctx, auth.HashToken(params.Token))
 	if err != nil {
 		// Deliberately opaque: expired and invalid tokens both return not-found
 		// so callers cannot distinguish the two cases.
-		return AcceptInviteResult{}, fmt.Errorf("%w: invalid or expired invitation", ErrNotFound)
+		return provisioned{}, fmt.Errorf("%w: invalid or expired invitation", ErrNotFound)
 	}
 	hash, err := auth.HashPassword(params.Password, s.Conf.Auth.BcryptCost)
 	if err != nil {
-		return AcceptInviteResult{}, fmt.Errorf("accept invite: hash password: %w", err)
+		return provisioned{}, fmt.Errorf("accept invite: hash password: %w", err)
 	}
 
 	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return AcceptInviteResult{}, fmt.Errorf("accept invite: begin tx: %w", err)
+		return provisioned{}, fmt.Errorf("accept invite: begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	st := s.DB.WithTx(tx)
@@ -229,31 +307,64 @@ func (s *AuthService) AcceptInvite(
 	})
 	if err != nil {
 		if isUniqueViolation(err) {
-			return AcceptInviteResult{}, fmt.Errorf("%w: email already registered", ErrConflict)
+			return provisioned{}, fmt.Errorf("%w: email already registered", ErrConflict)
 		}
-		return AcceptInviteResult{}, fmt.Errorf("accept invite: provision user: %w", err)
+		return provisioned{}, fmt.Errorf("accept invite: provision user: %w", err)
 	}
 	if err := st.UserCredentialUpsert(ctx, store.UserCredentialUpsertParams{
 		UserID:       user.ID,
 		PasswordHash: hash,
 	}); err != nil {
-		return AcceptInviteResult{}, fmt.Errorf("accept invite: credential upsert: %w", err)
+		return provisioned{}, fmt.Errorf("accept invite: credential upsert: %w", err)
 	}
 	if err := st.InvitationMarkAccepted(ctx, inv.ID); err != nil {
-		return AcceptInviteResult{}, fmt.Errorf("accept invite: mark accepted: %w", err)
+		return provisioned{}, fmt.Errorf("accept invite: mark accepted: %w", err)
 	}
-	key, _, exp, err := s.mintAPIKey(ctx, st, inv.TenantID, user.ID, "invite-accept")
-	if err != nil {
-		return AcceptInviteResult{}, fmt.Errorf("accept invite: mint key: %w", err)
+	if mintStep != nil {
+		if err := mintStep(st, inv.TenantID, user.ID); err != nil {
+			return provisioned{}, err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return AcceptInviteResult{}, fmt.Errorf("accept invite: commit: %w", err)
+		return provisioned{}, fmt.Errorf("accept invite: commit: %w", err)
+	}
+	return provisioned{
+		userID:   user.ID,
+		tenantID: inv.TenantID,
+		email:    inv.Email,
+		role:     inv.Role,
+	}, nil
+}
+
+// AcceptInvite consumes an invitation token, creating the user with the
+// invited role in the inviting tenant, and mints a key.
+// Invalid/expired token → ErrNotFound. Duplicate email → ErrConflict.
+func (s *AuthService) AcceptInvite(
+	ctx context.Context,
+	params AcceptInviteParams,
+) (AcceptInviteResult, error) {
+	var key auth.APIKey
+	var exp pgtype.Timestamptz
+	p, err := s.consumeInvitation(
+		ctx,
+		params,
+		func(st *store.Queries, tenantID, userID int32) error {
+			k, _, e, mErr := s.mintAPIKey(ctx, st, tenantID, userID, "invite-accept")
+			if mErr != nil {
+				return fmt.Errorf("accept invite: mint key: %w", mErr)
+			}
+			key, exp = k, e
+			return nil
+		},
+	)
+	if err != nil {
+		return AcceptInviteResult{}, err
 	}
 	return AcceptInviteResult{
 		RawKey:    key.Raw,
 		ExpiresAt: exp,
-		Email:     inv.Email,
-		Role:      string(inv.Role),
+		Email:     p.email,
+		Role:      string(p.role),
 	}, nil
 }
 
@@ -264,51 +375,15 @@ func (s *AuthService) AcceptInviteWeb(
 	ctx context.Context,
 	params AcceptInviteParams,
 ) (*auth.Principal, error) {
-	inv, err := s.DB.InvitationGetByTokenHash(ctx, auth.HashToken(params.Token))
+	p, err := s.consumeInvitation(ctx, params, nil)
 	if err != nil {
-		return nil, fmt.Errorf("%w: invalid or expired invitation", ErrNotFound)
-	}
-	hash, err := auth.HashPassword(params.Password, s.Conf.Auth.BcryptCost)
-	if err != nil {
-		return nil, fmt.Errorf("accept invite web: hash password: %w", err)
-	}
-
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("accept invite web: begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	st := s.DB.WithTx(tx)
-
-	user, err := st.UserProvision(ctx, store.UserProvisionParams{
-		TenantID: pgtype.Int4{Int32: inv.TenantID, Valid: true},
-		Email:    inv.Email,
-		Name:     pgtype.Text{String: params.Name, Valid: params.Name != ""},
-		Role:     inv.Role,
-	})
-	if err != nil {
-		if isUniqueViolation(err) {
-			return nil, fmt.Errorf("%w: email already registered", ErrConflict)
-		}
-		return nil, fmt.Errorf("accept invite web: provision user: %w", err)
-	}
-	if err := st.UserCredentialUpsert(ctx, store.UserCredentialUpsertParams{
-		UserID:       user.ID,
-		PasswordHash: hash,
-	}); err != nil {
-		return nil, fmt.Errorf("accept invite web: credential upsert: %w", err)
-	}
-	if err := st.InvitationMarkAccepted(ctx, inv.ID); err != nil {
-		return nil, fmt.Errorf("accept invite web: mark accepted: %w", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("accept invite web: commit: %w", err)
+		return nil, err
 	}
 	return &auth.Principal{
-		UserID:   user.ID,
-		TenantID: inv.TenantID,
-		Email:    inv.Email,
-		Role:     string(inv.Role),
+		UserID:   p.userID,
+		TenantID: p.tenantID,
+		Email:    p.email,
+		Role:     string(p.role),
 	}, nil
 }
 
@@ -431,6 +506,127 @@ func (s *AuthService) RevokeSession(ctx context.Context, rawToken string) error 
 		return fmt.Errorf("revoke session: %w", err)
 	}
 	return nil
+}
+
+// RequestPasswordReset issues a password-reset token for the address and queues
+// the reset email. It never reveals whether the address is registered: an unknown
+// email returns nil without creating a token or enqueuing mail. The token row and
+// the email job are written in one transaction so a link is only ever sent for a
+// token that exists. baseURL is the public origin used to build the reset link.
+func (s *AuthService) RequestPasswordReset(ctx context.Context, email, baseURL string) error {
+	email = normaliseEmail(email)
+	user, err := s.DB.UserGetByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		return fmt.Errorf("request password reset: lookup: %w", err)
+	}
+
+	rawToken, err := auth.GenerateToken()
+	if err != nil {
+		return fmt.Errorf("request password reset: generate token: %w", err)
+	}
+	expiresAt := time.Now().Add(s.Conf.Auth.ResetTTL)
+
+	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("request password reset: begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	st := s.DB.WithTx(tx)
+
+	if _, err := st.PasswordResetTokenCreate(ctx, store.PasswordResetTokenCreateParams{
+		UserID:    user.ID,
+		TokenHash: auth.HashToken(rawToken),
+		ExpiresAt: pgtype.Timestamptz{Time: expiresAt, Valid: true},
+	}); err != nil {
+		return fmt.Errorf("request password reset: create token: %w", err)
+	}
+
+	if s.emailer != nil {
+		if err := s.emailer.EnqueueEmail(ctx, tx, passwordResetEmail(user.Email, baseURL, rawToken)); err != nil {
+			return fmt.Errorf("request password reset: enqueue email: %w", err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("request password reset: commit: %w", err)
+	}
+	return nil
+}
+
+// ResetPassword consumes a reset token, sets the new password, and revokes every
+// session for the user so a forgotten or compromised credential cannot survive on
+// an existing session. Invalid, expired, or already-used tokens return ErrNotFound;
+// a too-short new password returns ErrInvalidInput.
+func (s *AuthService) ResetPassword(ctx context.Context, token, newPassword string) error {
+	tok, err := s.DB.PasswordResetTokenGetByHash(ctx, auth.HashToken(token))
+	if err != nil {
+		return fmt.Errorf("%w: invalid or expired reset token", ErrNotFound)
+	}
+	if len(newPassword) < minPasswordLength {
+		return msgErr(ErrInvalidInput, "new password must be at least 8 characters")
+	}
+	hash, err := auth.HashPassword(newPassword, s.Conf.Auth.BcryptCost)
+	if err != nil {
+		return fmt.Errorf("reset password: hash: %w", err)
+	}
+
+	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("reset password: begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	st := s.DB.WithTx(tx)
+
+	if err := st.UserCredentialUpsert(ctx, store.UserCredentialUpsertParams{
+		UserID:       tok.UserID,
+		PasswordHash: hash,
+	}); err != nil {
+		return fmt.Errorf("reset password: credential upsert: %w", err)
+	}
+	if err := st.PasswordResetTokenMarkUsed(ctx, tok.ID); err != nil {
+		return fmt.Errorf("reset password: mark used: %w", err)
+	}
+	if err := st.SessionRevokeAllForUser(ctx, tok.UserID); err != nil {
+		return fmt.Errorf("reset password: revoke sessions: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("reset password: commit: %w", err)
+	}
+	return nil
+}
+
+// welcomeEmail renders the post-signup acknowledgement. Any link uses the trusted
+// PublicBaseURL (config), never request headers — the message is emailed to the
+// new owner, so a request-derived origin would be injectable.
+func welcomeEmail(to, tenantName, baseURL string) mailer.Message {
+	link := baseURL + "/app/domains"
+	return mailer.Message{
+		To:      to,
+		Subject: "Welcome to gecko",
+		HTML: "<p>Welcome to gecko — your workspace <b>" + tenantName + "</b> is ready.</p>" +
+			"<p>Add your first domain and we'll start watching its DNS for misconfigurations.</p>" +
+			"<p><a href=\"" + link + "\">Open your dashboard</a></p>",
+		Text: "Welcome to gecko — your workspace " + tenantName + " is ready.\n\n" +
+			"Add your first domain and we'll start watching its DNS for misconfigurations.\n" +
+			"Open your dashboard: " + link,
+	}
+}
+
+// passwordResetEmail renders the reset message. With no mailer-side templating in
+// the codebase yet, the body is built here so the worker stays a thin transport.
+func passwordResetEmail(to, baseURL, rawToken string) mailer.Message {
+	link := baseURL + "/app/reset-password?token=" + rawToken
+	return mailer.Message{
+		To:      to,
+		Subject: "Reset your gecko password",
+		HTML: "<p>We received a request to reset your gecko password.</p>" +
+			"<p><a href=\"" + link + "\">Reset your password</a></p>" +
+			"<p>If you did not request this, you can ignore this email.</p>",
+		Text: "Reset your gecko password using this link:\n" + link +
+			"\n\nIf you did not request this, you can ignore this email.",
+	}
 }
 
 // mintAPIKey creates and persists an API key for (tenant, user) using q (which may

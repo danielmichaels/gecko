@@ -16,6 +16,7 @@ import (
 	"github.com/danielmichaels/gecko/internal/auth"
 	"github.com/danielmichaels/gecko/internal/config"
 	"github.com/danielmichaels/gecko/internal/jobs"
+	"github.com/danielmichaels/gecko/internal/mailer"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -51,6 +52,14 @@ type TenantStatsRefresher interface {
 	RefreshTenantStats(ctx context.Context, tenantID int32) error
 }
 
+// EmailEnqueuer queues an outbound email inside a transaction so the message and
+// the row it depends on (e.g. a password-reset token) commit atomically. The seam
+// lets auth flows enqueue mail without a live River queue in tests; a nil enqueuer
+// skips the send (the row is still written).
+type EmailEnqueuer interface {
+	EnqueueEmail(ctx context.Context, tx pgx.Tx, msg mailer.Message) error
+}
+
 // Service holds the shared dependencies used across all domain service methods.
 type Service struct {
 	Conf           *config.Conf
@@ -60,6 +69,7 @@ type Service struct {
 	AuthProvider   auth.Provider
 	scheduler      DomainScanScheduler
 	statsRefresher TenantStatsRefresher
+	emailer        EmailEnqueuer
 }
 
 // New constructs a Service with all required dependencies wired. The production
@@ -81,6 +91,7 @@ func New(
 		AuthProvider:   authProvider,
 		scheduler:      sched,
 		statsRefresher: sched,
+		emailer:        sched,
 	}
 }
 
@@ -105,6 +116,9 @@ func NewWithScheduler(
 	// does) gets wired as the refresher too; otherwise the enqueue is skipped.
 	if r, ok := scheduler.(TenantStatsRefresher); ok {
 		svc.statsRefresher = r
+	}
+	if e, ok := scheduler.(EmailEnqueuer); ok {
+		svc.emailer = e
 	}
 	if len(authProvider) > 0 {
 		svc.AuthProvider = authProvider[0]
@@ -180,5 +194,17 @@ func (r *riverScheduler) Schedule(
 // coalesce into one pending refresh.
 func (r *riverScheduler) RefreshTenantStats(ctx context.Context, tenantID int32) error {
 	_, err := r.rc.Insert(ctx, jobs.RefreshTenantStatsArgs{TenantID: tenantID}, nil)
+	return err
+}
+
+// EnqueueEmail inserts a send_email job in the caller's transaction so the email
+// and the row it depends on commit together.
+func (r *riverScheduler) EnqueueEmail(ctx context.Context, tx pgx.Tx, msg mailer.Message) error {
+	_, err := r.rc.InsertTx(ctx, tx, jobs.SendEmailArgs{
+		To:      msg.To,
+		Subject: msg.Subject,
+		HTML:    msg.HTML,
+		Text:    msg.Text,
+	}, nil)
 	return err
 }

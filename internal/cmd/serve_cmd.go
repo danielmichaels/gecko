@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/danielmichaels/gecko/internal/config"
 	"github.com/danielmichaels/gecko/internal/server"
 	"github.com/danielmichaels/gecko/internal/store"
 )
@@ -20,6 +21,11 @@ func (s *ServeCmd) validateArgs() error {
 	}
 	if s.WorkerCount > 10000 {
 		return fmt.Errorf("invalid number of workers specified - must be less than 10000")
+	}
+	// The server builds absolute links in outbound email (password reset, welcome)
+	// from APP_PUBLIC_URL, so refuse to start without the config preconditions met.
+	if err := config.AppConfig().Validate(); err != nil {
+		return err
 	}
 	return nil
 }

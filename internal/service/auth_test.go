@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -862,4 +863,356 @@ func TestAuthService_AcceptInviteWeb_InvalidToken(t *testing.T) {
 // isErr is a small helper so test assertions stay concise.
 func isErr(err, target error) bool {
 	return errors.Is(err, target)
+}
+
+// newAuthSvcWithEmailer builds a real AuthService whose email-enqueue seam is the
+// returned recording fakeScheduler (defined in domains_test.go), so reset-request
+// tests can assert what was queued.
+func newAuthSvcWithEmailer(
+	t *testing.T,
+	pc *testhelpers.PostgresContainer,
+) (*service.AuthService, *fakeScheduler) {
+	t.Helper()
+	cfg := config.AppConfig()
+	cfg.Auth.BcryptCost = 4
+	cfg.Auth.SessionTTL = 720 * time.Hour
+	cfg.Auth.ResetTTL = time.Hour
+
+	provider, err := auth.NewProvider(auth.Config{Provider: "local", BcryptCost: 4}, pc.Queries)
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
+	}
+	sched := &fakeScheduler{}
+	svc := service.NewWithScheduler(
+		cfg,
+		slog.New(slog.DiscardHandler),
+		pc.Queries,
+		pc.Pool,
+		sched,
+		provider,
+	)
+	return svc.AuthService(), sched
+}
+
+// seedResetToken inserts a live password-reset token and returns the raw token.
+func seedResetToken(
+	t *testing.T,
+	ctx context.Context,
+	pc *testhelpers.PostgresContainer,
+	userID int32,
+	expiresAt time.Time,
+) string {
+	t.Helper()
+	raw, err := auth.GenerateToken()
+	if err != nil {
+		t.Fatalf("generate reset token: %v", err)
+	}
+	_, err = pc.Queries.PasswordResetTokenCreate(ctx, store.PasswordResetTokenCreateParams{
+		UserID:    userID,
+		TokenHash: auth.HashToken(raw),
+		ExpiresAt: pgtype.Timestamptz{Time: expiresAt, Valid: true},
+	})
+	if err != nil {
+		t.Fatalf("seed reset token: %v", err)
+	}
+	return raw
+}
+
+func TestAuthService_SignupWeb_HappyPath(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc := newAuthSvc(t, pc)
+	p, err := svc.SignupWeb(ctx, service.SignupParams{
+		Email:    "owner@example.com",
+		Password: "password123",
+		Name:     "Owner",
+	})
+	if err != nil {
+		t.Fatalf("signup web: %v", err)
+	}
+	if p.Email != "owner@example.com" {
+		t.Errorf("principal email = %q, want owner@example.com", p.Email)
+	}
+	if p.Role != string(store.UserRoleOwner) {
+		t.Errorf("principal role = %q, want owner", p.Role)
+	}
+	if p.UserID == 0 || p.TenantID == 0 {
+		t.Errorf("principal ids unset: %+v", p)
+	}
+	// New password authenticates.
+	if _, err := svc.Authenticate(ctx, "owner@example.com", "password123"); err != nil {
+		t.Errorf("authenticate after signup web: %v", err)
+	}
+	// No API key is minted by the web flow.
+	var keyCount int
+	if err := pc.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM api_keys`).Scan(&keyCount); err != nil {
+		t.Fatalf("count api keys: %v", err)
+	}
+	if keyCount != 0 {
+		t.Errorf("api key count = %d, want 0 (web signup mints a session, not a key)", keyCount)
+	}
+}
+
+func TestAuthService_SignupWeb_DuplicateEmail(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc := newAuthSvc(t, pc)
+	signupUser(t, svc, "dup@example.com", "password123")
+
+	_, err = svc.SignupWeb(
+		ctx,
+		service.SignupParams{Email: "dup@example.com", Password: "password123"},
+	)
+	if !isErr(err, service.ErrConflict) {
+		t.Errorf("duplicate signup web: got %v, want ErrConflict", err)
+	}
+}
+
+func TestAuthService_SignupWeb_SendsWelcomeEmail(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc, sched := newAuthSvcWithEmailer(t, pc)
+	if _, err := svc.SignupWeb(ctx, service.SignupParams{
+		Email:      "welcome@example.com",
+		Password:   "password123",
+		TenantName: "Acme",
+	}); err != nil {
+		t.Fatalf("signup web: %v", err)
+	}
+
+	if len(sched.emails) != 1 {
+		t.Fatalf("enqueued %d emails, want 1 welcome email", len(sched.emails))
+	}
+	msg := sched.emails[0]
+	if msg.To != "welcome@example.com" {
+		t.Errorf("welcome email To = %q, want welcome@example.com", msg.To)
+	}
+	if !strings.Contains(strings.ToLower(msg.Subject), "welcome") {
+		t.Errorf("welcome email subject = %q, want a welcome subject", msg.Subject)
+	}
+	if !strings.Contains(msg.HTML, "Acme") {
+		t.Errorf("welcome email should mention the workspace name, got: %q", msg.HTML)
+	}
+}
+
+func TestAuthService_Signup_SendsWelcomeEmail(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc, sched := newAuthSvcWithEmailer(t, pc)
+	if _, err := svc.Signup(ctx, service.SignupParams{
+		Email:    "apiwelcome@example.com",
+		Password: "password123",
+	}); err != nil {
+		t.Fatalf("signup: %v", err)
+	}
+	if len(sched.emails) != 1 {
+		t.Fatalf("enqueued %d emails, want 1 welcome email", len(sched.emails))
+	}
+	if !strings.Contains(strings.ToLower(sched.emails[0].Subject), "welcome") {
+		t.Errorf("welcome email subject = %q, want a welcome subject", sched.emails[0].Subject)
+	}
+}
+
+func TestAuthService_RequestPasswordReset_UnknownEmail(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc, sched := newAuthSvcWithEmailer(t, pc)
+
+	if err := svc.RequestPasswordReset(ctx, "nobody@example.com", "https://x"); err != nil {
+		t.Fatalf("request reset for unknown email should not error: %v", err)
+	}
+	var tokCount int
+	if err := pc.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM password_reset_tokens`).Scan(&tokCount); err != nil {
+		t.Fatalf("count tokens: %v", err)
+	}
+	if tokCount != 0 {
+		t.Errorf("token count = %d, want 0 (no token for unknown email)", tokCount)
+	}
+	if len(sched.emails) != 0 {
+		t.Errorf("enqueued %d emails for unknown address, want 0", len(sched.emails))
+	}
+}
+
+func TestAuthService_RequestPasswordReset_KnownEmail(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc, sched := newAuthSvcWithEmailer(t, pc)
+	signupUser(t, svc, "real@example.com", "password123")
+	// Drop the welcome email enqueued by signup so we assert on the reset email only.
+	sched.emails = nil
+
+	if err := svc.RequestPasswordReset(ctx, "real@example.com", "https://app.test"); err != nil {
+		t.Fatalf("request reset: %v", err)
+	}
+	var tokCount int
+	if err := pc.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM password_reset_tokens`).Scan(&tokCount); err != nil {
+		t.Fatalf("count tokens: %v", err)
+	}
+	if tokCount != 1 {
+		t.Fatalf("token count = %d, want 1", tokCount)
+	}
+	if len(sched.emails) != 1 {
+		t.Fatalf("enqueued %d emails, want 1", len(sched.emails))
+	}
+	msg := sched.emails[0]
+	if msg.To != "real@example.com" {
+		t.Errorf("email To = %q, want real@example.com", msg.To)
+	}
+	if !strings.Contains(msg.HTML, "https://app.test/app/reset-password?token=") {
+		t.Errorf("email HTML missing reset link, got: %q", msg.HTML)
+	}
+}
+
+func TestAuthService_ResetPassword_HappyPath(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc := newAuthSvc(t, pc)
+	signupUser(t, svc, "reset@example.com", "oldpassword")
+	user, err := pc.Queries.UserGetByEmail(ctx, "reset@example.com")
+	if err != nil {
+		t.Fatalf("lookup user: %v", err)
+	}
+	p := &auth.Principal{
+		UserID:   user.ID,
+		TenantID: user.TenantID.Int32,
+		Email:    user.Email,
+		Role:     string(user.Role),
+	}
+	// Two live sessions that must be revoked by the reset.
+	if _, _, err := svc.MintSession(ctx, p, "", ""); err != nil {
+		t.Fatalf("mint session 1: %v", err)
+	}
+	if _, _, err := svc.MintSession(ctx, p, "", ""); err != nil {
+		t.Fatalf("mint session 2: %v", err)
+	}
+
+	rawToken := seedResetToken(t, ctx, pc, user.ID, time.Now().Add(time.Hour))
+
+	if err := svc.ResetPassword(ctx, rawToken, "brandnewpass"); err != nil {
+		t.Fatalf("reset password: %v", err)
+	}
+	if _, err := svc.Authenticate(ctx, "reset@example.com", "brandnewpass"); err != nil {
+		t.Errorf("authenticate with new password: %v", err)
+	}
+	if _, err := svc.Authenticate(ctx, "reset@example.com", "oldpassword"); !isErr(
+		err,
+		service.ErrUnauthenticated,
+	) {
+		t.Errorf("old password should be rejected: got %v", err)
+	}
+	var sessCount int
+	if err := pc.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM sessions WHERE user_id = $1`, user.ID).Scan(&sessCount); err != nil {
+		t.Fatalf("count sessions: %v", err)
+	}
+	if sessCount != 0 {
+		t.Errorf("session count after reset = %d, want 0 (all revoked)", sessCount)
+	}
+	// Token is single-use.
+	if err := svc.ResetPassword(ctx, rawToken, "anotherpass1"); !isErr(err, service.ErrNotFound) {
+		t.Errorf("reusing token: got %v, want ErrNotFound", err)
+	}
+}
+
+func TestAuthService_ResetPassword_InvalidToken(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc := newAuthSvc(t, pc)
+	if err := svc.ResetPassword(ctx, "bogus-token", "password123"); !isErr(
+		err,
+		service.ErrNotFound,
+	) {
+		t.Errorf("invalid token: got %v, want ErrNotFound", err)
+	}
+}
+
+func TestAuthService_ResetPassword_ExpiredToken(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc := newAuthSvc(t, pc)
+	signupUser(t, svc, "exp@example.com", "oldpassword")
+	user, err := pc.Queries.UserGetByEmail(ctx, "exp@example.com")
+	if err != nil {
+		t.Fatalf("lookup user: %v", err)
+	}
+	rawToken := seedResetToken(t, ctx, pc, user.ID, time.Now().Add(-time.Hour))
+
+	if err := svc.ResetPassword(ctx, rawToken, "brandnewpass"); !isErr(err, service.ErrNotFound) {
+		t.Errorf("expired token: got %v, want ErrNotFound", err)
+	}
+}
+
+func TestAuthService_ResetPassword_WeakPassword(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc := newAuthSvc(t, pc)
+	signupUser(t, svc, "weak@example.com", "oldpassword")
+	user, err := pc.Queries.UserGetByEmail(ctx, "weak@example.com")
+	if err != nil {
+		t.Fatalf("lookup user: %v", err)
+	}
+	rawToken := seedResetToken(t, ctx, pc, user.ID, time.Now().Add(time.Hour))
+
+	if err := svc.ResetPassword(ctx, rawToken, "short"); !isErr(err, service.ErrInvalidInput) {
+		t.Errorf("weak password: got %v, want ErrInvalidInput", err)
+	}
 }
