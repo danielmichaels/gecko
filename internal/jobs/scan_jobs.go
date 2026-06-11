@@ -43,8 +43,13 @@ func (w *ScanCertificateWorker) Work(
 	ctx = tracing.WithNewTraceID(ctx, false)
 	start := time.Now()
 
-	s := scanner.NewScanner(scanner.Config{Logger: &w.Logger, Store: w.Store, Resolver: w.Resolver})
-	result := s.ScanCertificate(job.Args.DomainName)
+	s := scanner.NewScanner(scanner.Config{
+		Logger:   &w.Logger,
+		Store:    w.Store,
+		Resolver: w.Resolver,
+		Identity: job.Args.Identity(),
+	})
+	result := s.ScanCertificate(ctx, job.Args.DomainName)
 	if result == nil {
 		w.Logger.WarnContext(
 			ctx,
@@ -63,7 +68,9 @@ func (w *ScanCertificateWorker) Work(
 		"not_after", result.NotAfter,
 		"tls_version", result.TLSVersion,
 	)
-	return nil
+
+	return enqueueAssessment(ctx, w.PgxPool, &w.Logger, job.Args.DomainUID,
+		AssessCertificateArgs{DomainJobArgs: job.Args.DomainJobArgs})
 }
 
 type ScanCNAMEArgs struct {
@@ -131,8 +138,13 @@ func (w *ScanDNSSECWorker) Work(ctx context.Context, job *river.Job[ScanDNSSECAr
 	ctx = tracing.WithNewTraceID(ctx, false)
 	start := time.Now()
 
-	s := scanner.NewScanner(scanner.Config{Logger: &w.Logger, Store: w.Store, Resolver: w.Resolver})
-	result := s.ScanDNSSEC(job.Args.DomainName)
+	s := scanner.NewScanner(scanner.Config{
+		Logger:   &w.Logger,
+		Store:    w.Store,
+		Resolver: w.Resolver,
+		Identity: job.Args.Identity(),
+	})
+	result := s.ScanDNSSEC(ctx, job.Args.DomainName)
 
 	w.Logger.InfoContext(
 		ctx,
@@ -144,8 +156,37 @@ func (w *ScanDNSSECWorker) Work(ctx context.Context, job *river.Job[ScanDNSSECAr
 		"has_ds", result.HasDS,
 		"has_dnskey", result.HasDNSKEY,
 	)
-	// todo: do something with the result
-	return nil
+
+	return enqueueAssessment(ctx, w.PgxPool, &w.Logger, job.Args.DomainUID,
+		AssessDNSSECArgs{DomainJobArgs: job.Args.DomainJobArgs})
+}
+
+// enqueueAssessment inserts a follow-on assessment job in its own transaction so
+// the scan and its downstream assessment are enqueued atomically.
+func enqueueAssessment(
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	logger *slog.Logger,
+	domainUID string,
+	args river.JobArgs,
+) error {
+	tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			if rbErr := tx.Rollback(ctx); rbErr != nil {
+				logger.Error("transaction rollback", "error", rbErr)
+			}
+		}
+	}()
+	rc := river.ClientFromContext[pgx.Tx](ctx)
+	if _, err = rc.InsertTx(ctx, tx, args, nil); err != nil {
+		logger.Error("failed to queue assessment job", "domain", domainUID, "error", err)
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 type ScanZoneTransferArgs struct {

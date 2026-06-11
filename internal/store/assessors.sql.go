@@ -11,6 +11,45 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const assessCreateCertificateFinding = `-- name: AssessCreateCertificateFinding :one
+INSERT INTO certificate_findings (domain_id,
+                                  certificate_id,
+                                  severity,
+                                  status,
+                                  issue_type,
+                                  details)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (domain_id, issue_type)
+    DO UPDATE SET certificate_id = $2,
+                  severity       = $3,
+                  status         = $4,
+                  details        = $6
+RETURNING (xmax = 0)::boolean AS inserted
+`
+
+type AssessCreateCertificateFindingParams struct {
+	DomainID      pgtype.Int4     `json:"domain_id"`
+	CertificateID pgtype.Int4     `json:"certificate_id"`
+	Severity      FindingSeverity `json:"severity"`
+	Status        FindingStatus   `json:"status"`
+	IssueType     string          `json:"issue_type"`
+	Details       pgtype.Text     `json:"details"`
+}
+
+func (q *Queries) AssessCreateCertificateFinding(ctx context.Context, arg AssessCreateCertificateFindingParams) (bool, error) {
+	row := q.db.QueryRow(ctx, assessCreateCertificateFinding,
+		arg.DomainID,
+		arg.CertificateID,
+		arg.Severity,
+		arg.Status,
+		arg.IssueType,
+		arg.Details,
+	)
+	var inserted bool
+	err := row.Scan(&inserted)
+	return inserted, err
+}
+
 const assessCreateDKIMFinding = `-- name: AssessCreateDKIMFinding :one
 INSERT INTO dkim_findings (domain_id,
                            txt_record_id,
@@ -150,6 +189,41 @@ func (q *Queries) AssessCreateDMARCFinding(ctx context.Context, arg AssessCreate
 	return inserted, err
 }
 
+const assessCreateDNSSECFinding = `-- name: AssessCreateDNSSECFinding :one
+INSERT INTO dnssec_findings (domain_id,
+                             severity,
+                             status,
+                             issue_type,
+                             details)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (domain_id, issue_type)
+    DO UPDATE SET severity = $2,
+                  status   = $3,
+                  details  = $5
+RETURNING (xmax = 0)::boolean AS inserted
+`
+
+type AssessCreateDNSSECFindingParams struct {
+	DomainID  pgtype.Int4     `json:"domain_id"`
+	Severity  FindingSeverity `json:"severity"`
+	Status    FindingStatus   `json:"status"`
+	IssueType string          `json:"issue_type"`
+	Details   pgtype.Text     `json:"details"`
+}
+
+func (q *Queries) AssessCreateDNSSECFinding(ctx context.Context, arg AssessCreateDNSSECFindingParams) (bool, error) {
+	row := q.db.QueryRow(ctx, assessCreateDNSSECFinding,
+		arg.DomainID,
+		arg.Severity,
+		arg.Status,
+		arg.IssueType,
+		arg.Details,
+	)
+	var inserted bool
+	err := row.Scan(&inserted)
+	return inserted, err
+}
+
 const assessCreateSPFFinding = `-- name: AssessCreateSPFFinding :one
 INSERT INTO spf_findings (domain_id,
                           txt_record_id,
@@ -227,6 +301,51 @@ func (q *Queries) AssessDKIMFindingsByDomainID(ctx context.Context, arg AssessDK
 			&i.IssueType,
 			&i.Details,
 			&i.DkimValue,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const assessGetCertificateFindingsByDomainUID = `-- name: AssessGetCertificateFindingsByDomainUID :many
+SELECT cf.id, cf.uid, cf.domain_id, cf.certificate_id, cf.severity, cf.status, cf.issue_type, cf.details, cf.created_at, cf.updated_at
+FROM certificate_findings cf
+         JOIN domains d ON cf.domain_id = d.id
+WHERE d.uid = $1
+  AND d.tenant_id = $2
+ORDER BY cf.severity ASC, cf.created_at DESC
+`
+
+type AssessGetCertificateFindingsByDomainUIDParams struct {
+	Uid      string      `json:"uid"`
+	TenantID pgtype.Int4 `json:"tenant_id"`
+}
+
+func (q *Queries) AssessGetCertificateFindingsByDomainUID(ctx context.Context, arg AssessGetCertificateFindingsByDomainUIDParams) ([]CertificateFindings, error) {
+	rows, err := q.db.Query(ctx, assessGetCertificateFindingsByDomainUID, arg.Uid, arg.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CertificateFindings{}
+	for rows.Next() {
+		var i CertificateFindings
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.CertificateID,
+			&i.Severity,
+			&i.Status,
+			&i.IssueType,
+			&i.Details,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -354,6 +473,52 @@ func (q *Queries) AssessGetDMARCFindingsByDomainID(ctx context.Context, arg Asse
 			&i.IssueType,
 			&i.Details,
 			&i.DmarcValue,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const assessGetDNSSECFindingsByDomainUID = `-- name: AssessGetDNSSECFindingsByDomainUID :many
+SELECT df.id, df.uid, df.domain_id, df.dnskey_record_id, df.ds_record_id, df.severity, df.status, df.issue_type, df.details, df.created_at, df.updated_at
+FROM dnssec_findings df
+         JOIN domains d ON df.domain_id = d.id
+WHERE d.uid = $1
+  AND d.tenant_id = $2
+ORDER BY df.severity ASC, df.created_at DESC
+`
+
+type AssessGetDNSSECFindingsByDomainUIDParams struct {
+	Uid      string      `json:"uid"`
+	TenantID pgtype.Int4 `json:"tenant_id"`
+}
+
+func (q *Queries) AssessGetDNSSECFindingsByDomainUID(ctx context.Context, arg AssessGetDNSSECFindingsByDomainUIDParams) ([]DnssecFindings, error) {
+	rows, err := q.db.Query(ctx, assessGetDNSSECFindingsByDomainUID, arg.Uid, arg.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DnssecFindings{}
+	for rows.Next() {
+		var i DnssecFindings
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.DnskeyRecordID,
+			&i.DsRecordID,
+			&i.Severity,
+			&i.Status,
+			&i.IssueType,
+			&i.Details,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -558,6 +723,12 @@ open_findings AS (
     UNION ALL
     SELECT domain_id, severity::text FROM zone_transfer_findings
         WHERE zone_transfer_possible = true AND domain_id = ANY($1::int[])
+    UNION ALL
+    SELECT domain_id, severity::text FROM certificate_findings
+        WHERE status = 'open' AND domain_id = ANY($1::int[])
+    UNION ALL
+    SELECT domain_id, severity::text FROM dnssec_findings
+        WHERE status = 'open' AND domain_id = ANY($1::int[])
 )
 SELECT
     ids.domain_id::int AS domain_id,
@@ -660,7 +831,25 @@ FROM (SELECT sf.uid                AS finding_uid,
       FROM zone_transfer_findings zf
                JOIN domains d ON zf.domain_id = d.id
       WHERE d.tenant_id = $1
-        AND ($2::bool OR zf.zone_transfer_possible = true)) f
+        AND ($2::bool OR zf.zone_transfer_possible = true)
+
+      UNION ALL
+
+      SELECT cf.uid, d.uid, d.name, 'CERT'::text, cf.severity, cf.status,
+             cf.issue_type, NULL::text, cf.details, NULL::text, cf.created_at
+      FROM certificate_findings cf
+               JOIN domains d ON cf.domain_id = d.id
+      WHERE d.tenant_id = $1
+        AND ($2::bool OR cf.status = 'open')
+
+      UNION ALL
+
+      SELECT nf.uid, d.uid, d.name, 'DNSSEC'::text, nf.severity, nf.status,
+             nf.issue_type, NULL::text, nf.details, NULL::text, nf.created_at
+      FROM dnssec_findings nf
+               JOIN domains d ON nf.domain_id = d.id
+      WHERE d.tenant_id = $1
+        AND ($2::bool OR nf.status = 'open')) f
 ORDER BY f.domain_name ASC,
          CASE f.severity
              WHEN 'critical' THEN 1
@@ -805,6 +994,10 @@ FROM (
         SELECT domain_id, severity::text FROM dmarc_findings WHERE status = 'open'
         UNION ALL
         SELECT domain_id, severity::text FROM zone_transfer_findings WHERE zone_transfer_possible = true
+        UNION ALL
+        SELECT domain_id, severity::text FROM certificate_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM dnssec_findings WHERE status = 'open'
     ) f ON f.domain_id = d.id
     GROUP BY d.tenant_id, d.id
 ) agg

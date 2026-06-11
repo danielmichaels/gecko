@@ -96,6 +96,36 @@ func seedZoneTransferFinding(
 	}
 }
 
+func seedCertificateFinding(
+	t *testing.T,
+	ctx context.Context,
+	pc *testhelpers.PostgresContainer,
+	domainID int32,
+	severity store.FindingSeverity,
+	status store.FindingStatus,
+	issueType string,
+) {
+	t.Helper()
+	if _, err := pc.Queries.AssessCreateCertificateFinding(ctx, store.AssessCreateCertificateFindingParams{
+		DomainID:  pgtype.Int4{Int32: domainID, Valid: true},
+		Severity:  severity,
+		Status:    status,
+		IssueType: issueType,
+		Details:   pgtype.Text{String: issueType, Valid: true},
+	}); err != nil {
+		t.Fatalf("seed certificate finding (domain %d): %v", domainID, err)
+	}
+}
+
+func hasFindingKind(findings []service.FindingView, kind string) bool {
+	for _, f := range findings {
+		if f.Kind == kind {
+			return true
+		}
+	}
+	return false
+}
+
 // TestDomainsService_FindingsSummaryForPage verifies the open-findings aggregate
 // reflects worst severity, ignores compliant/closed findings, and only counts an
 // AXFR finding when the transfer is actually possible.
@@ -242,19 +272,34 @@ func TestFindingsService_ListByDomain(t *testing.T) {
 		"dmarc_missing_tags",
 	)
 	seedZoneTransferFinding(t, ctx, pc, d.ID, "ns1.example.com", true)
+	seedCertificateFinding(
+		t,
+		ctx,
+		pc,
+		d.ID,
+		store.FindingSeverityHigh,
+		store.FindingStatusOpen,
+		"certificate_hostname_mismatch",
+	)
 
 	res, err := fs.ListByDomain(ctx, p, d.Uid)
 	if err != nil {
 		t.Fatalf("ListByDomain: %v", err)
 	}
-	if res.TotalCount != 4 {
-		t.Errorf("total = %d, want 4", res.TotalCount)
+	if res.TotalCount != 5 {
+		t.Errorf("total = %d, want 5", res.TotalCount)
 	}
-	if res.CriticalCount != 2 {
-		t.Errorf("critical = %d, want 2 (missing_spf + possible AXFR)", res.CriticalCount)
+	if res.CriticalCount != 3 {
+		t.Errorf(
+			"critical = %d, want 3 (missing_spf + possible AXFR + cert high)",
+			res.CriticalCount,
+		)
 	}
 	if res.WarningCount != 1 {
-		t.Errorf("warnings = %d, want 1", res.WarningCount)
+		t.Errorf("warnings = %d, want 1 (dmarc medium)", res.WarningCount)
+	}
+	if !hasFindingKind(res.Findings, "CERT") {
+		t.Errorf("expected a CERT finding in ListByDomain, got %+v", res.Findings)
 	}
 	if res.HealthyCount != 1 {
 		t.Errorf("healthy = %d, want 1 (spf_compliant)", res.HealthyCount)

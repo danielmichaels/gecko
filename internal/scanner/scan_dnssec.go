@@ -1,10 +1,15 @@
 package scanner
 
 import (
+	"context"
 	"log/slog"
+	"strconv"
 
 	"github.com/danielmichaels/gecko/internal/dnsclient"
 	"github.com/danielmichaels/gecko/internal/dnsrecords"
+	"github.com/danielmichaels/gecko/internal/observer"
+	"github.com/danielmichaels/gecko/internal/store"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/danielmichaels/gecko/internal/config"
 	"github.com/danielmichaels/gecko/internal/logging"
@@ -35,8 +40,9 @@ func NewDNSSECScanner(domain string, client dnsclient.Resolver) *DNSSECScanner {
 	return &DNSSECScanner{Domain: domain, Client: client, Result: result, logger: logger}
 }
 
-func (s *Scan) ScanDNSSEC(domain string) *dnsrecords.DNSSECResult {
+func (s *Scan) ScanDNSSEC(ctx context.Context, domain string) *dnsrecords.DNSSECResult {
 	ds := NewDNSSECScanner(domain, s.resolver)
+	defer func() { s.storeDNSSEC(ctx, ds.Result) }()
 
 	// Check if domain is zone apex
 	if !ds.Client.IsZoneApex(domain) {
@@ -84,4 +90,60 @@ func (s *Scan) ScanDNSSEC(domain string) *dnsrecords.DNSSECResult {
 	}
 
 	return ds.Result
+}
+
+// storeDNSSEC upserts the DNSSEC scan state into the live projection table and
+// emits its observation. It is a no-op without a real scan identity (zero
+// DomainID in unit tests).
+func (s *Scan) storeDNSSEC(ctx context.Context, result *dnsrecords.DNSSECResult) {
+	if s.identity.DomainID == 0 || s.store == nil || result == nil {
+		return
+	}
+	algorithms := collectDNSSECAlgorithms(result)
+	validationError := pgtype.Text{
+		String: result.ValidationError,
+		Valid:  result.ValidationError != "",
+	}
+	_, err := s.store.ScannersStoreDNSSECResult(ctx, store.ScannersStoreDNSSECResultParams{
+		DomainID:        pgtype.Int4{Int32: s.identity.DomainID, Valid: true},
+		Status:          result.Status,
+		ValidationError: validationError,
+		HasDnskey:       result.HasDNSKEY,
+		HasDs:           result.HasDS,
+		HasRrsig:        result.HasRRSIG,
+		Algorithms:      algorithms,
+	})
+	if err != nil {
+		s.logger.Error("failed to store dnssec scan result", "error", err)
+		return
+	}
+
+	payload := observer.PayloadJSON(map[string]any{
+		"status":     result.Status,
+		"has_dnskey": result.HasDNSKEY,
+		"has_ds":     result.HasDS,
+		"has_rrsig":  result.HasRRSIG,
+		"algorithms": algorithms,
+	})
+	if err := observer.New(s.store).RecordFindingChange(
+		ctx, s.identity, observer.EntityDNSSEC, "dnssec", payload,
+	); err != nil {
+		s.logger.Error("failed to emit dnssec observation", "error", err)
+	}
+}
+
+// collectDNSSECAlgorithms returns the distinct signing-algorithm numbers (as
+// strings) present across the KSK and ZSK key material, preserving first-seen
+// order. Never returns nil so the NOT NULL array column is satisfied.
+func collectDNSSECAlgorithms(result *dnsrecords.DNSSECResult) []string {
+	seen := make(map[string]bool)
+	algorithms := []string{}
+	for _, key := range append(append([]dnsrecords.DNSKEYResult{}, result.KSKs...), result.ZSKs...) {
+		alg := strconv.Itoa(int(key.Algorithm))
+		if !seen[alg] {
+			seen[alg] = true
+			algorithms = append(algorithms, alg)
+		}
+	}
+	return algorithms
 }

@@ -44,7 +44,7 @@ func toFindingItem(f service.FindingView) FindingItem {
 
 type FindingsListInput struct {
 	Severity         string `query:"severity"          example:"crit"  doc:"Filter by tier: crit|high|med|low. Optional." enum:"crit,high,med,low,"`
-	Kind             string `query:"kind"              example:"SPF"   doc:"Filter by type: SPF|DKIM|DMARC|ZONE. Optional." enum:"SPF,DKIM,DMARC,ZONE,"`
+	Kind             string `query:"kind"              example:"SPF"   doc:"Filter by type: SPF|DKIM|DMARC|ZONE|CERT|DNSSEC. Optional." enum:"SPF,DKIM,DMARC,ZONE,CERT,DNSSEC,"`
 	DomainQuery      string `query:"q"                 example:"acme"  doc:"Case-insensitive domain-name substring. Optional."`
 	IncludeCompliant bool   `query:"include_compliant" example:"false" doc:"Include compliant/closed findings. Optional."`
 	PaginationQuery
