@@ -149,9 +149,11 @@ type serverConf struct {
 // load config without these set, so enforcement lives at the server entrypoint
 // (serve_cmd) which calls this. Returns the first failing precondition.
 func (c *Conf) Validate() error {
-	if strings.TrimSpace(c.AppConf.PublicBaseURL) == "" {
+	// Only the smtp driver delivers real mail, so a missing public origin is only
+	// a problem there; log/noop never put the link in front of a user.
+	if c.Mail.Driver == "smtp" && strings.TrimSpace(c.AppConf.PublicBaseURL) == "" {
 		return errors.New(
-			"APP_PUBLIC_URL must be set: it is the trusted public origin for links in outbound email (password reset, welcome)",
+			"APP_PUBLIC_URL must be set when MAIL_DRIVER=smtp: it is the trusted public origin for links in outbound email (password reset, welcome)",
 		)
 	}
 	return nil

@@ -55,20 +55,31 @@ func TestMailDefaults(t *testing.T) {
 	}
 }
 
-func TestValidate_RequiresPublicBaseURL(t *testing.T) {
-	c := &Conf{}
-	if err := c.Validate(); err == nil {
-		t.Error("Validate should fail when APP_PUBLIC_URL is empty")
+func TestValidate_PublicBaseURLRequiredForSMTP(t *testing.T) {
+	smtp := func(url string) *Conf {
+		c := &Conf{}
+		c.Mail.Driver = "smtp"
+		c.AppConf.PublicBaseURL = url
+		return c
 	}
 
-	c.AppConf.PublicBaseURL = "http://localhost:7070"
-	if err := c.Validate(); err != nil {
-		t.Errorf("Validate should pass with PublicBaseURL set, got: %v", err)
+	if err := smtp("").Validate(); err == nil {
+		t.Error("smtp + empty APP_PUBLIC_URL should fail")
+	}
+	if err := smtp("   ").Validate(); err == nil {
+		t.Error("smtp + whitespace-only APP_PUBLIC_URL should fail")
+	}
+	if err := smtp("http://localhost:7070").Validate(); err != nil {
+		t.Errorf("smtp + set APP_PUBLIC_URL should pass, got: %v", err)
 	}
 
-	c.AppConf.PublicBaseURL = "   "
-	if err := c.Validate(); err == nil {
-		t.Error("Validate should treat a whitespace-only PublicBaseURL as unset")
+	// Non-smtp drivers never deliver a link to a user, so APP_PUBLIC_URL is optional.
+	for _, driver := range []string{"log", "noop", ""} {
+		c := &Conf{}
+		c.Mail.Driver = driver
+		if err := c.Validate(); err != nil {
+			t.Errorf("driver %q + empty APP_PUBLIC_URL should pass, got: %v", driver, err)
+		}
 	}
 }
 
