@@ -94,8 +94,9 @@ type FlatFindingsResult struct {
 	TotalCount int64
 }
 
-// ListByDomain aggregates the four implemented finding types (SPF, DKIM, DMARC,
-// zone transfer) for a domain into a single severity-sorted list. Returns
+// ListByDomain aggregates the implemented finding types (SPF, DKIM, DMARC, zone
+// transfer, certificate, dnssec) for a domain into a single severity-sorted
+// list. Returns
 // ErrNotFound when the domain is not in the caller's tenant.
 func (s *FindingsService) ListByDomain(
 	ctx context.Context,
@@ -148,6 +149,26 @@ func (s *FindingsService) ListByDomain(
 	}); err == nil {
 		for _, f := range zones {
 			findings = append(findings, mapZoneTransferFinding(f))
+		}
+	}
+	if certs, err := s.DB.AssessGetCertificateFindingsByDomainUID(ctx, store.AssessGetCertificateFindingsByDomainUIDParams{
+		Uid:      domainUID,
+		TenantID: tenantID,
+	}); err == nil {
+		for _, f := range certs {
+			findings = append(findings, mapStandardFinding(
+				"CERT", f.Severity, f.Status, f.IssueType, f.Details,
+			))
+		}
+	}
+	if dnssec, err := s.DB.AssessGetDNSSECFindingsByDomainUID(ctx, store.AssessGetDNSSECFindingsByDomainUIDParams{
+		Uid:      domainUID,
+		TenantID: tenantID,
+	}); err == nil {
+		for _, f := range dnssec {
+			findings = append(findings, mapStandardFinding(
+				"DNSSEC", f.Severity, f.Status, f.IssueType, f.Details,
+			))
 		}
 	}
 
@@ -374,6 +395,33 @@ func mapEmailFinding(
 		Title:       title,
 		Description: details.String,
 		Evidence:    value.String,
+		FixHint:     fix,
+	}
+}
+
+// mapStandardFinding maps a finding row that carries no extra evidence column
+// (certificate, dnssec) to a FindingView, preferring the stored details over the
+// generic catalog description.
+func mapStandardFinding(
+	kind string,
+	severity store.FindingSeverity,
+	status store.FindingStatus,
+	issueType string,
+	details pgtype.Text,
+) FindingView {
+	class := severityClass(severity, status)
+	title, desc, fix := findingText(issueType)
+	if details.Valid && details.String != "" {
+		desc = details.String
+	}
+	return FindingView{
+		Kind:        kind,
+		Severity:    string(severity),
+		SevClass:    class,
+		Tier:        severityTier(severity),
+		Icon:        severityIcon(class),
+		Title:       title,
+		Description: desc,
 		FixHint:     fix,
 	}
 }
