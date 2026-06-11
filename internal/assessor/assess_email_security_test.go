@@ -5,11 +5,74 @@ import (
 	"testing"
 
 	"github.com/danielmichaels/gecko/internal/dnsclient"
+	"github.com/danielmichaels/gecko/internal/observer"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/danielmichaels/gecko/internal/testhelpers"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/miekg/dns"
 )
+
+// TestAssessEmailSecurity_UsesIdentityTenant guards against the email-security
+// assessor looking up the domain under a hardcoded tenant: a domain owned by any
+// tenant other than the default must still be found via the scan identity's
+// tenant. Before the fix the DKIM/DMARC sub-assessors queried tenant_id=1 and this
+// failed with "get domain ... no rows".
+func TestAssessEmailSecurity_UsesIdentityTenant(t *testing.T) {
+	ctx := context.Background()
+	pgContainer, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("Failed to create postgres container: %v", err)
+	}
+	defer pgContainer.Close(ctx)
+
+	mockServer, err := testhelpers.NewMockDNSServer()
+	if err != nil {
+		t.Fatalf("Failed to create mock DNS server: %v", err)
+	}
+	if err := mockServer.Start(); err != nil {
+		t.Fatalf("Failed to start mock DNS server: %v", err)
+	}
+	defer func() { _ = mockServer.Stop() }()
+
+	dnsClient := dnsclient.New(
+		dnsclient.WithServers([]string{mockServer.ListenAddr}),
+		dnsclient.WithLogger(testhelpers.TestLogger),
+	)
+
+	tenant, err := pgContainer.Queries.TenantCreate(ctx, "email-tenant-two")
+	if err != nil {
+		t.Fatalf("Failed to create tenant: %v", err)
+	}
+	if tenant.ID == 1 {
+		t.Fatalf("expected a non-default tenant id, got %d", tenant.ID)
+	}
+
+	domain, err := pgContainer.Queries.DomainsCreate(ctx, store.DomainsCreateParams{
+		TenantID:   pgtype.Int4{Int32: tenant.ID, Valid: true},
+		Name:       "tenant-two.example.test",
+		DomainType: store.DomainTypeTld,
+		Source:     store.DomainSourceUserSupplied,
+		Status:     store.DomainStatusActive,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create domain: %v", err)
+	}
+
+	a := NewAssessor(Config{
+		Store:     pgContainer.Queries,
+		Logger:    testhelpers.TestLogger,
+		DNSClient: dnsClient,
+		Identity: observer.DomainIdentity{
+			TenantID:   tenant.ID,
+			DomainID:   domain.ID,
+			DomainUID:  domain.Uid,
+			DomainName: domain.Name,
+		},
+	})
+	if err := a.AssessEmailSecurity(ctx, int(domain.ID)); err != nil {
+		t.Fatalf("AssessEmailSecurity for a non-default-tenant domain failed: %v", err)
+	}
+}
 
 func TestAssessEmailSecurity_SPFIssues(t *testing.T) {
 	ctx := context.Background()
@@ -244,6 +307,7 @@ func TestAssessEmailSecurity_DKIM(t *testing.T) {
 		Store:     pgContainer.Queries,
 		Logger:    testhelpers.TestLogger,
 		DNSClient: dnsClient,
+		Identity:  observer.DomainIdentity{TenantID: 1},
 	})
 
 	tests := []struct {
@@ -470,6 +534,7 @@ func TestAssessEmailSecurity_DMARC(t *testing.T) {
 		Store:     pgContainer.Queries,
 		Logger:    testhelpers.TestLogger,
 		DNSClient: dnsClient,
+		Identity:  observer.DomainIdentity{TenantID: 1},
 	})
 
 	tests := []struct {

@@ -39,19 +39,26 @@ func (w *AssessCNAMEDanglingWorker) Work(
 	job *river.Job[AssessCNAMEDanglingArgs],
 ) error {
 	ctx = tracing.WithNewTraceID(ctx, false)
-	w.Logger.InfoContext(ctx, "assess CNAME started", "domain", job.Args.DomainName)
-	_ = assessor.NewAssessor(assessor.Config{
+	start := time.Now()
+	w.Logger.InfoContext(ctx, "assess CNAME started", "domain", job.Args.DomainUID)
+	a := assessor.NewAssessor(assessor.Config{
 		Logger:    &w.Logger,
 		Store:     w.Store,
 		DNSClient: w.Resolver,
+		Identity:  job.Args.Identity(),
 	})
-	/* todo:
-	- cloud provider checks
-	- http/https checks
-	- wildcard detection?
-	- api checks?
-	- custom error page detection
-	*/
+	if err := a.AssessCNAMEDangling(ctx, job.Args.DomainUID); err != nil {
+		return err
+	}
+
+	w.Logger.InfoContext(
+		ctx,
+		"assess CNAME complete",
+		"domain",
+		job.Args.DomainUID,
+		"duration",
+		time.Since(start),
+	)
 	return nil
 }
 

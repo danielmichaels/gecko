@@ -63,6 +63,56 @@ WHERE d.uid = $1
   AND d.tenant_id = $2
 ORDER BY df.severity ASC, df.created_at DESC;
 
+-- name: StoreDanglingCnameFinding :one
+INSERT INTO dangling_cname_findings (domain_id,
+                                     severity,
+                                     status,
+                                     target_domain,
+                                     service_provider,
+                                     takeover_possible,
+                                     details)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (domain_id, target_domain)
+    DO UPDATE SET severity          = $2,
+                  status            = $3,
+                  service_provider  = $5,
+                  takeover_possible = $6,
+                  details           = $7
+RETURNING (xmax = 0)::boolean AS inserted;
+
+-- name: AssessGetDanglingCnameFindingsByDomainUID :many
+SELECT dcf.*
+FROM dangling_cname_findings dcf
+         JOIN domains d ON dcf.domain_id = d.id
+WHERE d.uid = $1
+  AND d.tenant_id = $2
+ORDER BY dcf.severity ASC, dcf.created_at DESC;
+
+-- name: StoreCnameRedirectionFinding :one
+INSERT INTO cname_redirection_findings (domain_id,
+                                        cname_record_id,
+                                        severity,
+                                        status,
+                                        issue_type,
+                                        chain_length,
+                                        details)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (domain_id, issue_type)
+    DO UPDATE SET cname_record_id = $2,
+                  severity        = $3,
+                  status          = $4,
+                  chain_length    = $6,
+                  details         = $7
+RETURNING (xmax = 0)::boolean AS inserted;
+
+-- name: AssessGetCnameRedirectionFindingsByDomainUID :many
+SELECT crf.*
+FROM cname_redirection_findings crf
+         JOIN domains d ON crf.domain_id = d.id
+WHERE d.uid = $1
+  AND d.tenant_id = $2
+ORDER BY crf.severity ASC, crf.created_at DESC;
+
 -- name: AssessCreateSPFFinding :one
 INSERT INTO spf_findings (domain_id,
                           txt_record_id,
@@ -219,6 +269,12 @@ open_findings AS (
     UNION ALL
     SELECT domain_id, severity::text FROM dnssec_findings
         WHERE status = 'open' AND domain_id = ANY(@domain_ids::int[])
+    UNION ALL
+    SELECT domain_id, severity::text FROM dangling_cname_findings
+        WHERE status = 'open' AND domain_id = ANY(@domain_ids::int[])
+    UNION ALL
+    SELECT domain_id, severity::text FROM cname_redirection_findings
+        WHERE status = 'open' AND domain_id = ANY(@domain_ids::int[])
 )
 SELECT
     ids.domain_id::int AS domain_id,
@@ -314,7 +370,27 @@ FROM (SELECT sf.uid                AS finding_uid,
       FROM dnssec_findings nf
                JOIN domains d ON nf.domain_id = d.id
       WHERE d.tenant_id = @tenant_id
-        AND (@include_compliant::bool OR nf.status = 'open')) f
+        AND (@include_compliant::bool OR nf.status = 'open')
+
+      UNION ALL
+
+      SELECT dcf.uid, d.uid, d.name, 'DANGLING'::text, dcf.severity, dcf.status,
+             CASE WHEN dcf.takeover_possible
+                  THEN 'subdomain_takeover' ELSE 'dangling_cname' END,
+             dcf.target_domain, dcf.details, NULL::text, dcf.created_at
+      FROM dangling_cname_findings dcf
+               JOIN domains d ON dcf.domain_id = d.id
+      WHERE d.tenant_id = @tenant_id
+        AND (@include_compliant::bool OR dcf.status = 'open')
+
+      UNION ALL
+
+      SELECT crf.uid, d.uid, d.name, 'CNAME'::text, crf.severity, crf.status,
+             crf.issue_type, NULL::text, crf.details, NULL::text, crf.created_at
+      FROM cname_redirection_findings crf
+               JOIN domains d ON crf.domain_id = d.id
+      WHERE d.tenant_id = @tenant_id
+        AND (@include_compliant::bool OR crf.status = 'open')) f
 ORDER BY f.domain_name ASC,
          CASE f.severity
              WHEN 'critical' THEN 1
@@ -358,6 +434,10 @@ FROM (
         SELECT domain_id, severity::text FROM certificate_findings WHERE status = 'open'
         UNION ALL
         SELECT domain_id, severity::text FROM dnssec_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM dangling_cname_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM cname_redirection_findings WHERE status = 'open'
     ) f ON f.domain_id = d.id
     GROUP BY d.tenant_id, d.id
 ) agg
