@@ -373,8 +373,93 @@ func (h *Handlers) handleDomainDelete(w http.ResponseWriter, r *http.Request) {
 		h.log.Error("domain delete", "error", err, "uid", uid)
 	}
 
-	// Remove the row regardless (idempotent: a 404 just means it's already gone).
+	// The detail page has no #domain-row-{uid} to remove, so it passes
+	// ?redirect=/app/domains to navigate away instead. The target must be app-local
+	// to avoid an open redirect — only a /app/ path is honoured.
+	if redirect := r.URL.Query().Get("redirect"); strings.HasPrefix(redirect, "/app/") {
+		_ = sse.Redirect(redirect)
+		return
+	}
+
+	// List path: remove the row regardless (idempotent: a 404 just means it's gone).
 	_ = sse.RemoveElementByID("domain-row-" + uid)
+}
+
+// handleDomainStatusToggle pauses or resumes scanning for a single domain by
+// flipping its status. The ?status= value is validated against the active/inactive
+// keywords only — pending is an internal state, and an arbitrary value must never
+// reach the enum.
+//
+// Pausing relies on the active-status gate (an inactive domain's scheduled scan is
+// skipped); resuming schedules a scan that now passes the gate, so a resumed domain
+// is re-scanned immediately. Update is called BEFORE opening the SSE stream so a
+// failure can still write an HTTP error status (mirrors handleDomainRescan).
+func (h *Handlers) handleDomainStatusToggle(w http.ResponseWriter, r *http.Request) {
+	p, ok := PrincipalFrom(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	uid := chi.URLParam(r, "uid")
+	status := r.URL.Query().Get("status")
+	if status != string(store.DomainStatusActive) && status != string(store.DomainStatusInactive) {
+		sse := datastar.NewSSE(w, r)
+		pushToast(
+			sse,
+			newToast("warn", "NOTICE", "Invalid status", "status must be active or inactive"),
+		)
+		return
+	}
+
+	d, err := h.svc.DomainsService().
+		Update(r.Context(), p, uid, service.DomainsUpdateParams{Status: status})
+	if err != nil {
+		sse := datastar.NewSSE(w, r)
+		if errors.Is(err, service.ErrForbidden) {
+			pushToast(sse, newToast("warn", "NOTICE", "Permission denied", permissionDeniedDesc))
+			return
+		}
+		if errors.Is(err, service.ErrNotFound) {
+			pushToast(sse, newToast("warn", "NOTICE", "Domain not found", "nothing to update"))
+			return
+		}
+		h.log.Error("domain status toggle", "error", err, "uid", uid)
+		pushToast(sse, newToast("crit", "ERROR", "Update failed", "try again shortly"))
+		return
+	}
+
+	// The cascade count for the re-rendered Delete confirm. A status flip never
+	// changes the subtree, so on error fall back to 1 (self) rather than fail.
+	deleteImpact := 1
+	if count, iErr := h.svc.DomainsService().DeletionImpact(r.Context(), p, uid); iErr == nil {
+		deleteImpact = int(count)
+	}
+
+	// Open SSE only on success, then patch the header in place: the badge appears/
+	// disappears and the lifecycle cluster re-renders for the new state (primary
+	// action flips, the overflow menu's contents change).
+	sse := datastar.NewSSE(w, r)
+	statusStr := string(d.Status)
+	_ = sse.PatchElementTempl(
+		templates.DomainStatusBadge(statusStr),
+		datastar.WithSelectorID("domain-status-badge"),
+	)
+	_ = sse.PatchElementTempl(
+		templates.DomainLifecycleControls(templates.DomainLifecycleProps{
+			UID:               d.Uid,
+			Name:              d.Name,
+			Status:            statusStr,
+			CSRFToken:         CSRFTokenFrom(r.Context()),
+			DeleteImpactCount: deleteImpact,
+		}),
+		datastar.WithSelectorID("domain-lifecycle-actions"),
+	)
+	if d.Status == store.DomainStatusInactive {
+		pushToast(sse, newToast("info", "DOMAIN", "Scanning paused", d.Name+" will not be scanned"))
+	} else {
+		pushToast(sse, newToast("ok", "SCAN", "Scanning resumed", d.Name+" · rescanning"))
+	}
 }
 
 // handleDomainDetail renders the domain detail full page.
@@ -436,20 +521,32 @@ func (h *Handlers) handleDomainDetail(w http.ResponseWriter, r *http.Request) {
 		initialTab = "timeline"
 	}
 
+	// Cascade-aware count for the delete confirmation. The domain exists (Get
+	// succeeded above), so the count is at least 1; on error fall back to 1 (self)
+	// rather than block rendering the page.
+	deleteImpact := 1
+	if count, iErr := h.svc.DomainsService().DeletionImpact(r.Context(), p, uid); iErr != nil {
+		h.log.Error("domain detail: deletion impact", "error", iErr, "uid", uid)
+	} else {
+		deleteImpact = int(count)
+	}
+
 	renderPage(w, r, templates.DomainDetailPage(templates.DomainDetailPageProps{
-		Shell:            shell,
-		UID:              d.Uid,
-		Name:             d.Name,
-		Severity:         severityForStatus(d.Status),
-		RecordCount:      recordCount,
-		FindingsCount:    findingsCount,
-		FindingsSeverity: findingsSeverity,
-		Type:             string(d.DomainType),
-		Source:           string(d.Source),
-		Added:            added,
-		Scanned:          relativeTime(d.UpdatedAt),
-		InitialTab:       initialTab,
-		InitialScan:      strings.TrimSpace(r.URL.Query().Get("scan")),
+		Shell:             shell,
+		UID:               d.Uid,
+		Name:              d.Name,
+		Severity:          severityForStatus(d.Status),
+		Status:            string(d.Status),
+		RecordCount:       recordCount,
+		FindingsCount:     findingsCount,
+		FindingsSeverity:  findingsSeverity,
+		Type:              string(d.DomainType),
+		Source:            string(d.Source),
+		Added:             added,
+		Scanned:           relativeTime(d.UpdatedAt),
+		InitialTab:        initialTab,
+		InitialScan:       strings.TrimSpace(r.URL.Query().Get("scan")),
+		DeleteImpactCount: deleteImpact,
 	}))
 }
 

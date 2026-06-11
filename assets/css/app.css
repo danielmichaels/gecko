@@ -65,6 +65,13 @@ body{
 .user-menu-item.danger{color:var(--crit)}
 .user-menu-item.danger:hover{background:var(--crit-bg)}
 .user-menu-sep{height:1px;margin:4px 2px;background:var(--line)}
+.user-menu-item.danger-soft{color:var(--txt-dim)}
+.user-menu-item.danger-soft .ico{color:var(--txt-faint)}
+.user-menu-item.danger-soft:hover{background:var(--crit-bg);color:var(--crit)}
+.user-menu-item.danger-soft:hover .ico{color:var(--crit)}
+.lifecycle-actions{display:flex;align-items:center;gap:9px}
+.lifecycle-menu{position:relative}
+.btn.btn-ghost.lc-kebab{padding:0;width:36px;height:36px;justify-content:center;font-size:18px;line-height:1}
 
 .side{border-right:1px solid var(--line-soft);background:var(--bg-elev);padding:16px 12px;display:flex;flex-direction:column;min-height:0;overflow-y:auto}
 .nav-label{font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--txt-faint);text-transform:uppercase;padding:0 10px;margin:6px 0 8px}
