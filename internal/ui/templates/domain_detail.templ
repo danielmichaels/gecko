@@ -19,15 +19,12 @@ templ DomainDetailPage(props DomainDetailPageProps) {
 						<span class={ "badge", props.FindingsSeverity }>{ props.FindingsCount } findings</span>
 					}
 					<span class="badge info">{ props.RecordCount } records</span>
+					@DomainStatusBadge(props.Status)
 				</div>
 				<div class="page-head" style="margin-top:-6px">
 					<div class="sub">{ props.Type } · { props.Source } · added { props.Added } · scanned { props.Scanned }</div>
 					if props.Shell.CanManageDomains {
-						<button
-							class="btn"
-							type="button"
-							data-on:click={ postWithCSRF("/app/domains/"+props.UID+"/rescan", props.Shell.CSRFToken) }
-						>⟳ Rescan</button>
+						@DomainLifecycleControls(props.Lifecycle())
 					}
 				</div>
 				<div class="tabs">
@@ -92,6 +89,77 @@ templ DomainDetailPage(props DomainDetailPageProps) {
 			</div>
 		}
 	}
+}
+
+// DomainStatusBadge renders the paused indicator in the detail title. The wrapper
+// keeps a stable id so the status toggle handler can morph it in place (empty when
+// active, a "paused" badge when inactive). Driven by the raw Status, not Severity.
+templ DomainStatusBadge(status string) {
+	<span id="domain-status-badge">
+		if status == "inactive" {
+			<span class="badge warn">paused</span>
+		}
+	</span>
+}
+
+// DomainLifecycleControls renders the per-domain lifecycle cluster: a ghost primary
+// action plus an overflow (⋮) menu. The control set is state-aware — Resume is only
+// offered when paused, Pause only when active — and the whole fragment carries a
+// stable id so the status-toggle handler can re-patch it after a flip. A paused
+// domain offers no Rescan: the active-status gate makes it a no-op, and Resume
+// already re-scans on the way back to active.
+templ DomainLifecycleControls(p DomainLifecycleProps) {
+	<div id="domain-lifecycle-actions" class="lifecycle-actions">
+		if p.Status == "inactive" {
+			<button
+				class="btn btn-ghost"
+				type="button"
+				data-on:click={ statusToggleAction(p.UID, p.Status, p.CSRFToken) }
+			>▶ Resume</button>
+		} else {
+			<button
+				class="btn btn-ghost"
+				type="button"
+				data-on:click={ postWithCSRF("/app/domains/"+p.UID+"/rescan", p.CSRFToken) }
+			>⟳ Rescan</button>
+		}
+		<div class="lifecycle-menu">
+			<button
+				class="btn btn-ghost lc-kebab"
+				type="button"
+				aria-haspopup="menu"
+				data-attr:aria-expanded="$lcMenu"
+				data-on:click="$lcMenu = !$lcMenu"
+			>⋮</button>
+			<div
+				class="user-menu-backdrop"
+				style="display:none"
+				data-show="$lcMenu"
+				data-on:click="$lcMenu = false"
+			></div>
+			<div class="user-menu-pop" role="menu" style="display:none" data-show="$lcMenu">
+				if p.Status != "inactive" {
+					<button
+						class="user-menu-item"
+						type="button"
+						role="menuitem"
+						data-on:click={ "$lcMenu=false; " + statusToggleAction(p.UID, p.Status, p.CSRFToken) }
+					>
+						<span class="ico">⏸</span> Pause scanning
+					</button>
+					<div class="user-menu-sep"></div>
+				}
+				<button
+					class="user-menu-item danger-soft"
+					type="button"
+					role="menuitem"
+					data-on:click={ "$lcMenu=false; " + deleteDomainWithConfirm(p.UID, p.Name, p.DeleteImpactCount, p.CSRFToken) }
+				>
+					<span class="ico">✕</span> Delete domain…
+				</button>
+			</div>
+		</div>
+	</div>
 }
 
 templ recordsSkeleton() {

@@ -28,22 +28,38 @@ import (
 
 // ── shared test scheduler ─────────────────────────────────────────────────────
 
+// noopScheduler stands in for the live River scheduler. It mirrors the one
+// behaviour the pause feature depends on — the active-status gate in
+// EnqueueDomainScan — by counting a scan only when the target is active. An
+// inactive target is recorded as a call but never as an active scan, so a test
+// can assert "pausing schedules no scan" without a real queue.
 type noopScheduler struct {
-	mu    sync.Mutex
-	calls int
+	mu          sync.Mutex
+	calls       int
+	activeScans int
 }
 
 func (n *noopScheduler) Schedule(
 	_ context.Context,
 	_ pgx.Tx,
 	_ *store.Queries,
-	_ jobs.DomainScanTarget,
+	target jobs.DomainScanTarget,
 	_ store.DomainSource,
 ) (int64, error) {
 	n.mu.Lock()
 	n.calls++
+	if target.Status == store.DomainStatusActive {
+		n.activeScans++
+	}
 	n.mu.Unlock()
 	return 1, nil
+}
+
+// activeScanCount returns how many scans were scheduled for an active domain.
+func (n *noopScheduler) activeScanCount() int {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.activeScans
 }
 
 // ── test harness ──────────────────────────────────────────────────────────────
@@ -55,6 +71,7 @@ type uiHarness struct {
 	cookieCfg ui.CookieConfig
 	csrfKey   []byte
 	pc        *testhelpers.PostgresContainer
+	scheduler *noopScheduler
 }
 
 // newUIHarness builds a real Service + Handlers over a test Postgres container
@@ -81,12 +98,13 @@ func newUIHarnessWithSignup(
 		t.Fatalf("new auth provider: %v", err)
 	}
 
+	scheduler := &noopScheduler{}
 	svc := service.NewWithScheduler(
 		cfg,
 		slog.New(slog.DiscardHandler),
 		pc.Queries,
 		pc.Pool,
-		&noopScheduler{},
+		scheduler,
 		provider,
 	)
 
@@ -109,6 +127,7 @@ func newUIHarnessWithSignup(
 		cookieCfg: cookieCfg,
 		csrfKey:   csrfKey,
 		pc:        pc,
+		scheduler: scheduler,
 	}
 }
 
@@ -1603,6 +1622,398 @@ func TestAppShell_UserMenu_LogoutAffordance(t *testing.T) {
 	}
 	if strings.Contains(body, `action="/app/logout"`) {
 		t.Error("app shell: the old navigating logout form should be gone")
+	}
+}
+
+// demoteToViewer flips a registered user's role to viewer. Role is resolved live
+// per request (ResolveSession joins users), so an existing session cookie becomes
+// a viewer principal immediately — no re-mint needed.
+func demoteToViewer(
+	t *testing.T,
+	ctx context.Context,
+	pc *testhelpers.PostgresContainer,
+	email string,
+) {
+	t.Helper()
+	if _, err := pc.Pool.Exec(ctx, `UPDATE users SET role = 'viewer' WHERE email = $1`, email); err != nil {
+		t.Fatalf("demote %s to viewer: %v", email, err)
+	}
+}
+
+func TestHandlerDomainStatusToggle_PauseThenResume(t *testing.T) {
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+	cookie, csrf := h.loginCookie(t, "toggle@example.com", "pass1234")
+	tid := tenantIDFor(t, ctx, pc, "toggle@example.com")
+	d := seedDomainForTenant(t, ctx, pc, tid, "toggle-me.example.com")
+	p, _ := h.svc.AuthService().Authenticate(ctx, "toggle@example.com", "pass1234")
+
+	// Pause: active → inactive. The status persists and the active-status gate
+	// means no scan is scheduled (the fake counts active scans only).
+	rr := h.do(
+		t,
+		http.MethodPost,
+		"/app/domains/"+d.Uid+"/status?status=inactive",
+		nil,
+		cookie,
+		csrf,
+	)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("pause: want 200 (SSE), got %d\nbody: %s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, `id="toast-`) || !strings.Contains(body, "paused") {
+		t.Errorf("pause: SSE body should append a paused toast, got: %s", body)
+	}
+	if !strings.Contains(body, "Resume") {
+		t.Errorf("pause: SSE body should patch the button to a Resume label, got: %s", body)
+	}
+	got, _ := h.svc.DomainsService().Get(ctx, p, d.Uid)
+	if got.Status != store.DomainStatusInactive {
+		t.Errorf("pause: domain status = %q, want inactive", got.Status)
+	}
+	if n := h.scheduler.activeScanCount(); n != 0 {
+		t.Errorf("pause: scheduled %d active scans, want 0 (inactive is gated)", n)
+	}
+
+	// Resume: inactive → active. The status persists and a scan is now scheduled.
+	rr2 := h.do(
+		t,
+		http.MethodPost,
+		"/app/domains/"+d.Uid+"/status?status=active",
+		nil,
+		cookie,
+		csrf,
+	)
+	if rr2.Code != http.StatusOK {
+		t.Fatalf("resume: want 200 (SSE), got %d\nbody: %s", rr2.Code, rr2.Body.String())
+	}
+	body2 := rr2.Body.String()
+	if !strings.Contains(body2, `id="toast-`) || !strings.Contains(body2, "resumed") {
+		t.Errorf("resume: SSE body should append a resumed toast, got: %s", body2)
+	}
+	if !strings.Contains(body2, "Pause") {
+		t.Errorf("resume: SSE body should patch the button back to a Pause label, got: %s", body2)
+	}
+	got2, _ := h.svc.DomainsService().Get(ctx, p, d.Uid)
+	if got2.Status != store.DomainStatusActive {
+		t.Errorf("resume: domain status = %q, want active", got2.Status)
+	}
+	if n := h.scheduler.activeScanCount(); n != 1 {
+		t.Errorf("resume: scheduled %d active scans, want 1", n)
+	}
+}
+
+func TestHandlerDomainStatusToggle_InvalidStatus(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+	cookie, csrf := h.loginCookie(t, "badstatus@example.com", "pass1234")
+	tid := tenantIDFor(t, ctx, pc, "badstatus@example.com")
+	d := seedDomainForTenant(t, ctx, pc, tid, "badstatus.example.com")
+
+	rr := h.do(
+		t,
+		http.MethodPost,
+		"/app/domains/"+d.Uid+"/status?status=pending",
+		nil,
+		cookie,
+		csrf,
+	)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("invalid status: want 200 (SSE), got %d", rr.Code)
+	}
+	// An arbitrary enum value is rejected before reaching the service.
+	if !strings.Contains(rr.Body.String(), `id="toast-`) {
+		t.Errorf(
+			"invalid status: SSE body should append a rejection toast, got: %s",
+			rr.Body.String(),
+		)
+	}
+	p, _ := h.svc.AuthService().Authenticate(ctx, "badstatus@example.com", "pass1234")
+	got, _ := h.svc.DomainsService().Get(ctx, p, d.Uid)
+	if got.Status != store.DomainStatusActive {
+		t.Errorf("invalid status: domain status changed to %q, want unchanged active", got.Status)
+	}
+}
+
+func TestHandlerDomainStatusToggle_ViewerForbidden(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+	cookie, csrf := h.loginCookie(t, "viewer-toggle@example.com", "pass1234")
+	tid := tenantIDFor(t, ctx, pc, "viewer-toggle@example.com")
+	d := seedDomainForTenant(t, ctx, pc, tid, "viewer-toggle.example.com")
+	demoteToViewer(t, ctx, pc, "viewer-toggle@example.com")
+
+	rr := h.do(
+		t,
+		http.MethodPost,
+		"/app/domains/"+d.Uid+"/status?status=inactive",
+		nil,
+		cookie,
+		csrf,
+	)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("viewer toggle: want 200 (SSE), got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "Permission denied") {
+		t.Errorf(
+			"viewer toggle: SSE body should append a permission-denied toast, got: %s",
+			rr.Body.String(),
+		)
+	}
+	// Status must be unchanged: the service-layer ownerOrManager gate is authoritative.
+	d2, err := pc.Queries.DomainsGetByID(ctx, store.DomainsGetByIDParams{
+		Uid:      d.Uid,
+		TenantID: pgtype.Int4{Int32: tid, Valid: true},
+	})
+	if err != nil {
+		t.Fatalf("re-fetch domain: %v", err)
+	}
+	if d2.Status != store.DomainStatusActive {
+		t.Errorf("viewer toggle: status changed to %q despite 403, want active", d2.Status)
+	}
+}
+
+func TestHandlerDomainDelete_ViewerForbidden(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+	cookie, csrf := h.loginCookie(t, "viewer-del@example.com", "pass1234")
+	tid := tenantIDFor(t, ctx, pc, "viewer-del@example.com")
+	d := seedDomainForTenant(t, ctx, pc, tid, "viewer-del.example.com")
+	demoteToViewer(t, ctx, pc, "viewer-del@example.com")
+
+	rr := h.doDelete(t, "/app/domains/"+d.Uid, nil, cookie, csrf)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("viewer delete: want 200 (SSE), got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "Permission denied") {
+		t.Errorf(
+			"viewer delete: SSE body should append a permission-denied toast, got: %s",
+			rr.Body.String(),
+		)
+	}
+	// The row must NOT be removed and the domain must still exist.
+	if strings.Contains(rr.Body.String(), "domain-row-"+d.Uid) {
+		t.Error("viewer delete: must not emit a row-removal for a forbidden delete")
+	}
+	if _, err := pc.Queries.DomainsGetByID(ctx, store.DomainsGetByIDParams{
+		Uid:      d.Uid,
+		TenantID: pgtype.Int4{Int32: tid, Valid: true},
+	}); err != nil {
+		t.Errorf("viewer delete: domain should still exist after 403, got: %v", err)
+	}
+}
+
+func TestHandlerDomainStatusToggle_NotFound(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+	cookie, csrf := h.loginCookie(t, "toggle-404@example.com", "pass1234")
+
+	rr := h.do(
+		t,
+		http.MethodPost,
+		"/app/domains/uid-does-not-exist/status?status=inactive",
+		nil,
+		cookie,
+		csrf,
+	)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("toggle 404: want 200 (SSE), got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), `id="toast-`) ||
+		!strings.Contains(rr.Body.String(), "not found") {
+		t.Errorf("toggle 404: SSE body should append a not-found toast, got: %s", rr.Body.String())
+	}
+}
+
+func TestHandlerDomainStatusToggle_CrossTenant(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+	cookieA, csrfA := h.loginCookie(t, "tog-a@cross.com", "pass1234")
+	h.loginCookie(t, "tog-b@cross.com", "pass5678")
+	tidB := tenantIDFor(t, ctx, pc, "tog-b@cross.com")
+	dB := seedDomainForTenant(t, ctx, pc, tidB, "b-toggle-private.example.com")
+
+	// A tries to pause B's domain → not found (tenant isolation), never modified.
+	rr := h.do(
+		t,
+		http.MethodPost,
+		"/app/domains/"+dB.Uid+"/status?status=inactive",
+		nil,
+		cookieA,
+		csrfA,
+	)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("cross-tenant toggle: want 200 (SSE), got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "not found") {
+		t.Errorf("cross-tenant toggle: SSE body should report not-found, got: %s", rr.Body.String())
+	}
+	d2, err := pc.Queries.DomainsGetByID(ctx, store.DomainsGetByIDParams{
+		Uid:      dB.Uid,
+		TenantID: pgtype.Int4{Int32: tidB, Valid: true},
+	})
+	if err != nil {
+		t.Fatalf("re-fetch B's domain: %v", err)
+	}
+	if d2.Status != store.DomainStatusActive {
+		t.Errorf("cross-tenant toggle: B's status changed to %q, want active", d2.Status)
+	}
+}
+
+func TestHandlerDomainStatusToggle_CSRF_MissingToken(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+	cookie, _ := h.loginCookie(t, "toggle-csrf@example.com", "pass1234")
+	tid := tenantIDFor(t, ctx, pc, "toggle-csrf@example.com")
+	d := seedDomainForTenant(t, ctx, pc, tid, "toggle-csrf.example.com")
+
+	rr := h.do(t, http.MethodPost, "/app/domains/"+d.Uid+"/status?status=inactive", nil, cookie, "")
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("toggle without CSRF: want 403, got %d", rr.Code)
+	}
+}
+
+func TestHandlerDomainDelete_FromDetail_Redirects(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+	cookie, csrf := h.loginCookie(t, "del-detail@example.com", "pass1234")
+	tid := tenantIDFor(t, ctx, pc, "del-detail@example.com")
+	d := seedDomainForTenant(t, ctx, pc, tid, "del-detail.example.com")
+
+	rr := h.doDelete(t, "/app/domains/"+d.Uid+"?redirect=/app/domains", nil, cookie, csrf)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("delete from detail: want 200 (SSE), got %d\nbody: %s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	// The detail path issues an SSE redirect rather than relying on row removal.
+	if !strings.Contains(body, "/app/domains") {
+		t.Errorf("delete from detail: SSE body should redirect to /app/domains, got: %s", body)
+	}
+	if strings.Contains(body, "domain-row-"+d.Uid) {
+		t.Error("delete from detail: should redirect, not emit a row removal")
+	}
+	// Domain is actually gone.
+	p, _ := h.svc.AuthService().Authenticate(ctx, "del-detail@example.com", "pass1234")
+	if _, getErr := h.svc.DomainsService().Get(ctx, p, d.Uid); getErr == nil {
+		t.Error("delete from detail: domain still exists in DB")
+	}
+}
+
+func TestHandlerDomainDelete_OpenRedirectRejected(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+	cookie, csrf := h.loginCookie(t, "del-evil@example.com", "pass1234")
+	tid := tenantIDFor(t, ctx, pc, "del-evil@example.com")
+	d := seedDomainForTenant(t, ctx, pc, tid, "del-evil.example.com")
+
+	rr := h.doDelete(t, "/app/domains/"+d.Uid+"?redirect=https://evil.com", nil, cookie, csrf)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("open-redirect: want 200 (SSE), got %d", rr.Code)
+	}
+	body := rr.Body.String()
+	// A non-app-local redirect must be ignored; fall back to row removal.
+	if strings.Contains(body, "evil.com") {
+		t.Error("open-redirect: external redirect target must never be emitted")
+	}
+	if !strings.Contains(body, "domain-row-"+d.Uid) {
+		t.Errorf("open-redirect: should fall back to row removal, got: %s", body)
+	}
+}
+
+func TestHandlerDomainDetail_DeleteImpactCount(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	h := newUIHarness(t, pc)
+	cookie, _ := h.loginCookie(t, "impact@example.com", "pass1234")
+	tid := tenantIDFor(t, ctx, pc, "impact@example.com")
+
+	apex := seedDomainForTenant(t, ctx, pc, tid, "impact-apex.com")
+	child := seedDomainForTenant(t, ctx, pc, tid, "sub.impact-apex.com")
+	// Wire the subtree directly: no query writes parent_domain_id yet.
+	if _, err := pc.Pool.Exec(ctx,
+		`UPDATE domains SET parent_domain_id = $1 WHERE id = $2`, apex.ID, child.ID); err != nil {
+		t.Fatalf("link child to apex: %v", err)
+	}
+
+	rr := h.do(t, http.MethodGet, "/app/domains/"+apex.Uid, nil, cookie, "")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("detail with impact: want 200, got %d", rr.Code)
+	}
+	// The cascade count (self + 1 child) surfaces in the delete confirm message.
+	if !strings.Contains(rr.Body.String(), "related domain") {
+		t.Errorf(
+			"detail with impact: confirm message should mention related domains, got partial: %s",
+			rr.Body.String()[:min(600, len(rr.Body.String()))],
+		)
 	}
 }
 

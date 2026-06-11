@@ -210,7 +210,36 @@ type DomainDetailPageProps struct {
 	// the targeted scan. InitialTab defaults to "records".
 	InitialTab  string
 	InitialScan string
-	Shell       AppShellProps
+	// Status is the raw domain status (active|inactive|pending). The paused badge
+	// and the Pause/Resume toggle are driven by it directly, not by Severity —
+	// severityForStatus collapses inactive into "ok", which would hide the pause.
+	Status string
+	Shell  AppShellProps
+	// DeleteImpactCount is the number of domains a delete would cascade away (self
+	// plus discovered children), surfaced in the delete confirmation.
+	DeleteImpactCount int
+}
+
+// DomainLifecycleProps is the slice of detail-page data the lifecycle controls
+// (primary action + overflow menu) need. It is rendered both inline on first load
+// and re-patched over SSE after a status flip, so it lives as a standalone fragment.
+type DomainLifecycleProps struct {
+	UID               string
+	Name              string
+	Status            string
+	CSRFToken         string
+	DeleteImpactCount int
+}
+
+// Lifecycle projects the detail props onto the lifecycle-controls fragment.
+func (p DomainDetailPageProps) Lifecycle() DomainLifecycleProps {
+	return DomainLifecycleProps{
+		UID:               p.UID,
+		Name:              p.Name,
+		Status:            p.Status,
+		CSRFToken:         p.Shell.CSRFToken,
+		DeleteImpactCount: p.DeleteImpactCount,
+	}
 }
 
 // RecordRowView is the presentation model for one DNS record row.
@@ -486,7 +515,11 @@ func detailSignals(initialTab string) string {
 	if initialTab == "timeline" {
 		tlLoaded = "true"
 	}
-	return fmt.Sprintf(`{"tab":"%s","tlLoaded":%s,"fnLoaded":false}`, initialTab, tlLoaded)
+	return fmt.Sprintf(
+		`{"tab":"%s","tlLoaded":%s,"fnLoaded":false,"lcMenu":false}`,
+		initialTab,
+		tlLoaded,
+	)
 }
 
 // timelineFullLoad returns the datastar @get that loads the full Timeline tab,
@@ -653,6 +686,51 @@ func revokeInvite(uid, email, token string) string {
 	return fmt.Sprintf(
 		"if(!confirm('Revoke the invitation for '+%s+'?')) return; @delete('/app/team/invitations/'+%s, {headers: {'X-CSRF-Token': %s}})",
 		emailJSON,
+		uidJSON,
+		tokenJSON,
+	)
+}
+
+// statusToggleAction returns the data-on:click action that POSTs the opposite of
+// the current status to the lifecycle endpoint. uid and token are JSON-encoded
+// into JS string literals (the next status is a fixed enum keyword, never
+// user-supplied, so it is safe to inline into the query string).
+func statusToggleAction(uid, currentStatus, token string) string {
+	next := "inactive"
+	if currentStatus == "inactive" {
+		next = "active"
+	}
+	uidJSON, _ := json.Marshal(uid)
+	tokenJSON, _ := json.Marshal(token)
+	return fmt.Sprintf(
+		"@post('/app/domains/'+%s+'/status?status=%s', {headers: {'X-CSRF-Token': %s}})",
+		uidJSON, next, tokenJSON,
+	)
+}
+
+// deleteDomainWithConfirm returns the confirm-then-DELETE action for the detail
+// page. The cascade count makes the prompt honest about how much a delete removes;
+// ?redirect=/app/domains tells the handler to navigate away rather than remove a
+// row. Every user-supplied value (uid, name, token) is JSON-encoded into a JS
+// string literal so a crafted domain name cannot break out of the expression.
+func deleteDomainWithConfirm(uid, name string, count int, token string) string {
+	uidJSON, _ := json.Marshal(uid)
+	nameJSON, _ := json.Marshal(name)
+	tokenJSON, _ := json.Marshal(token)
+	prefix, _ := json.Marshal("Delete ")
+	suffix := "? This permanently removes all its records and findings and cannot be undone."
+	if count > 1 {
+		suffix = fmt.Sprintf(
+			" and %d related domain(s)? This permanently removes them plus all records and findings, and cannot be undone.",
+			count-1,
+		)
+	}
+	suffixJSON, _ := json.Marshal(suffix)
+	return fmt.Sprintf(
+		"if(!confirm(%s+%s+%s)) return; @delete('/app/domains/'+%s+'?redirect=/app/domains', {headers: {'X-CSRF-Token': %s}})",
+		prefix,
+		nameJSON,
+		suffixJSON,
 		uidJSON,
 		tokenJSON,
 	)

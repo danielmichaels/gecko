@@ -120,6 +120,7 @@ func (h *Handlers) Routes() http.Handler {
 		r.Get("/domains/{uid}/stream", h.handleDomainDetailStream)
 		r.Delete("/domains/{uid}", h.handleDomainDelete)
 		r.Post("/domains/{uid}/rescan", h.handleDomainRescan)
+		r.Post("/domains/{uid}/status", h.handleDomainStatusToggle)
 		r.Get("/domains/{uid}/records", h.handleRecordsFragment)
 		r.Get("/domains/{uid}/timeline", h.handleTimelineFragment)
 		r.Get("/domains/{uid}/timeline/full", h.handleTimelineFullFragment)
