@@ -89,13 +89,15 @@ func toTenantFindingsView(res service.TenantFindingsResult) templates.TenantFind
 
 // findingKindOrder fixes the type-dropdown ordering; unknown future kinds are
 // appended alphabetically so new assessors surface automatically.
-var findingKindOrder = []string{"SPF", "DKIM", "DMARC", "ZONE"}
+var findingKindOrder = []string{"SPF", "DKIM", "DMARC", "ZONE", "CERT", "DNSSEC"}
 
 var findingKindLabels = map[string]string{
-	"SPF":   "SPF",
-	"DKIM":  "DKIM",
-	"DMARC": "DMARC",
-	"ZONE":  "Zone transfer",
+	"SPF":    "SPF",
+	"DKIM":   "DKIM",
+	"DMARC":  "DMARC",
+	"ZONE":   "Zone transfer",
+	"CERT":   "Certificate",
+	"DNSSEC": "DNSSEC",
 }
 
 // kindOptions builds the data-driven type dropdown from the faceted KindCounts.
