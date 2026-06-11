@@ -160,7 +160,7 @@ func (a *Assessor) assessDKIM(ctx context.Context, d assessData, selectors []str
 	defer func() { a.logger.DebugContext(ctx, "assess DKIM complete", "domain_id", d.domainID) }()
 
 	domain, err := a.store.DomainsGetByIdentifier(ctx, store.DomainsGetByIdentifierParams{
-		TenantID: pgtype.Int4{Int32: int32(1), Valid: true},
+		TenantID: pgtype.Int4{Int32: a.identity.TenantID, Valid: true},
 		ID:       int32(d.domainID),
 	})
 	if err != nil {
@@ -283,7 +283,7 @@ func (a *Assessor) assessDMARC(ctx context.Context, d assessData) error {
 	defer func() { a.logger.DebugContext(ctx, "assess DMARC complete", "domain_id", d.domainID) }()
 
 	domain, err := a.store.DomainsGetByIdentifier(ctx, store.DomainsGetByIdentifierParams{
-		TenantID: pgtype.Int4{Int32: int32(1), Valid: true},
+		TenantID: pgtype.Int4{Int32: a.identity.TenantID, Valid: true},
 		ID:       int32(d.domainID),
 	})
 	if err != nil {

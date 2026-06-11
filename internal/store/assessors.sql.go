@@ -359,6 +359,52 @@ func (q *Queries) AssessGetCertificateFindingsByDomainUID(ctx context.Context, a
 	return items, nil
 }
 
+const assessGetCnameRedirectionFindingsByDomainUID = `-- name: AssessGetCnameRedirectionFindingsByDomainUID :many
+SELECT crf.id, crf.uid, crf.domain_id, crf.cname_record_id, crf.severity, crf.status, crf.issue_type, crf.chain_length, crf.details, crf.created_at, crf.updated_at
+FROM cname_redirection_findings crf
+         JOIN domains d ON crf.domain_id = d.id
+WHERE d.uid = $1
+  AND d.tenant_id = $2
+ORDER BY crf.severity ASC, crf.created_at DESC
+`
+
+type AssessGetCnameRedirectionFindingsByDomainUIDParams struct {
+	Uid      string      `json:"uid"`
+	TenantID pgtype.Int4 `json:"tenant_id"`
+}
+
+func (q *Queries) AssessGetCnameRedirectionFindingsByDomainUID(ctx context.Context, arg AssessGetCnameRedirectionFindingsByDomainUIDParams) ([]CnameRedirectionFindings, error) {
+	rows, err := q.db.Query(ctx, assessGetCnameRedirectionFindingsByDomainUID, arg.Uid, arg.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CnameRedirectionFindings{}
+	for rows.Next() {
+		var i CnameRedirectionFindings
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.CnameRecordID,
+			&i.Severity,
+			&i.Status,
+			&i.IssueType,
+			&i.ChainLength,
+			&i.Details,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const assessGetDKIMFindings = `-- name: AssessGetDKIMFindings :many
 SELECT id, uid, domain_id, txt_record_id, severity, status, selector, issue_type, details, dkim_value, created_at, updated_at
 FROM dkim_findings
@@ -518,6 +564,52 @@ func (q *Queries) AssessGetDNSSECFindingsByDomainUID(ctx context.Context, arg As
 			&i.Severity,
 			&i.Status,
 			&i.IssueType,
+			&i.Details,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const assessGetDanglingCnameFindingsByDomainUID = `-- name: AssessGetDanglingCnameFindingsByDomainUID :many
+SELECT dcf.id, dcf.uid, dcf.domain_id, dcf.severity, dcf.status, dcf.target_domain, dcf.service_provider, dcf.takeover_possible, dcf.details, dcf.created_at, dcf.updated_at
+FROM dangling_cname_findings dcf
+         JOIN domains d ON dcf.domain_id = d.id
+WHERE d.uid = $1
+  AND d.tenant_id = $2
+ORDER BY dcf.severity ASC, dcf.created_at DESC
+`
+
+type AssessGetDanglingCnameFindingsByDomainUIDParams struct {
+	Uid      string      `json:"uid"`
+	TenantID pgtype.Int4 `json:"tenant_id"`
+}
+
+func (q *Queries) AssessGetDanglingCnameFindingsByDomainUID(ctx context.Context, arg AssessGetDanglingCnameFindingsByDomainUIDParams) ([]DanglingCnameFindings, error) {
+	rows, err := q.db.Query(ctx, assessGetDanglingCnameFindingsByDomainUID, arg.Uid, arg.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DanglingCnameFindings{}
+	for rows.Next() {
+		var i DanglingCnameFindings
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.Severity,
+			&i.Status,
+			&i.TargetDomain,
+			&i.ServiceProvider,
+			&i.TakeoverPossible,
 			&i.Details,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -729,6 +821,12 @@ open_findings AS (
     UNION ALL
     SELECT domain_id, severity::text FROM dnssec_findings
         WHERE status = 'open' AND domain_id = ANY($1::int[])
+    UNION ALL
+    SELECT domain_id, severity::text FROM dangling_cname_findings
+        WHERE status = 'open' AND domain_id = ANY($1::int[])
+    UNION ALL
+    SELECT domain_id, severity::text FROM cname_redirection_findings
+        WHERE status = 'open' AND domain_id = ANY($1::int[])
 )
 SELECT
     ids.domain_id::int AS domain_id,
@@ -849,7 +947,27 @@ FROM (SELECT sf.uid                AS finding_uid,
       FROM dnssec_findings nf
                JOIN domains d ON nf.domain_id = d.id
       WHERE d.tenant_id = $1
-        AND ($2::bool OR nf.status = 'open')) f
+        AND ($2::bool OR nf.status = 'open')
+
+      UNION ALL
+
+      SELECT dcf.uid, d.uid, d.name, 'DANGLING'::text, dcf.severity, dcf.status,
+             CASE WHEN dcf.takeover_possible
+                  THEN 'subdomain_takeover' ELSE 'dangling_cname' END,
+             dcf.target_domain, dcf.details, NULL::text, dcf.created_at
+      FROM dangling_cname_findings dcf
+               JOIN domains d ON dcf.domain_id = d.id
+      WHERE d.tenant_id = $1
+        AND ($2::bool OR dcf.status = 'open')
+
+      UNION ALL
+
+      SELECT crf.uid, d.uid, d.name, 'CNAME'::text, crf.severity, crf.status,
+             crf.issue_type, NULL::text, crf.details, NULL::text, crf.created_at
+      FROM cname_redirection_findings crf
+               JOIN domains d ON crf.domain_id = d.id
+      WHERE d.tenant_id = $1
+        AND ($2::bool OR crf.status = 'open')) f
 ORDER BY f.domain_name ASC,
          CASE f.severity
              WHEN 'critical' THEN 1
@@ -917,6 +1035,92 @@ func (q *Queries) FindingsListByTenant(ctx context.Context, arg FindingsListByTe
 		return nil, err
 	}
 	return items, nil
+}
+
+const storeCnameRedirectionFinding = `-- name: StoreCnameRedirectionFinding :one
+INSERT INTO cname_redirection_findings (domain_id,
+                                        cname_record_id,
+                                        severity,
+                                        status,
+                                        issue_type,
+                                        chain_length,
+                                        details)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (domain_id, issue_type)
+    DO UPDATE SET cname_record_id = $2,
+                  severity        = $3,
+                  status          = $4,
+                  chain_length    = $6,
+                  details         = $7
+RETURNING (xmax = 0)::boolean AS inserted
+`
+
+type StoreCnameRedirectionFindingParams struct {
+	DomainID      pgtype.Int4     `json:"domain_id"`
+	CnameRecordID pgtype.Int4     `json:"cname_record_id"`
+	Severity      FindingSeverity `json:"severity"`
+	Status        FindingStatus   `json:"status"`
+	IssueType     string          `json:"issue_type"`
+	ChainLength   pgtype.Int4     `json:"chain_length"`
+	Details       pgtype.Text     `json:"details"`
+}
+
+func (q *Queries) StoreCnameRedirectionFinding(ctx context.Context, arg StoreCnameRedirectionFindingParams) (bool, error) {
+	row := q.db.QueryRow(ctx, storeCnameRedirectionFinding,
+		arg.DomainID,
+		arg.CnameRecordID,
+		arg.Severity,
+		arg.Status,
+		arg.IssueType,
+		arg.ChainLength,
+		arg.Details,
+	)
+	var inserted bool
+	err := row.Scan(&inserted)
+	return inserted, err
+}
+
+const storeDanglingCnameFinding = `-- name: StoreDanglingCnameFinding :one
+INSERT INTO dangling_cname_findings (domain_id,
+                                     severity,
+                                     status,
+                                     target_domain,
+                                     service_provider,
+                                     takeover_possible,
+                                     details)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (domain_id, target_domain)
+    DO UPDATE SET severity          = $2,
+                  status            = $3,
+                  service_provider  = $5,
+                  takeover_possible = $6,
+                  details           = $7
+RETURNING (xmax = 0)::boolean AS inserted
+`
+
+type StoreDanglingCnameFindingParams struct {
+	DomainID         pgtype.Int4     `json:"domain_id"`
+	Severity         FindingSeverity `json:"severity"`
+	Status           FindingStatus   `json:"status"`
+	TargetDomain     string          `json:"target_domain"`
+	ServiceProvider  pgtype.Text     `json:"service_provider"`
+	TakeoverPossible bool            `json:"takeover_possible"`
+	Details          pgtype.Text     `json:"details"`
+}
+
+func (q *Queries) StoreDanglingCnameFinding(ctx context.Context, arg StoreDanglingCnameFindingParams) (bool, error) {
+	row := q.db.QueryRow(ctx, storeDanglingCnameFinding,
+		arg.DomainID,
+		arg.Severity,
+		arg.Status,
+		arg.TargetDomain,
+		arg.ServiceProvider,
+		arg.TakeoverPossible,
+		arg.Details,
+	)
+	var inserted bool
+	err := row.Scan(&inserted)
+	return inserted, err
 }
 
 const storeZoneTransferFinding = `-- name: StoreZoneTransferFinding :one
@@ -998,6 +1202,10 @@ FROM (
         SELECT domain_id, severity::text FROM certificate_findings WHERE status = 'open'
         UNION ALL
         SELECT domain_id, severity::text FROM dnssec_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM dangling_cname_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM cname_redirection_findings WHERE status = 'open'
     ) f ON f.domain_id = d.id
     GROUP BY d.tenant_id, d.id
 ) agg

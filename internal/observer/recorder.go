@@ -49,6 +49,9 @@ const (
 	EntityCertificateFinding  = "certificate_finding"
 	EntityDNSSEC              = "dnssec"
 	EntityDNSSECFinding       = "dnssec_finding"
+
+	EntityCNAMEDanglingFinding    = "dangling_cname_finding"
+	EntityCNAMERedirectionFinding = "cname_redirection_finding"
 )
 
 // DomainIdentity is the stable identity stamped onto every observation. It is

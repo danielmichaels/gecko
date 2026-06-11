@@ -96,7 +96,12 @@ func (w *ScanCNAMEWorker) Work(ctx context.Context, job *river.Job[ScanCNAMEArgs
 	ctx = tracing.WithNewTraceID(ctx, false)
 	start := time.Now()
 
-	s := scanner.NewScanner(scanner.Config{Logger: &w.Logger, Store: w.Store, Resolver: w.Resolver})
+	s := scanner.NewScanner(scanner.Config{
+		Logger:   &w.Logger,
+		Store:    w.Store,
+		Resolver: w.Resolver,
+		Identity: job.Args.Identity(),
+	})
 	result := s.ScanCNAME(job.Args.DomainName)
 
 	w.Logger.InfoContext(
@@ -104,15 +109,11 @@ func (w *ScanCNAMEWorker) Work(ctx context.Context, job *river.Job[ScanCNAMEArgs
 		"cname scan complete",
 		"domain", job.Args.DomainName,
 		"duration", time.Since(start),
-		"result", result, // remove, debugging only pre-alpha
+		"cname_count", len(result.CNAME),
 	)
-	rc := river.ClientFromContext[pgx.Tx](ctx)
-	// todo: This isn't done inside a tx so we can't InsertTx easily.
-	_, err := rc.Insert(ctx, &AssessCNAMEDanglingArgs{DomainJobArgs: job.Args.DomainJobArgs}, nil)
-	if err != nil {
-		return err
-	}
-	return nil
+
+	return enqueueAssessment(ctx, w.PgxPool, &w.Logger, job.Args.DomainUID,
+		AssessCNAMEDanglingArgs{DomainJobArgs: job.Args.DomainJobArgs})
 }
 
 type ScanDNSSECArgs struct {
