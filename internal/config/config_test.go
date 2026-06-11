@@ -55,6 +55,23 @@ func TestMailDefaults(t *testing.T) {
 	}
 }
 
+func TestValidate_RequiresPublicBaseURL(t *testing.T) {
+	c := &Conf{}
+	if err := c.Validate(); err == nil {
+		t.Error("Validate should fail when APP_PUBLIC_URL is empty")
+	}
+
+	c.AppConf.PublicBaseURL = "http://localhost:7070"
+	if err := c.Validate(); err != nil {
+		t.Errorf("Validate should pass with PublicBaseURL set, got: %v", err)
+	}
+
+	c.AppConf.PublicBaseURL = "   "
+	if err := c.Validate(); err == nil {
+		t.Error("Validate should treat a whitespace-only PublicBaseURL as unset")
+	}
+}
+
 func TestSubfinderDefaults(t *testing.T) {
 	cfg := AppConfig()
 	if !cfg.AppConf.SubfinderEnabled {

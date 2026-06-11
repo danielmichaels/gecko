@@ -1,8 +1,10 @@
 package config
 
 import (
+	"errors"
 	"log"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/joeshaw/envdecode"
@@ -140,6 +142,19 @@ type serverConf struct {
 	TimeoutRead  time.Duration `env:"SERVER_TIMEOUT_READ,default=5s"`
 	TimeoutIdle  time.Duration `env:"SERVER_TIMEOUT_IDLE,default=5s"`
 	TimeoutWrite time.Duration `env:"SERVER_TIMEOUT_WRITE,default=5s"`
+}
+
+// Validate checks runtime preconditions a process must satisfy before it can
+// serve. It is deliberately NOT called from AppConfig: tests and CLI commands
+// load config without these set, so enforcement lives at the server entrypoint
+// (serve_cmd) which calls this. Returns the first failing precondition.
+func (c *Conf) Validate() error {
+	if strings.TrimSpace(c.AppConf.PublicBaseURL) == "" {
+		return errors.New(
+			"APP_PUBLIC_URL must be set: it is the trusted public origin for links in outbound email (password reset, welcome)",
+		)
+	}
+	return nil
 }
 
 // AppConfig Setup and install the applications' configuration environment variables
