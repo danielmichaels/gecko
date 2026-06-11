@@ -23,6 +23,21 @@ func (q *Queries) AcquireDomainScanLock(ctx context.Context, dollar_1 int64) err
 	return err
 }
 
+const notifyDomainObservation = `-- name: NotifyDomainObservation :exec
+SELECT pg_notify('domain_observations', $1::text)
+`
+
+// Fire a LISTEN/NOTIFY signal that an observation was written for a domain. The
+// server process LISTENs on 'domain_observations' and fans the change out to
+// browser SSE streams. Called on the observation transaction's connection, so
+// the signal is delivered on COMMIT and dropped on ROLLBACK — subscribers never
+// observe uncommitted state. Delivery is best-effort: a listener that is down
+// when this fires misses the event (the DB stays source of truth).
+func (q *Queries) NotifyDomainObservation(ctx context.Context, payload string) error {
+	_, err := q.db.Exec(ctx, notifyDomainObservation, payload)
+	return err
+}
+
 const observationsCreate = `-- name: ObservationsCreate :one
 INSERT INTO domain_observations (tenant_id, domain_id, domain_uid, domain_name, scan_id, entity_type, entity_key,
                                  change_type, payload)

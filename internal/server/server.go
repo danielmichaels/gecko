@@ -37,6 +37,7 @@ type Server struct {
 	AuthProvider auth.Provider
 	Svc          *service.Service
 	UI           *ui.App
+	Broker       *ui.SSEBroker
 	UIHandlers   *ui.Handlers
 }
 
@@ -68,6 +69,7 @@ func New(
 	}
 
 	uiApp := ui.New(svc.AuthService(), cookieCfg, csrfKey, l)
+	broker := ui.NewSSEBroker()
 	return &Server{
 		Conf:         c,
 		Log:          l,
@@ -77,7 +79,8 @@ func New(
 		AuthProvider: provider,
 		Svc:          svc,
 		UI:           uiApp,
-		UIHandlers:   ui.NewHandlers(svc, uiApp, cookieCfg, l, c.Auth.SignupEnabled),
+		Broker:       broker,
+		UIHandlers:   ui.NewHandlers(svc, uiApp, cookieCfg, l, c.Auth.SignupEnabled, broker),
 	}, nil
 }
 
@@ -137,6 +140,14 @@ func httpLogger(cfg *config.Conf) *httplog.Logger {
 }
 
 func (app *Server) Serve(ctx context.Context) error {
+	// Live-update fan-out: a dedicated standalone connection (cloned from the
+	// pool's config, NOT borrowed from the pool) holds the LISTEN so a lifelong
+	// subscription never reduces request-pool capacity. Reconnects re-dial.
+	connect := func(c context.Context) (*pgx.Conn, error) {
+		return pgx.ConnectConfig(c, app.PgxPool.Config().ConnConfig.Copy())
+	}
+	go ui.StartObservationListener(ctx, connect, app.Broker, app.Log)
+
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", app.Conf.Server.APIPort),
 		Handler:      app.routes(),

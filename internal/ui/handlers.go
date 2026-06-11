@@ -23,6 +23,7 @@ type Handlers struct {
 	svc           *service.Service
 	app           *App
 	log           *slog.Logger
+	broker        *SSEBroker
 	cookieCfg     CookieConfig
 	signupEnabled bool
 }
@@ -37,9 +38,13 @@ func NewHandlers(
 	cookieCfg CookieConfig,
 	log *slog.Logger,
 	signupEnabled bool,
+	broker *SSEBroker,
 ) *Handlers {
 	if log == nil {
 		log = slog.Default()
+	}
+	if broker == nil {
+		broker = NewSSEBroker()
 	}
 	return &Handlers{
 		svc:           svc,
@@ -47,8 +52,13 @@ func NewHandlers(
 		cookieCfg:     cookieCfg,
 		log:           log,
 		signupEnabled: signupEnabled,
+		broker:        broker,
 	}
 }
+
+// Broker returns the SSE broker the live-update streams subscribe to. The server
+// process feeds it from the Postgres LISTEN/NOTIFY listener.
+func (h *Handlers) Broker() *SSEBroker { return h.broker }
 
 // Routes returns a chi router for all browser-facing routes.
 // The router is intended to be mounted at /app by the server, so paths here do
@@ -103,9 +113,11 @@ func (h *Handlers) Routes() http.Handler {
 		r.Post("/settings/password", h.handlePasswordChange)
 
 		r.Get("/domains", h.handleDomainsGet)
+		r.Get("/domains/stream", h.handleDomainsStream)
 		r.Post("/domains", h.handleDomainCreate)
 		r.Post("/domains/rescan", h.handleDomainsRescanAll)
 		r.Get("/domains/{uid}", h.handleDomainDetail)
+		r.Get("/domains/{uid}/stream", h.handleDomainDetailStream)
 		r.Delete("/domains/{uid}", h.handleDomainDelete)
 		r.Post("/domains/{uid}/rescan", h.handleDomainRescan)
 		r.Get("/domains/{uid}/records", h.handleRecordsFragment)
