@@ -290,7 +290,10 @@ func TestFindingsService_ListByDomain(t *testing.T) {
 		t.Errorf("total = %d, want 5", res.TotalCount)
 	}
 	if res.CriticalCount != 3 {
-		t.Errorf("critical = %d, want 3 (missing_spf + possible AXFR + cert high)", res.CriticalCount)
+		t.Errorf(
+			"critical = %d, want 3 (missing_spf + possible AXFR + cert high)",
+			res.CriticalCount,
+		)
 	}
 	if res.WarningCount != 1 {
 		t.Errorf("warnings = %d, want 1 (dmarc medium)", res.WarningCount)
