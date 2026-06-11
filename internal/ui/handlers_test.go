@@ -98,7 +98,7 @@ func newUIHarnessWithSignup(
 	}
 
 	app := ui.New(svc.AuthService(), cookieCfg, csrfKey, nil)
-	h := ui.NewHandlers(svc, app, cookieCfg, nil, signupEnabled)
+	h := ui.NewHandlers(svc, app, cookieCfg, nil, signupEnabled, nil)
 
 	root := chi.NewRouter()
 	root.Mount("/app", h.Routes())

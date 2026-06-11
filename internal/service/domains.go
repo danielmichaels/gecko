@@ -9,6 +9,7 @@ import (
 	"github.com/danielmichaels/gecko/internal/dnsrecords"
 	"github.com/danielmichaels/gecko/internal/dto"
 	"github.com/danielmichaels/gecko/internal/jobs"
+	"github.com/danielmichaels/gecko/internal/observer"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -277,6 +278,12 @@ func (s *DomainsService) Create(
 		return store.Domains{}, fmt.Errorf("schedule scan: %w", err)
 	}
 
+	// Signal live streams so the new domain appears on other open sessions
+	// immediately, not only once its first scan observation lands.
+	observer.NotifyDomainLifecycle(
+		ctx, st, p.TenantID, domain.ID, domain.Uid, domain.Name, observer.ChangeCreated,
+	)
+
 	if err := tx.Commit(ctx); err != nil {
 		return store.Domains{}, fmt.Errorf("commit: %w", err)
 	}
@@ -361,6 +368,12 @@ func (s *DomainsService) Update(
 		return store.Domains{}, fmt.Errorf("schedule scan: %w", err)
 	}
 
+	// Signal live streams: a status change is list-visible but writes no
+	// observation, and an inactive domain is never rescanned to produce one.
+	observer.NotifyDomainLifecycle(
+		ctx, st, p.TenantID, domain.ID, domain.Uid, domain.Name, observer.ChangeUpdated,
+	)
+
 	if err := tx.Commit(ctx); err != nil {
 		return store.Domains{}, fmt.Errorf("commit: %w", err)
 	}
@@ -388,7 +401,7 @@ func (s *DomainsService) Delete(
 	if err := ownerOrManager(p); err != nil {
 		return err
 	}
-	_, err := s.DB.DomainsDeleteByID(ctx, store.DomainsDeleteByIDParams{
+	deleted, err := s.DB.DomainsDeleteByID(ctx, store.DomainsDeleteByIDParams{
 		Uid:      uid,
 		TenantID: pgtype.Int4{Int32: p.TenantID, Valid: true},
 	})
@@ -398,6 +411,13 @@ func (s *DomainsService) Delete(
 		}
 		return fmt.Errorf("delete domain: %w", err)
 	}
+
+	// A delete writes no observation, so without an explicit signal live browser
+	// streams would not see the row (and any cascaded children) disappear until a
+	// reload. One tenant-scoped nudge refreshes the whole list.
+	observer.NotifyDomainLifecycle(
+		ctx, s.DB, p.TenantID, deleted.ID, deleted.Uid, deleted.Name, observer.ChangeDeleted,
+	)
 
 	// The delete cascaded away this domain's records/findings, so the tenant's
 	// cached counts (possibly now zero) are stale. Enqueue an immediate per-tenant

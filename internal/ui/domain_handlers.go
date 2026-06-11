@@ -463,8 +463,19 @@ func (h *Handlers) handleRecordsFragment(w http.ResponseWriter, r *http.Request)
 
 	uid := chi.URLParam(r, "uid")
 	sse := datastar.NewSSE(w, r)
+	h.patchRecordsContent(r.Context(), sse, p, uid)
+}
 
-	result, err := h.svc.RecordsService().List(r.Context(), p, uid, nil)
+// patchRecordsContent renders the DNS records panel into #records-content. It is
+// shared by the one-shot lazy-load endpoint and the detail live stream so a
+// streamed refresh is byte-identical to a manual load.
+func (h *Handlers) patchRecordsContent(
+	ctx context.Context,
+	sse *datastar.ServerSentEventGenerator,
+	p *auth.Principal,
+	uid string,
+) {
+	result, err := h.svc.RecordsService().List(ctx, p, uid, nil)
 	if err != nil {
 		retryURL := fmt.Sprintf("/app/domains/%s/records", uid)
 		msg := "failed to load records"
@@ -511,8 +522,18 @@ func (h *Handlers) handleTimelineFragment(w http.ResponseWriter, r *http.Request
 
 	uid := chi.URLParam(r, "uid")
 	sse := datastar.NewSSE(w, r)
+	h.patchTimelineContent(r.Context(), sse, p, uid)
+}
 
-	result, err := h.svc.RecordsService().Timeline(r.Context(), p, uid)
+// patchTimelineContent renders the side-panel change timeline into
+// #timeline-content. Shared by the lazy-load endpoint and the detail stream.
+func (h *Handlers) patchTimelineContent(
+	ctx context.Context,
+	sse *datastar.ServerSentEventGenerator,
+	p *auth.Principal,
+	uid string,
+) {
+	result, err := h.svc.RecordsService().Timeline(ctx, p, uid)
 	if err != nil {
 		retryURL := fmt.Sprintf("/app/domains/%s/timeline", uid)
 		msg := "failed to load timeline"
@@ -547,8 +568,20 @@ func (h *Handlers) handleTimelineFullFragment(w http.ResponseWriter, r *http.Req
 
 	uid := chi.URLParam(r, "uid")
 	sse := datastar.NewSSE(w, r)
+	highlightScan := strings.TrimSpace(r.URL.Query().Get("scan"))
+	h.patchTimelineFullContent(r.Context(), sse, p, uid, highlightScan)
+}
 
-	result, err := h.svc.RecordsService().Timeline(r.Context(), p, uid)
+// patchTimelineFullContent renders the full-width Timeline tab into
+// #timeline-full-content. Shared by the lazy-load endpoint and the detail stream
+// (which passes no scan highlight).
+func (h *Handlers) patchTimelineFullContent(
+	ctx context.Context,
+	sse *datastar.ServerSentEventGenerator,
+	p *auth.Principal,
+	uid, highlightScan string,
+) {
+	result, err := h.svc.RecordsService().Timeline(ctx, p, uid)
 	if err != nil {
 		msg := "failed to load timeline"
 		if errors.Is(err, service.ErrNotFound) {
@@ -565,7 +598,6 @@ func (h *Handlers) handleTimelineFullFragment(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	highlightScan := strings.TrimSpace(r.URL.Query().Get("scan"))
 	_ = sse.PatchElementTempl(
 		templates.TimelineFull(timelineFullView(result.Scans, highlightScan)),
 		datastar.WithSelectorID("timeline-full-content"),
@@ -583,8 +615,18 @@ func (h *Handlers) handleFindingsFragment(w http.ResponseWriter, r *http.Request
 
 	uid := chi.URLParam(r, "uid")
 	sse := datastar.NewSSE(w, r)
+	h.patchFindingsContent(r.Context(), sse, p, uid)
+}
 
-	result, err := h.svc.FindingsService().ListByDomain(r.Context(), p, uid)
+// patchFindingsContent renders the Findings tab into #findings-content. Shared by
+// the lazy-load endpoint and the detail stream.
+func (h *Handlers) patchFindingsContent(
+	ctx context.Context,
+	sse *datastar.ServerSentEventGenerator,
+	p *auth.Principal,
+	uid string,
+) {
+	result, err := h.svc.FindingsService().ListByDomain(ctx, p, uid)
 	if err != nil {
 		msg := "failed to load findings"
 		if errors.Is(err, service.ErrNotFound) {

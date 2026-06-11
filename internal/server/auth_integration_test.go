@@ -62,7 +62,14 @@ func newAuthAPI(
 		AuthProvider: provider,
 		Svc:          svc,
 		UI:           uiApp,
-		UIHandlers:   ui.NewHandlers(svc, uiApp, cookieCfg, slog.New(slog.DiscardHandler), true),
+		UIHandlers: ui.NewHandlers(
+			svc,
+			uiApp,
+			cookieCfg,
+			slog.New(slog.DiscardHandler),
+			true,
+			nil,
+		),
 	}
 	srv := httptest.NewServer(app.routes())
 	t.Cleanup(srv.Close)

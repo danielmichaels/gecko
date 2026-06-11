@@ -52,6 +52,11 @@ const (
 
 	EntityCNAMEDanglingFinding    = "dangling_cname_finding"
 	EntityCNAMERedirectionFinding = "cname_redirection_finding"
+
+	// EntityDomain is used only on lifecycle NOTIFY signals (create/delete/status),
+	// never stored as an observation — a domain's existence is the projection
+	// itself. It lets the UI refresh on changes that write no observation row.
+	EntityDomain = "domain"
 )
 
 // DomainIdentity is the stable identity stamped onto every observation. It is
@@ -148,7 +153,26 @@ func (r *Recorder) sync(
 			return err
 		}
 	}
+	if change := summarizeChange(created, updated, deleted); change != "" {
+		r.notify(ctx, ident, entityType, change)
+	}
 	return nil
+}
+
+// summarizeChange picks one representative change_type for a sync's NOTIFY signal
+// (the signal only tells the UI "this domain changed" — it re-renders the row
+// regardless of which entity moved). Empty when nothing changed.
+func summarizeChange(created, updated, deleted []string) string {
+	switch {
+	case len(created) > 0:
+		return ChangeCreated
+	case len(updated) > 0:
+		return ChangeUpdated
+	case len(deleted) > 0:
+		return ChangeDeleted
+	default:
+		return ""
+	}
 }
 
 // RecordFindingChange appends one observation for a finding/attempt that the
@@ -182,12 +206,81 @@ func (r *Recorder) RecordFindingChange(
 		Payload:    payload,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil // payload unchanged; suppressed
+		return nil // payload unchanged; suppressed — no real write, so no signal
 	}
 	if err != nil {
 		return fmt.Errorf("emit %s observation for %q: %w", entityType, entityKey, err)
 	}
+	r.notify(ctx, ident, entityType, ChangeUpdated)
 	return nil
+}
+
+// notify fires the LISTEN/NOTIFY signal for a domain change. It is best-effort:
+// a failed signal must never fail the observation write that already succeeded,
+// and a zero identity (unit tests without a scan) emits nothing. The payload is a
+// fixed-shape JSON object well under the 8 KB NOTIFY limit.
+func (r *Recorder) notify(
+	ctx context.Context,
+	ident DomainIdentity,
+	entityType, changeType string,
+) {
+	if !ident.Recordable() {
+		return
+	}
+	payload, err := json.Marshal(notifyPayload{
+		TenantID:   ident.TenantID,
+		DomainID:   ident.DomainID,
+		DomainUID:  ident.DomainUID,
+		DomainName: ident.DomainName,
+		ScanID:     ident.ScanID,
+		EntityType: entityType,
+		ChangeType: changeType,
+	})
+	if err != nil {
+		return
+	}
+	_ = r.q.NotifyDomainObservation(ctx, string(payload))
+}
+
+// NotifyDomainLifecycle fires a best-effort domain_observations NOTIFY for a
+// domain lifecycle change (create/delete/status) that writes no observation row
+// of its own, so live browser streams refresh. Pass the same store handle the
+// mutation ran on (transaction-scoped where applicable) so the signal commits
+// with it. A failed signal never surfaces — the mutation has already succeeded.
+func NotifyDomainLifecycle(
+	ctx context.Context,
+	q *store.Queries,
+	tenantID, domainID int32,
+	domainUID, domainName, changeType string,
+) {
+	if tenantID == 0 {
+		return
+	}
+	payload, err := json.Marshal(notifyPayload{
+		TenantID:   tenantID,
+		DomainID:   domainID,
+		DomainUID:  domainUID,
+		DomainName: domainName,
+		EntityType: EntityDomain,
+		ChangeType: changeType,
+	})
+	if err != nil {
+		return
+	}
+	_ = q.NotifyDomainObservation(ctx, string(payload))
+}
+
+// notifyPayload is the wire shape of a domain_observations NOTIFY. The server
+// process's listener decodes it and fans an ObservationEvent out to browser
+// streams on the tenant scope.
+type notifyPayload struct {
+	DomainUID  string `json:"domain_uid"`
+	DomainName string `json:"domain_name"`
+	EntityType string `json:"entity_type"`
+	ChangeType string `json:"change_type"`
+	ScanID     int64  `json:"scan_id"`
+	TenantID   int32  `json:"tenant_id"`
+	DomainID   int32  `json:"domain_id"`
 }
 
 // emit appends one row to the observation log, stamping the denormalized domain

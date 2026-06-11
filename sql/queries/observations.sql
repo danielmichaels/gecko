@@ -5,6 +5,15 @@ INSERT INTO scans (tenant_id, domain_id, domain_uid, domain_name, parent_scan_id
 VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, uid, tenant_id, domain_id, domain_uid, domain_name, parent_scan_id, source, started_at;
 
+-- name: NotifyDomainObservation :exec
+-- Fire a LISTEN/NOTIFY signal that an observation was written for a domain. The
+-- server process LISTENs on 'domain_observations' and fans the change out to
+-- browser SSE streams. Called on the observation transaction's connection, so
+-- the signal is delivered on COMMIT and dropped on ROLLBACK — subscribers never
+-- observe uncommitted state. Delivery is best-effort: a listener that is down
+-- when this fires misses the event (the DB stays source of truth).
+SELECT pg_notify('domain_observations', @payload::text);
+
 -- name: AcquireDomainScanLock :exec
 -- Transaction-scoped advisory lock keyed on domain_id. Serializes concurrent
 -- scan enqueues for the same domain so the recency-check-then-enqueue is atomic

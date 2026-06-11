@@ -6,6 +6,9 @@ templ DomainDetailPage(props DomainDetailPageProps) {
 	@Page("gecko · " + props.Name) {
 		@AppShell(props.Shell) {
 			<div data-signals={ detailSignals(props.InitialTab) }>
+				// Dedicated element so a tab's lazy-load @get cannot cancel the
+				// long-lived scan stream.
+				<div data-init={ "@get('/app/domains/" + props.UID + "/stream', {requestCancellation: 'disabled'})" }></div>
 				<div class="detail-head">
 					<a class="back" href="/app/domains">← domains</a>
 				</div>

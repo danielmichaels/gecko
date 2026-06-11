@@ -4,6 +4,9 @@ templ DomainsPage(props DomainsPageProps) {
 	@Page("gecko · Domains") {
 		@AppShell(props.Shell) {
 			<div data-signals='{"q":"","newDomain":"","drawerOpen":false,"layout":"nested","tld":"","collapsed":[],"offset":0}'>
+				// A dedicated element opens the long-lived live-update stream, kept off
+				// the signals div so the search/layout @get actions can't cancel it.
+				<div data-init="@get('/app/domains/stream', {requestCancellation: 'disabled'})"></div>
 				<div class="page-head">
 					<div>
 						<h1>Domains</h1>
