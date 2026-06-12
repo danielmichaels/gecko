@@ -1,0 +1,94 @@
+name: gecko
+
+# One stack for dev and prod, split by Compose profiles:
+#   prod : db, riverui, migrate, serve, worker   (set COMPOSE_PROFILES=prod in .env →
+#          `docker compose up -d` runs the full stack)
+#   dev  : db, riverui, mailpit                  (`docker compose --profile dev up -d`;
+#          run serve/worker on the host via `task serve` / `task worker`)
+# db + riverui are unprofiled, so they run under either profile. See DEPLOY.md.
+
+services:
+  db:
+    image: postgres:16
+    restart: always
+    env_file: [.env]
+    networks: [gecko]
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"   # localhost-only; lets host-run dev serve/worker reach it
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - gecko_db:/var/lib/postgresql/data
+
+  riverui:                             # job dashboard — NO built-in auth (localhost only)
+    image: ghcr.io/riverqueue/riverui:latest   # pin to a release tag for stability
+    restart: always
+    networks: [gecko]
+    ports:
+      - "127.0.0.1:${RIVERUI_PORT:-8080}:8080"
+    environment:
+      - PGHOST=db
+      - PGPORT=5432
+      - PGDATABASE=$POSTGRES_DB
+      - PGUSER=$POSTGRES_USER
+      - PGPASSWORD=$POSTGRES_PASSWORD
+    depends_on:
+      db: { condition: service_healthy }   # not serve, so this stays valid under the dev profile
+
+  mailpit:                             # dev-only SMTP catcher
+    image: axllent/mailpit:latest
+    profiles: [dev]
+    restart: always
+    networks: [gecko]
+    ports:
+      - "127.0.0.1:8025:8025"          # web UI
+      - "127.0.0.1:1025:1025"          # SMTP
+
+  migrate:
+    image: ${GECKO_IMAGE:-ghcr.io/danielmichaels/gecko:latest}
+    profiles: [prod]
+    command: [migrate]                 # goose schema migrations, then exits
+    env_file: [.env]
+    networks: [gecko]
+    restart: "no"
+    depends_on:
+      db: { condition: service_healthy }
+
+  serve:
+    image: ${GECKO_IMAGE:-ghcr.io/danielmichaels/gecko:latest}
+    profiles: [prod]
+    command: [serve]                   # applies River migrations on startup
+    env_file: [.env]
+    networks: [gecko]
+    restart: always
+    ports:
+      - "${GECKO_HTTP_PORT:-9090}:9090"   # front this with your own TLS proxy
+    depends_on:
+      db: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: [CMD, curl, -fsS, "http://localhost:9090/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  worker:                              # needs UDP/53 + TCP/53 egress (DNS + AXFR)
+    image: ${GECKO_IMAGE:-ghcr.io/danielmichaels/gecko:latest}
+    profiles: [prod]
+    command: [worker]
+    env_file: [.env]
+    networks: [gecko]
+    restart: always
+    depends_on:
+      db: { condition: service_healthy }
+      serve: { condition: service_healthy }   # serve migrates River first
+
+volumes:
+  gecko_db:
+
+networks:
+  gecko:
