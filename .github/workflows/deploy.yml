@@ -12,7 +12,7 @@ env:
   REGISTRY: ghcr.io
   DOCKER_BUILD_SUMMARY: true
   DAGGER_VERSION: '0.21.3'
-  DOCKERFILE: './zarf/docker/Dockerfile'
+  DOCKERFILE: './Dockerfile'
 
 jobs:
   lint:
@@ -88,5 +88,5 @@ jobs:
         with:
           version: ${{ env.DAGGER_VERSION }}
           verb: call
-          args: publish --build-context . --dockerfile ${{ env.DOCKERFILE }} --registry ${{ env.REGISTRY }} --registry-username ${{ github.actor }} --registry-password env:GITHUB_TOKEN --image-name ${{ github.repository }} --tags "${{ steps.tags.outputs.tags }}"
+          args: publish --build-context . --dockerfile ${{ env.DOCKERFILE }} --registry ${{ env.REGISTRY }} --registry-username ${{ github.repository_owner }} --registry-password env:GITHUB_TOKEN --image-name ${{ github.repository }} --tags "${{ steps.tags.outputs.tags }}"
           cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}

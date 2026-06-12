@@ -10,7 +10,7 @@ Tasks are defined in `Taskfile.yml` (run `task --list-all`). Common ones:
 
 - `task test` — full suite: `go test -race -v -cover ./...`. Run a single test directly: `go test -run TestName ./internal/service/...`.
 - `task serve` / `task worker` — run the HTTP server / job worker locally under `air` (live reload). `task cli -- <args>` runs the binary one-shot.
-- `task compose:up` — start the local stack (Postgres via `zarf/compose/docker-compose.yml`), run Goose + River migrations, seed data, tail logs. `task compose:down` to stop.
+- `task compose:up` — start the local stack (Postgres via `compose.yaml` `dev` profile), run Goose + River migrations, seed data, tail logs. `task compose:down` to stop.
 - `task sqlc` — regenerate `internal/store` after changing `sql/queries/*.sql` or migrations. **Required** after any query/schema change.
 - `task ui` — `templ generate` + Tailwind build. Run after editing `.templ` sources or `assets/css/app.css`.
 - `task audit` — `betteralign` + `golines` + `golangci-lint`. Run after broad Go changes or formatting-sensitive edits.

@@ -49,7 +49,7 @@ EOF
 
 ```bash
 # bring up just the database (detached, waits until healthy)
-docker compose -f zarf/compose/docker-compose.yml up --wait -d db
+docker compose -f compose.yaml up --wait -d db
 
 # app schema (goose) — includes 00011_auth_multitenant.sql
 task db:migration:up
@@ -58,7 +58,7 @@ task db:migration:up
 task river:migration:up
 
 # sanity: the new auth tables should exist
-docker compose -f zarf/compose/docker-compose.yml exec db \
+docker compose -f compose.yaml exec db \
   psql -U dbuser -d gecko -c '\dt' | grep -E 'api_keys|invitations|user_credentials|sessions'
 ```
 
@@ -186,6 +186,6 @@ the server binary so teardown can't orphan the port.)
 ## 7. Tear down
 
 ```bash
-docker compose -f zarf/compose/docker-compose.yml down            # keep data volume
-docker compose -f zarf/compose/docker-compose.yml down -v         # wipe data too
+docker compose -f compose.yaml down            # keep data volume
+docker compose -f compose.yaml down -v         # wipe data too
 ```

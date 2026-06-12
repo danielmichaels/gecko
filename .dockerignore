@@ -1,8 +1,8 @@
 .git
+.worktrees/
 .env*
 tmp
 Taskfile.yml
-zarf/
 .air.toml
 README.md
 sql/
