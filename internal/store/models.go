@@ -233,6 +233,94 @@ func (ns NullFindingStatus) Value() (driver.Value, error) {
 	return string(ns.FindingStatus), nil
 }
 
+type ScanFrequency string
+
+const (
+	ScanFrequencyHourly    ScanFrequency = "hourly"
+	ScanFrequencySixHourly ScanFrequency = "six_hourly"
+	ScanFrequencyDaily     ScanFrequency = "daily"
+	ScanFrequencyWeekly    ScanFrequency = "weekly"
+	ScanFrequencyOff       ScanFrequency = "off"
+)
+
+func (e *ScanFrequency) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ScanFrequency(s)
+	case string:
+		*e = ScanFrequency(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ScanFrequency: %T", src)
+	}
+	return nil
+}
+
+type NullScanFrequency struct {
+	ScanFrequency ScanFrequency `json:"scan_frequency"`
+	Valid         bool          `json:"valid"` // Valid is true if ScanFrequency is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullScanFrequency) Scan(value interface{}) error {
+	if value == nil {
+		ns.ScanFrequency, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ScanFrequency.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullScanFrequency) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ScanFrequency), nil
+}
+
+type ScanSource string
+
+const (
+	ScanSourceUserSupplied ScanSource = "user_supplied"
+	ScanSourceDiscovered   ScanSource = "discovered"
+	ScanSourceScheduled    ScanSource = "scheduled"
+)
+
+func (e *ScanSource) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ScanSource(s)
+	case string:
+		*e = ScanSource(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ScanSource: %T", src)
+	}
+	return nil
+}
+
+type NullScanSource struct {
+	ScanSource ScanSource `json:"scan_source"`
+	Valid      bool       `json:"valid"` // Valid is true if ScanSource is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullScanSource) Scan(value interface{}) error {
+	if value == nil {
+		ns.ScanSource, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ScanSource.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullScanSource) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ScanSource), nil
+}
+
 type TransferType string
 
 const (
@@ -662,6 +750,9 @@ type Domains struct {
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
 	ParentDomainID pgtype.Int4        `json:"parent_domain_id"`
+	ScanFrequency  NullScanFrequency  `json:"scan_frequency"`
+	NextScanAt     pgtype.Timestamptz `json:"next_scan_at"`
+	LastScannedAt  pgtype.Timestamptz `json:"last_scanned_at"`
 }
 
 type DsRecords struct {
@@ -840,7 +931,7 @@ type Scans struct {
 	DomainUid    string             `json:"domain_uid"`
 	DomainName   string             `json:"domain_name"`
 	ParentScanID pgtype.Int8        `json:"parent_scan_id"`
-	Source       DomainSource       `json:"source"`
+	Source       ScanSource         `json:"source"`
 	StartedAt    pgtype.Timestamptz `json:"started_at"`
 }
 
@@ -896,6 +987,13 @@ type SrvRecords struct {
 	Priority  int32              `json:"priority"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+type TenantSettings struct {
+	TenantID             int32              `json:"tenant_id"`
+	DefaultScanFrequency ScanFrequency      `json:"default_scan_frequency"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
 }
 
 type TenantStats struct {

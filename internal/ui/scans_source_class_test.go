@@ -12,6 +12,7 @@ func TestScanSourceClass_AvoidsDiscCaretCollision(t *testing.T) {
 	cases := map[string]string{
 		"discovered":    "src-disc",
 		"user_supplied": "src-user",
+		"scheduled":     "src-sched",
 	}
 	for source, want := range cases {
 		got := scanSourceClass(source)

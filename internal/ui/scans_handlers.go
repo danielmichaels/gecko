@@ -108,8 +108,8 @@ func toTenantScansView(res service.TenantScansResult) templates.TenantScansView 
 }
 
 // scanSourceOrder fixes the source-chip ordering; unknown future sources are
-// appended so a new domain_source value surfaces automatically.
-var scanSourceOrder = []string{"user_supplied", "discovered"}
+// appended so a new scan_source value surfaces automatically.
+var scanSourceOrder = []string{"user_supplied", "discovered", "scheduled"}
 
 // The class tokens are namespaced ("src-*") so they cannot match the global
 // .disc/.user rules — .disc is the timeline disclosure caret (a 16px grid square),
@@ -117,6 +117,7 @@ var scanSourceOrder = []string{"user_supplied", "discovered"}
 var scanSourceMeta = map[string]struct{ class, label string }{
 	"user_supplied": {"src-user", "User"},
 	"discovered":    {"src-disc", "Discovered"},
+	"scheduled":     {"src-sched", "Scheduled"},
 }
 
 // sourceOptions builds the data-driven source chips from the faceted SourceCounts.

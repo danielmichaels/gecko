@@ -531,22 +531,35 @@ func (h *Handlers) handleDomainDetail(w http.ResponseWriter, r *http.Request) {
 		deleteImpact = int(count)
 	}
 
+	defaultFreq, _ := h.svc.SettingsService().GetScanSettings(r.Context(), p)
+
+	scanFreq, scanFreqLabel := "", ""
+	if d.ScanFrequency.Valid {
+		scanFreq = string(d.ScanFrequency.ScanFrequency)
+		scanFreqLabel = freqLabel(d.ScanFrequency.ScanFrequency)
+	}
+
 	renderPage(w, r, templates.DomainDetailPage(templates.DomainDetailPageProps{
-		Shell:             shell,
-		UID:               d.Uid,
-		Name:              d.Name,
-		Severity:          severityForStatus(d.Status),
-		Status:            string(d.Status),
-		RecordCount:       recordCount,
-		FindingsCount:     findingsCount,
-		FindingsSeverity:  findingsSeverity,
-		Type:              string(d.DomainType),
-		Source:            string(d.Source),
-		Added:             added,
-		Scanned:           relativeTime(d.UpdatedAt),
-		InitialTab:        initialTab,
-		InitialScan:       strings.TrimSpace(r.URL.Query().Get("scan")),
-		DeleteImpactCount: deleteImpact,
+		Shell:                 shell,
+		UID:                   d.Uid,
+		Name:                  d.Name,
+		Severity:              severityForStatus(d.Status),
+		Status:                string(d.Status),
+		RecordCount:           recordCount,
+		FindingsCount:         findingsCount,
+		FindingsSeverity:      findingsSeverity,
+		Type:                  string(d.DomainType),
+		Source:                string(d.Source),
+		Added:                 added,
+		Scanned:               relativeTime(d.LastScannedAt),
+		InitialTab:            initialTab,
+		InitialScan:           strings.TrimSpace(r.URL.Query().Get("scan")),
+		DeleteImpactCount:     deleteImpact,
+		ScanFrequency:         scanFreq,
+		ScanFrequencyLabel:    scanFreqLabel,
+		NextScan:              nextScanLabel(d.NextScanAt),
+		EffectiveDefaultLabel: freqLabel(defaultFreq),
+		CanManage:             service.OwnerOrManager(p),
 	}))
 }
 
@@ -747,6 +760,69 @@ func (h *Handlers) patchFindingsContent(
 	)
 }
 
+// handleDomainScanFrequency sets or clears a per-domain cadence override. An
+// empty signal value clears the override so the domain inherits the tenant
+// default. Owner or manager only; errors surface as warn toasts.
+func (h *Handlers) handleDomainScanFrequency(w http.ResponseWriter, r *http.Request) {
+	p, ok := PrincipalFrom(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	uid := chi.URLParam(r, "uid")
+
+	var form struct {
+		ScanFrequency string `json:"scanFrequency"`
+	}
+	if err := datastar.ReadSignals(r, &form); err != nil {
+		h.log.Error("domain scan frequency: read signals", "error", err)
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	sse := datastar.NewSSE(w, r)
+
+	var freqArg *store.ScanFrequency
+	if form.ScanFrequency != "" && form.ScanFrequency != "inherit" {
+		f := store.ScanFrequency(form.ScanFrequency)
+		freqArg = &f
+	}
+
+	_, err := h.svc.DomainsService().SetScanFrequency(r.Context(), p, uid, freqArg)
+	if err != nil {
+		if errors.Is(err, service.ErrForbidden) {
+			pushToast(sse, newToast("warn", "NOTICE", "Permission denied", permissionDeniedDesc))
+			return
+		}
+		if errors.Is(err, service.ErrNotFound) {
+			pushToast(sse, newToast("warn", "NOTICE", "Domain not found", "nothing to update"))
+			return
+		}
+		if errors.Is(err, service.ErrInvalidInput) {
+			pushToast(
+				sse,
+				newToast(
+					"warn",
+					"NOTICE",
+					"Invalid cadence",
+					"Select one of the available cadence options",
+				),
+			)
+			return
+		}
+		h.log.Error("domain scan frequency", "error", err, "uid", uid)
+		pushToast(sse, newToast("crit", "ERROR", "Failed to update cadence", "please try again"))
+		return
+	}
+
+	label := "inheriting tenant default"
+	if freqArg != nil {
+		label = freqLabel(*freqArg)
+	}
+	pushToast(sse, newToast("ok", "SCANNING", "Cadence updated", label))
+}
+
 // handleDomainRescan triggers a rescan for a single domain.
 // It forces a re-scan via Update (empty params = keep fields, just rescan).
 // NOTE: this endpoint is called from the detail page where no #domain-row-{uid}
@@ -844,6 +920,48 @@ func (h *Handlers) handleDomainsRescanAll(w http.ResponseWriter, r *http.Request
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
+// freqLabel maps a ScanFrequency preset to its human-readable label.
+func freqLabel(f store.ScanFrequency) string {
+	switch f {
+	case store.ScanFrequencyHourly:
+		return "Hourly"
+	case store.ScanFrequencySixHourly:
+		return "Every 6h"
+	case store.ScanFrequencyDaily:
+		return "Daily"
+	case store.ScanFrequencyWeekly:
+		return "Weekly"
+	case store.ScanFrequencyOff:
+		return "Off"
+	default:
+		return string(f)
+	}
+}
+
+// nextScanLabel converts a next_scan_at timestamp into a human-readable label.
+// An invalid timestamp returns "—"; a time in the past or within a few seconds
+// of now returns "due"; otherwise returns a future-tense humanisation like
+// "in 5m", "in 3h", or "in 2d".
+func nextScanLabel(t pgtype.Timestamptz) string {
+	if !t.Valid {
+		return "—"
+	}
+	d := time.Until(t.Time)
+	if d <= 5*time.Second {
+		return "due"
+	}
+	switch {
+	case d < time.Hour:
+		return "in " + strconv.Itoa(int(math.Round(d.Minutes()))) + "m"
+	case d < 24*time.Hour:
+		return "in " + strconv.Itoa(int(math.Round(d.Hours()))) + "h"
+	case d < 7*24*time.Hour:
+		return "in " + strconv.Itoa(int(math.Round(d.Hours()/24))) + "d"
+	default:
+		return "in " + strconv.Itoa(int(math.Round(d.Hours()/(24*7)))) + "w"
+	}
+}
+
 // domainRowView maps a store.Domains to the presentation model.
 func domainRowView(d store.Domains) templates.DomainRowView {
 	return templates.DomainRowView{
@@ -856,7 +974,7 @@ func domainRowView(d store.Domains) templates.DomainRowView {
 		// v1 placeholders: findings subsystem not yet implemented.
 		FindingsLabel:    "healthy",
 		FindingsSeverity: "ok",
-		LastScan:         relativeTime(d.UpdatedAt),
+		LastScan:         relativeTime(d.LastScannedAt),
 	}
 }
 

@@ -279,7 +279,7 @@ type ObservationsListTimelineByTenantDomainNameRow struct {
 	Payload       []byte             `json:"payload"`
 	ObservedAt    pgtype.Timestamptz `json:"observed_at"`
 	ScanUid       string             `json:"scan_uid"`
-	ScanSource    DomainSource       `json:"scan_source"`
+	ScanSource    ScanSource         `json:"scan_source"`
 	ScanStartedAt pgtype.Timestamptz `json:"scan_started_at"`
 	ParentScanUid pgtype.Text        `json:"parent_scan_uid"`
 }
@@ -398,12 +398,12 @@ RETURNING id, uid, tenant_id, domain_id, domain_uid, domain_name, parent_scan_id
 `
 
 type ScansCreateParams struct {
-	TenantID     int32        `json:"tenant_id"`
-	DomainID     pgtype.Int4  `json:"domain_id"`
-	DomainUid    string       `json:"domain_uid"`
-	DomainName   string       `json:"domain_name"`
-	ParentScanID pgtype.Int8  `json:"parent_scan_id"`
-	Source       DomainSource `json:"source"`
+	TenantID     int32       `json:"tenant_id"`
+	DomainID     pgtype.Int4 `json:"domain_id"`
+	DomainUid    string      `json:"domain_uid"`
+	DomainName   string      `json:"domain_name"`
+	ParentScanID pgtype.Int8 `json:"parent_scan_id"`
+	Source       ScanSource  `json:"source"`
 }
 
 // Create a scan correlation row. Scans group every observation emitted during a
@@ -484,7 +484,7 @@ type ScansGetByTenantUIDRow struct {
 	ScanUid       string             `json:"scan_uid"`
 	DomainUid     string             `json:"domain_uid"`
 	DomainName    string             `json:"domain_name"`
-	Source        DomainSource       `json:"source"`
+	Source        ScanSource         `json:"source"`
 	StartedAt     pgtype.Timestamptz `json:"started_at"`
 	ParentScanUid pgtype.Text        `json:"parent_scan_uid"`
 	CreatedCount  int32              `json:"created_count"`
@@ -646,7 +646,7 @@ type ScansListByTenantRow struct {
 	ScanUid       string             `json:"scan_uid"`
 	DomainUid     string             `json:"domain_uid"`
 	DomainName    string             `json:"domain_name"`
-	Source        DomainSource       `json:"source"`
+	Source        ScanSource         `json:"source"`
 	StartedAt     pgtype.Timestamptz `json:"started_at"`
 	ParentScanUid pgtype.Text        `json:"parent_scan_uid"`
 	CreatedCount  int32              `json:"created_count"`

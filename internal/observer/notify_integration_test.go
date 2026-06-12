@@ -51,7 +51,7 @@ func TestRecorderNotifiesOnChange(t *testing.T) {
 		DomainID:   pgtype.Int4{Int32: d.ID, Valid: true},
 		DomainUid:  d.Uid,
 		DomainName: d.Name,
-		Source:     store.DomainSourceUserSupplied,
+		Source:     store.ScanSourceUserSupplied,
 	})
 	if err != nil {
 		t.Fatalf("create scan: %v", err)

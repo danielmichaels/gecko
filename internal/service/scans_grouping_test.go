@@ -57,7 +57,7 @@ func scanRow(
 		ScanUid:       scanUID,
 		DomainUid:     domainUID,
 		DomainName:    name,
-		Source:        store.DomainSource(source),
+		Source:        store.ScanSource(source),
 		StartedAt:     pgtype.Timestamptz{Time: started, Valid: true},
 		ParentScanUid: pgtype.Text{String: parentUID, Valid: parentUID != ""},
 		CreatedCount:  int32(created),

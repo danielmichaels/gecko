@@ -111,6 +111,7 @@ func (h *Handlers) Routes() http.Handler {
 		r.Post("/settings/apikeys", h.handleAPIKeyCreate)
 		r.Delete("/settings/apikeys/{uid}", h.handleAPIKeyRevoke)
 		r.Post("/settings/password", h.handlePasswordChange)
+		r.Post("/settings/scan-frequency", h.handleScanDefaultUpdate)
 
 		r.Get("/domains", h.handleDomainsGet)
 		r.Get("/domains/stream", h.handleDomainsStream)
@@ -121,6 +122,7 @@ func (h *Handlers) Routes() http.Handler {
 		r.Delete("/domains/{uid}", h.handleDomainDelete)
 		r.Post("/domains/{uid}/rescan", h.handleDomainRescan)
 		r.Post("/domains/{uid}/status", h.handleDomainStatusToggle)
+		r.Post("/domains/{uid}/scan-frequency", h.handleDomainScanFrequency)
 		r.Get("/domains/{uid}/records", h.handleRecordsFragment)
 		r.Get("/domains/{uid}/timeline", h.handleTimelineFragment)
 		r.Get("/domains/{uid}/timeline/full", h.handleTimelineFullFragment)

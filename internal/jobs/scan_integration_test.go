@@ -95,7 +95,7 @@ func TestEnqueueDomainScan(t *testing.T) {
 		scanID := enqueue(d, DomainScanOptions{
 			Force:               true,
 			EnumerateSubdomains: true,
-			Source:              store.DomainSourceUserSupplied,
+			Source:              store.ScanSourceUserSupplied,
 		})
 		if scanID != 0 {
 			t.Errorf("scanID=%d, want 0 (active-status gate)", scanID)
@@ -113,7 +113,7 @@ func TestEnqueueDomainScan(t *testing.T) {
 		scanID := enqueue(d, DomainScanOptions{
 			Force:               true,
 			EnumerateSubdomains: false,
-			Source:              store.DomainSourceUserSupplied,
+			Source:              store.ScanSourceUserSupplied,
 		})
 		if scanID == 0 {
 			t.Fatal("scanID=0, want >0")
@@ -131,7 +131,7 @@ func TestEnqueueDomainScan(t *testing.T) {
 		_ = enqueue(d, DomainScanOptions{
 			Force:               true,
 			EnumerateSubdomains: true,
-			Source:              store.DomainSourceUserSupplied,
+			Source:              store.ScanSourceUserSupplied,
 		})
 		if got := countJobs(d.Name); got != 6 {
 			t.Errorf("jobs=%d, want 6 (5 leaf + enumerate)", got)
@@ -143,7 +143,7 @@ func TestEnqueueDomainScan(t *testing.T) {
 		first := enqueue(d, DomainScanOptions{
 			Force:         false,
 			RecencyWindow: time.Hour,
-			Source:        store.DomainSourceDiscovered,
+			Source:        store.ScanSourceDiscovered,
 		})
 		if first == 0 {
 			t.Fatal("first discovered scan should run")
@@ -151,7 +151,7 @@ func TestEnqueueDomainScan(t *testing.T) {
 		second := enqueue(d, DomainScanOptions{
 			Force:         false,
 			RecencyWindow: time.Hour,
-			Source:        store.DomainSourceDiscovered,
+			Source:        store.ScanSourceDiscovered,
 		})
 		if second != 0 {
 			t.Errorf("second discovered scan within window should be skipped, got %d", second)
@@ -159,7 +159,7 @@ func TestEnqueueDomainScan(t *testing.T) {
 		forced := enqueue(d, DomainScanOptions{
 			Force:         true,
 			RecencyWindow: time.Hour,
-			Source:        store.DomainSourceUserSupplied,
+			Source:        store.ScanSourceUserSupplied,
 		})
 		if forced == 0 {
 			t.Error("forced scan should bypass the recency window")

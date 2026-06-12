@@ -173,6 +173,10 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 		// maintenance
 		river.AddWorker(rw, &PurgeDNSCacheWorker{Logger: *cfg.Logger, Store: cfg.Store})
 		river.AddWorker(rw, &RefreshTenantStatsWorker{Logger: *cfg.Logger, Store: cfg.Store})
+		river.AddWorker(
+			rw,
+			&ScheduledScanWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},
+		)
 		// email
 		emailerOut := cfg.Mailer
 		if emailerOut == nil {
@@ -206,6 +210,17 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 				river.PeriodicInterval(5*time.Minute),
 				func() (river.JobArgs, *river.InsertOpts) {
 					return RefreshTenantStatsArgs{}, nil
+				},
+				&river.PeriodicJobOpts{RunOnStart: true},
+			),
+			// Recurring scan scheduler: a leader-singleton tick that enqueues a scan
+			// for every domain whose cursor has come due. The 1-min tick has huge
+			// headroom over the smallest cadence (hourly); the partial index keeps an
+			// empty due-set cheap. Per-domain dedup is EnqueueDomainScan's job.
+			river.NewPeriodicJob(
+				river.PeriodicInterval(1*time.Minute),
+				func() (river.JobArgs, *river.InsertOpts) {
+					return ScheduledScanArgs{}, nil
 				},
 				&river.PeriodicJobOpts{RunOnStart: true},
 			),

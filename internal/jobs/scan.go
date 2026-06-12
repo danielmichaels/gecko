@@ -52,7 +52,9 @@ type DomainScanOptions struct {
 	// ParentScanID links this scan to the apex scan that discovered it, so the
 	// timeline can group child scans under their parent.
 	ParentScanID *int64
-	Source       store.DomainSource
+	// Source is the scan trigger: 'user_supplied'/'discovered' mirror the domain's
+	// origin, 'scheduled' is set only by the periodic scheduler.
+	Source store.ScanSource
 	// RecencyWindow: a discovered domain scanned more recently than this is
 	// skipped (dedup). Ignored when Force is set.
 	RecencyWindow time.Duration
@@ -157,5 +159,27 @@ func EnqueueDomainScan(
 	if _, err := rc.InsertManyTx(ctx, tx, params); err != nil {
 		return 0, fmt.Errorf("enqueue scan jobs: %w", err)
 	}
+
+	// Chokepoint stamp: every scan that reaches this point — manual, discovered, or
+	// scheduled — records the real last-scan time and advances the scheduling
+	// cursor by the domain's effective cadence (override ?? tenant default). This is
+	// the single place that keeps last_scanned_at honest across all triggers and
+	// resets the cadence clock from the actual scan; an 'off' effective frequency
+	// clears the cursor so the domain stays out of the schedule.
+	freqs, err := st.DomainsGetScanFrequencies(ctx, target.DomainID)
+	if err != nil {
+		return 0, fmt.Errorf("read scan frequencies: %w", err)
+	}
+	baseSecs, isOff := ScheduleArgs(
+		EffectiveFrequency(freqs.ScanFrequency, freqs.DefaultScanFrequency),
+	)
+	if err := st.DomainsMarkScanned(ctx, store.DomainsMarkScannedParams{
+		IsOff:    isOff,
+		BaseSecs: baseSecs,
+		DomainID: target.DomainID,
+	}); err != nil {
+		return 0, fmt.Errorf("mark scanned: %w", err)
+	}
+
 	return scan.ID, nil
 }

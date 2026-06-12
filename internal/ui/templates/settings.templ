@@ -8,7 +8,7 @@ import (
 templ SettingsPage(props SettingsPageProps) {
 	@Page("gecko · Settings") {
 		@AppShell(props.Shell) {
-			<div data-signals='{"newKeyName":"","currentPassword":"","newPassword":"","confirmPassword":""}'>
+			<div data-signals={ settingsSignals(props.DefaultScanFrequency) }>
 				<div class="page-head">
 					<div>
 						<h1>Settings</h1>
@@ -18,6 +18,7 @@ templ SettingsPage(props SettingsPageProps) {
 				<div class="set-grid">
 					@APIKeysPanel(props)
 					@PasswordPanel(props)
+					@ScanningPanel(props)
 				</div>
 			</div>
 		}
@@ -148,6 +149,33 @@ templ PasswordPanel(props SettingsPageProps) {
 	</section>
 }
 
+// ScanningPanel renders the tenant-wide default scan cadence control.
+templ ScanningPanel(props SettingsPageProps) {
+	<section class="panel set-panel">
+		<div class="panel-h">Scanning</div>
+		<div class="set-body">
+			<p class="set-note">
+				Set how often gecko automatically re-scans all tracked domains. Each domain can override this default individually.
+			</p>
+			<label class="lbl">Default cadence</label>
+			<select class="inp" data-bind="defaultScanFrequency">
+				<option value="hourly">Hourly</option>
+				<option value="six_hourly">Every 6h</option>
+				<option value="daily">Daily</option>
+				<option value="weekly">Weekly</option>
+				<option value="off">Off</option>
+			</select>
+			if props.CanManage {
+				<button
+					class="btn set-pw-btn"
+					type="button"
+					data-on:click={ postWithCSRF("/app/settings/scan-frequency", props.Shell.CSRFToken) }
+				>Save cadence</button>
+			}
+		</div>
+	</section>
+}
+
 // apiKeyCountLabel renders the panel-header count, singularising for one key.
 func apiKeyCountLabel(n int) string {
 	if n == 1 {
@@ -177,5 +205,18 @@ func changePassword(token string) string {
 	return fmt.Sprintf(
 		"if($newPassword !== $confirmPassword){alert('New passwords do not match');return} @post('/app/settings/password', {headers: {'X-CSRF-Token': '%s'}})",
 		token,
+	)
+}
+
+// settingsSignals builds the page-level datastar signal object for the settings
+// page. The defaultScanFrequency signal is pre-filled with the tenant's current
+// default so the select renders with the right option pre-selected.
+func settingsSignals(defaultScanFreq string) string {
+	if defaultScanFreq == "" {
+		defaultScanFreq = "daily"
+	}
+	return fmt.Sprintf(
+		`{"newKeyName":"","currentPassword":"","newPassword":"","confirmPassword":"","defaultScanFrequency":"%s"}`,
+		defaultScanFreq,
 	)
 }

@@ -314,6 +314,9 @@ SELECT id,
        domain_type,
        source,
        status,
+       scan_frequency,
+       next_scan_at,
+       last_scanned_at,
        created_at,
        updated_at
 FROM domains
@@ -327,15 +330,18 @@ type DomainsGetByIDParams struct {
 }
 
 type DomainsGetByIDRow struct {
-	ID         int32              `json:"id"`
-	Uid        string             `json:"uid"`
-	TenantID   pgtype.Int4        `json:"tenant_id"`
-	Name       string             `json:"name"`
-	DomainType DomainType         `json:"domain_type"`
-	Source     DomainSource       `json:"source"`
-	Status     DomainStatus       `json:"status"`
-	CreatedAt  pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+	ID            int32              `json:"id"`
+	Uid           string             `json:"uid"`
+	TenantID      pgtype.Int4        `json:"tenant_id"`
+	Name          string             `json:"name"`
+	DomainType    DomainType         `json:"domain_type"`
+	Source        DomainSource       `json:"source"`
+	Status        DomainStatus       `json:"status"`
+	ScanFrequency NullScanFrequency  `json:"scan_frequency"`
+	NextScanAt    pgtype.Timestamptz `json:"next_scan_at"`
+	LastScannedAt pgtype.Timestamptz `json:"last_scanned_at"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
 }
 
 func (q *Queries) DomainsGetByID(ctx context.Context, arg DomainsGetByIDParams) (DomainsGetByIDRow, error) {
@@ -349,6 +355,9 @@ func (q *Queries) DomainsGetByID(ctx context.Context, arg DomainsGetByIDParams) 
 		&i.DomainType,
 		&i.Source,
 		&i.Status,
+		&i.ScanFrequency,
+		&i.NextScanAt,
+		&i.LastScannedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -463,6 +472,30 @@ func (q *Queries) DomainsGetByName(ctx context.Context, arg DomainsGetByNamePara
 	return i, err
 }
 
+const domainsGetScanFrequencies = `-- name: DomainsGetScanFrequencies :one
+SELECT d.scan_frequency,
+       COALESCE(ts.default_scan_frequency, 'daily')::scan_frequency AS default_scan_frequency
+FROM domains d
+         LEFT JOIN tenant_settings ts ON ts.tenant_id = d.tenant_id
+WHERE d.id = $1
+`
+
+type DomainsGetScanFrequenciesRow struct {
+	ScanFrequency        NullScanFrequency `json:"scan_frequency"`
+	DefaultScanFrequency ScanFrequency     `json:"default_scan_frequency"`
+}
+
+// Resolve a domain's scheduling inputs in one read: its own override (NULL =
+// inherit) and its tenant's default. EnqueueDomainScan's chokepoint uses this to
+// compute the effective frequency. Falls back to 'daily' when the tenant has no
+// settings row yet (brand-new tenant before its first settings write).
+func (q *Queries) DomainsGetScanFrequencies(ctx context.Context, domainID int32) (DomainsGetScanFrequenciesRow, error) {
+	row := q.db.QueryRow(ctx, domainsGetScanFrequencies, domainID)
+	var i DomainsGetScanFrequenciesRow
+	err := row.Scan(&i.ScanFrequency, &i.DefaultScanFrequency)
+	return i, err
+}
+
 const domainsIDsByTenantID = `-- name: DomainsIDsByTenantID :many
 SELECT id
 FROM domains
@@ -550,6 +583,8 @@ SELECT id,
        domain_type,
        source,
        status,
+       last_scanned_at,
+       next_scan_at,
        created_at,
        updated_at,
        count(*) OVER () AS total_count
@@ -566,16 +601,18 @@ type DomainsListByTenantIDParams struct {
 }
 
 type DomainsListByTenantIDRow struct {
-	ID         int32              `json:"id"`
-	Uid        string             `json:"uid"`
-	TenantID   pgtype.Int4        `json:"tenant_id"`
-	Name       string             `json:"name"`
-	DomainType DomainType         `json:"domain_type"`
-	Source     DomainSource       `json:"source"`
-	Status     DomainStatus       `json:"status"`
-	CreatedAt  pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
-	TotalCount int64              `json:"total_count"`
+	ID            int32              `json:"id"`
+	Uid           string             `json:"uid"`
+	TenantID      pgtype.Int4        `json:"tenant_id"`
+	Name          string             `json:"name"`
+	DomainType    DomainType         `json:"domain_type"`
+	Source        DomainSource       `json:"source"`
+	Status        DomainStatus       `json:"status"`
+	LastScannedAt pgtype.Timestamptz `json:"last_scanned_at"`
+	NextScanAt    pgtype.Timestamptz `json:"next_scan_at"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	TotalCount    int64              `json:"total_count"`
 }
 
 // List all domains for a tenant with pagination (no auth)
@@ -596,6 +633,8 @@ func (q *Queries) DomainsListByTenantID(ctx context.Context, arg DomainsListByTe
 			&i.DomainType,
 			&i.Source,
 			&i.Status,
+			&i.LastScannedAt,
+			&i.NextScanAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.TotalCount,
@@ -610,6 +649,121 @@ func (q *Queries) DomainsListByTenantID(ctx context.Context, arg DomainsListByTe
 	return items, nil
 }
 
+const domainsListDueForScan = `-- name: DomainsListDueForScan :many
+SELECT d.id,
+       d.uid,
+       d.tenant_id,
+       d.name,
+       d.status,
+       COALESCE(d.scan_frequency, ts.default_scan_frequency, 'daily')::scan_frequency AS effective_frequency
+FROM domains d
+         LEFT JOIN tenant_settings ts ON ts.tenant_id = d.tenant_id
+WHERE d.status = 'active'
+  AND d.next_scan_at IS NOT NULL
+  AND d.next_scan_at <= now()
+ORDER BY d.next_scan_at ASC
+LIMIT $1
+`
+
+type DomainsListDueForScanRow struct {
+	ID                 int32         `json:"id"`
+	Uid                string        `json:"uid"`
+	TenantID           pgtype.Int4   `json:"tenant_id"`
+	Name               string        `json:"name"`
+	Status             DomainStatus  `json:"status"`
+	EffectiveFrequency ScanFrequency `json:"effective_frequency"`
+}
+
+// The scheduler's hot query: active domains whose scheduling cursor has come due,
+// oldest-due first, capped at @batch_limit so a burst of simultaneously-due
+// domains can't thunder-herd queue_scanner (the rest stay due for the next tick).
+// Rides the partial index idx_domains_next_scan_at. Returns the effective
+// frequency (own override ?? tenant default) so the caller sets a matching recency
+// window. 'off' domains have a NULL cursor and are excluded by the index.
+func (q *Queries) DomainsListDueForScan(ctx context.Context, batchLimit int32) ([]DomainsListDueForScanRow, error) {
+	rows, err := q.db.Query(ctx, domainsListDueForScan, batchLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DomainsListDueForScanRow{}
+	for rows.Next() {
+		var i DomainsListDueForScanRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.TenantID,
+			&i.Name,
+			&i.Status,
+			&i.EffectiveFrequency,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const domainsMarkScanned = `-- name: DomainsMarkScanned :exec
+UPDATE domains
+SET last_scanned_at = now(),
+    next_scan_at    = CASE
+                          WHEN $1::boolean THEN NULL
+                          ELSE now()
+                              + make_interval(secs => $2::double precision)
+                              + make_interval(secs => $2::double precision * random() * 0.10)
+        END
+WHERE id = $3
+`
+
+type DomainsMarkScannedParams struct {
+	IsOff    bool    `json:"is_off"`
+	BaseSecs float64 `json:"base_secs"`
+	DomainID int32   `json:"domain_id"`
+}
+
+// The single chokepoint stamp, called from EnqueueDomainScan after a scan row is
+// created — so it fires on EVERY trigger (manual, scheduled, discovered). Stamps
+// the real last-scan time and advances the scheduling cursor by the effective
+// interval with ±10% jitter to de-herd a same-tick batch. @is_off true => the
+// cursor is cleared (NULL) so the domain falls out of the schedule.
+func (q *Queries) DomainsMarkScanned(ctx context.Context, arg DomainsMarkScannedParams) error {
+	_, err := q.db.Exec(ctx, domainsMarkScanned, arg.IsOff, arg.BaseSecs, arg.DomainID)
+	return err
+}
+
+const domainsRecomputeNextScanByTenantDefault = `-- name: DomainsRecomputeNextScanByTenantDefault :exec
+UPDATE domains
+SET next_scan_at = CASE
+                       WHEN $1::boolean THEN NULL
+                       ELSE now()
+                           + make_interval(secs => $2::double precision)
+                           + make_interval(secs => $2::double precision * random() * 0.10)
+    END
+WHERE tenant_id = $3
+  AND scan_frequency IS NULL
+  AND status = 'active'
+`
+
+type DomainsRecomputeNextScanByTenantDefaultParams struct {
+	IsOff    bool        `json:"is_off"`
+	BaseSecs float64     `json:"base_secs"`
+	TenantID pgtype.Int4 `json:"tenant_id"`
+}
+
+// Bulk-recompute next_scan_at for a tenant's inheriting domains (no override)
+// after its default changes. Overridden domains (scan_frequency NOT NULL) are
+// untouched; inactive domains are skipped (they re-enter via the due path on
+// reactivation). Bounded to one tenant + active rows; re-jitters per row so a bulk
+// default change can't herd. @is_off true => those domains are paused (cursor NULL).
+func (q *Queries) DomainsRecomputeNextScanByTenantDefault(ctx context.Context, arg DomainsRecomputeNextScanByTenantDefaultParams) error {
+	_, err := q.db.Exec(ctx, domainsRecomputeNextScanByTenantDefault, arg.IsOff, arg.BaseSecs, arg.TenantID)
+	return err
+}
+
 const domainsSearchByName = `-- name: DomainsSearchByName :many
 SELECT id,
        uid,
@@ -618,6 +772,8 @@ SELECT id,
        domain_type,
        source,
        status,
+       last_scanned_at,
+       next_scan_at,
        created_at,
        updated_at,
        count(*) OVER () AS total_count
@@ -636,16 +792,18 @@ type DomainsSearchByNameParams struct {
 }
 
 type DomainsSearchByNameRow struct {
-	ID         int32              `json:"id"`
-	Uid        string             `json:"uid"`
-	TenantID   pgtype.Int4        `json:"tenant_id"`
-	Name       string             `json:"name"`
-	DomainType DomainType         `json:"domain_type"`
-	Source     DomainSource       `json:"source"`
-	Status     DomainStatus       `json:"status"`
-	CreatedAt  pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
-	TotalCount int64              `json:"total_count"`
+	ID            int32              `json:"id"`
+	Uid           string             `json:"uid"`
+	TenantID      pgtype.Int4        `json:"tenant_id"`
+	Name          string             `json:"name"`
+	DomainType    DomainType         `json:"domain_type"`
+	Source        DomainSource       `json:"source"`
+	Status        DomainStatus       `json:"status"`
+	LastScannedAt pgtype.Timestamptz `json:"last_scanned_at"`
+	NextScanAt    pgtype.Timestamptz `json:"next_scan_at"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	TotalCount    int64              `json:"total_count"`
 }
 
 func (q *Queries) DomainsSearchByName(ctx context.Context, arg DomainsSearchByNameParams) ([]DomainsSearchByNameRow, error) {
@@ -670,6 +828,8 @@ func (q *Queries) DomainsSearchByName(ctx context.Context, arg DomainsSearchByNa
 			&i.DomainType,
 			&i.Source,
 			&i.Status,
+			&i.LastScannedAt,
+			&i.NextScanAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.TotalCount,
@@ -682,6 +842,73 @@ func (q *Queries) DomainsSearchByName(ctx context.Context, arg DomainsSearchByNa
 		return nil, err
 	}
 	return items, nil
+}
+
+const domainsSetScanFrequency = `-- name: DomainsSetScanFrequency :one
+UPDATE domains
+SET scan_frequency = $1,
+    next_scan_at   = CASE
+                         WHEN $2::boolean THEN NULL
+                         ELSE now()
+                             + make_interval(secs => $3::double precision)
+                             + make_interval(secs => $3::double precision * random() * 0.10)
+        END
+WHERE uid = $4
+  AND tenant_id = $5
+RETURNING id, uid, tenant_id, name, domain_type, source, status, scan_frequency,
+    next_scan_at, last_scanned_at, created_at, updated_at
+`
+
+type DomainsSetScanFrequencyParams struct {
+	ScanFrequency NullScanFrequency `json:"scan_frequency"`
+	IsOff         bool              `json:"is_off"`
+	BaseSecs      float64           `json:"base_secs"`
+	Uid           string            `json:"uid"`
+	TenantID      pgtype.Int4       `json:"tenant_id"`
+}
+
+type DomainsSetScanFrequencyRow struct {
+	ID            int32              `json:"id"`
+	Uid           string             `json:"uid"`
+	TenantID      pgtype.Int4        `json:"tenant_id"`
+	Name          string             `json:"name"`
+	DomainType    DomainType         `json:"domain_type"`
+	Source        DomainSource       `json:"source"`
+	Status        DomainStatus       `json:"status"`
+	ScanFrequency NullScanFrequency  `json:"scan_frequency"`
+	NextScanAt    pgtype.Timestamptz `json:"next_scan_at"`
+	LastScannedAt pgtype.Timestamptz `json:"last_scanned_at"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
+// Set a domain's per-domain override (NULL = inherit the tenant default) and
+// recompute its scheduling cursor from the supplied effective interval (±10%
+// jitter). @is_off true => cursor NULL (paused). Tenant-scoped by uid + tenant_id.
+func (q *Queries) DomainsSetScanFrequency(ctx context.Context, arg DomainsSetScanFrequencyParams) (DomainsSetScanFrequencyRow, error) {
+	row := q.db.QueryRow(ctx, domainsSetScanFrequency,
+		arg.ScanFrequency,
+		arg.IsOff,
+		arg.BaseSecs,
+		arg.Uid,
+		arg.TenantID,
+	)
+	var i DomainsSetScanFrequencyRow
+	err := row.Scan(
+		&i.ID,
+		&i.Uid,
+		&i.TenantID,
+		&i.Name,
+		&i.DomainType,
+		&i.Source,
+		&i.Status,
+		&i.ScanFrequency,
+		&i.NextScanAt,
+		&i.LastScannedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const domainsUpdateByID = `-- name: DomainsUpdateByID :one

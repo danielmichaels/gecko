@@ -54,7 +54,7 @@ func TestDomainTimelineHandler(t *testing.T) {
 			DomainID:   pgtype.Int4{Int32: d.ID, Valid: true},
 			DomainUid:  d.Uid,
 			DomainName: d.Name,
-			Source:     store.DomainSourceUserSupplied,
+			Source:     store.ScanSourceUserSupplied,
 		})
 		if err != nil {
 			t.Fatalf("create scan: %v", err)
@@ -151,14 +151,14 @@ func TestDomainTimeline_ParentScanUID(t *testing.T) {
 
 	parent, err := pc.Queries.ScansCreate(ctx, store.ScansCreateParams{
 		TenantID: tenantID, DomainID: pgtype.Int4{Int32: d.ID, Valid: true},
-		DomainUid: d.Uid, DomainName: d.Name, Source: store.DomainSourceUserSupplied,
+		DomainUid: d.Uid, DomainName: d.Name, Source: store.ScanSourceUserSupplied,
 	})
 	if err != nil {
 		t.Fatalf("create parent scan: %v", err)
 	}
 	child, err := pc.Queries.ScansCreate(ctx, store.ScansCreateParams{
 		TenantID: tenantID, DomainID: pgtype.Int4{Int32: d.ID, Valid: true},
-		DomainUid: d.Uid, DomainName: d.Name, Source: store.DomainSourceDiscovered,
+		DomainUid: d.Uid, DomainName: d.Name, Source: store.ScanSourceDiscovered,
 		ParentScanID: pgtype.Int8{Int64: parent.ID, Valid: true},
 	})
 	if err != nil {
