@@ -17,7 +17,7 @@ func seedScan(
 	pc *testhelpers.PostgresContainer,
 	tenantID int32,
 	d store.DomainsInsertRow,
-	source store.DomainSource,
+	source store.ScanSource,
 	parent pgtype.Int8,
 ) store.Scans {
 	t.Helper()
@@ -96,16 +96,16 @@ func TestScansService_ListByTenantFlat(t *testing.T) {
 	pA := ownerPrincipal(tenantA)
 
 	acme := seedDomain(t, ctx, pc, tenantA, "acme.com")
-	baseline := seedScan(t, ctx, pc, tenantA, acme, store.DomainSourceUserSupplied, pgtype.Int8{})
+	baseline := seedScan(t, ctx, pc, tenantA, acme, store.ScanSourceUserSupplied, pgtype.Int8{})
 	seedObservation(t, ctx, pc, tenantA, acme, baseline.ID, "a_record", "a1", "created")
-	changed := seedScan(t, ctx, pc, tenantA, acme, store.DomainSourceUserSupplied,
+	changed := seedScan(t, ctx, pc, tenantA, acme, store.ScanSourceUserSupplied,
 		pgtype.Int8{Int64: baseline.ID, Valid: true})
 	seedObservation(t, ctx, pc, tenantA, acme, changed.ID, "a_record", "a1", "updated")
-	clean := seedScan(t, ctx, pc, tenantA, acme, store.DomainSourceUserSupplied,
+	clean := seedScan(t, ctx, pc, tenantA, acme, store.ScanSourceUserSupplied,
 		pgtype.Int8{Int64: changed.ID, Valid: true})
 
 	other := seedDomain(t, ctx, pc, tenantB, "other.com")
-	otherScan := seedScan(t, ctx, pc, tenantB, other, store.DomainSourceUserSupplied, pgtype.Int8{})
+	otherScan := seedScan(t, ctx, pc, tenantB, other, store.ScanSourceUserSupplied, pgtype.Int8{})
 	seedObservation(t, ctx, pc, tenantB, other, otherScan.ID, "a_record", "a1", "created")
 
 	t.Run("tenant isolation and total", func(t *testing.T) {
@@ -172,24 +172,24 @@ func TestScansService_ListByTenant_IsolationAndAggregates(t *testing.T) {
 	acme := seedDomain(t, ctx, pc, tenantA, "acme.com")
 	disc := seedDomain(t, ctx, pc, tenantA, "disc.example.org")
 
-	baseline := seedScan(t, ctx, pc, tenantA, acme, store.DomainSourceUserSupplied, pgtype.Int8{})
+	baseline := seedScan(t, ctx, pc, tenantA, acme, store.ScanSourceUserSupplied, pgtype.Int8{})
 	seedObservation(t, ctx, pc, tenantA, acme, baseline.ID, "a_record", "a1", "created")
 	seedObservation(t, ctx, pc, tenantA, acme, baseline.ID, "a_record", "a2", "created")
 
-	changed := seedScan(t, ctx, pc, tenantA, acme, store.DomainSourceUserSupplied,
+	changed := seedScan(t, ctx, pc, tenantA, acme, store.ScanSourceUserSupplied,
 		pgtype.Int8{Int64: baseline.ID, Valid: true})
 	seedObservation(t, ctx, pc, tenantA, acme, changed.ID, "a_record", "a1", "updated")
 	seedObservation(t, ctx, pc, tenantA, acme, changed.ID, "txt_record", "t1", "deleted")
 
-	clean := seedScan(t, ctx, pc, tenantA, acme, store.DomainSourceUserSupplied,
+	clean := seedScan(t, ctx, pc, tenantA, acme, store.ScanSourceUserSupplied,
 		pgtype.Int8{Int64: changed.ID, Valid: true})
 
-	discScan := seedScan(t, ctx, pc, tenantA, disc, store.DomainSourceDiscovered, pgtype.Int8{})
+	discScan := seedScan(t, ctx, pc, tenantA, disc, store.ScanSourceDiscovered, pgtype.Int8{})
 	seedObservation(t, ctx, pc, tenantA, disc, discScan.ID, "a_record", "a1", "created")
 
 	// Tenant B: a scan that must never surface for tenant A.
 	other := seedDomain(t, ctx, pc, tenantB, "other.com")
-	otherScan := seedScan(t, ctx, pc, tenantB, other, store.DomainSourceUserSupplied, pgtype.Int8{})
+	otherScan := seedScan(t, ctx, pc, tenantB, other, store.ScanSourceUserSupplied, pgtype.Int8{})
 	seedObservation(t, ctx, pc, tenantB, other, otherScan.ID, "a_record", "a1", "created")
 
 	res, err := ss.ListByTenant(ctx, pA, service.ScansListOptions{})
@@ -257,11 +257,11 @@ func TestScansService_ListByTenant_SourceFilterAndWindow(t *testing.T) {
 		pc,
 		tenantID,
 		userDom,
-		store.DomainSourceUserSupplied,
+		store.ScanSourceUserSupplied,
 		pgtype.Int8{},
 	)
 	seedObservation(t, ctx, pc, tenantID, userDom, userScan.ID, "a_record", "a1", "created")
-	discScan := seedScan(t, ctx, pc, tenantID, discDom, store.DomainSourceDiscovered, pgtype.Int8{})
+	discScan := seedScan(t, ctx, pc, tenantID, discDom, store.ScanSourceDiscovered, pgtype.Int8{})
 	seedObservation(t, ctx, pc, tenantID, discDom, discScan.ID, "a_record", "a1", "created")
 
 	t.Run("source filter narrows, SourceCounts stays faceted", func(t *testing.T) {

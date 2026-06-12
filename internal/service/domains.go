@@ -199,15 +199,18 @@ func (s *DomainsService) Get(
 		return store.Domains{}, ErrNotFound
 	}
 	return store.Domains{
-		ID:         row.ID,
-		Uid:        row.Uid,
-		TenantID:   row.TenantID,
-		Name:       row.Name,
-		DomainType: row.DomainType,
-		Source:     row.Source,
-		Status:     row.Status,
-		CreatedAt:  row.CreatedAt,
-		UpdatedAt:  row.UpdatedAt,
+		ID:            row.ID,
+		Uid:           row.Uid,
+		TenantID:      row.TenantID,
+		Name:          row.Name,
+		DomainType:    row.DomainType,
+		Source:        row.Source,
+		Status:        row.Status,
+		ScanFrequency: row.ScanFrequency,
+		NextScanAt:    row.NextScanAt,
+		LastScannedAt: row.LastScannedAt,
+		CreatedAt:     row.CreatedAt,
+		UpdatedAt:     row.UpdatedAt,
 	}, nil
 }
 
@@ -389,6 +392,76 @@ func (s *DomainsService) Update(
 		CreatedAt:  domain.CreatedAt,
 		UpdatedAt:  domain.UpdatedAt,
 	}, nil
+}
+
+// SetScanFrequency sets a domain's per-domain cadence override and recomputes its
+// scheduling cursor. freq == nil clears the override so the domain inherits the
+// tenant default. Owner/manager only (a cadence change is a mutation, like the
+// other domain mutations). Returns ErrInvalidInput for an unknown preset and
+// ErrNotFound when the uid is unknown or belongs to another tenant.
+//
+// The effective frequency (override ?? tenant default) drives the interval; 'off'
+// clears the cursor (next_scan_at NULL) so the domain leaves the schedule.
+func (s *DomainsService) SetScanFrequency(
+	ctx context.Context,
+	p *auth.Principal,
+	uid string,
+	freq *store.ScanFrequency,
+) (store.Domains, error) {
+	if err := ownerOrManager(p); err != nil {
+		return store.Domains{}, err
+	}
+
+	var override store.NullScanFrequency
+	if freq != nil {
+		if !jobs.IsKnownFrequency(*freq) {
+			return store.Domains{}, msgErr(ErrInvalidInput, "unknown scan frequency")
+		}
+		override = store.NullScanFrequency{ScanFrequency: *freq, Valid: true}
+	}
+
+	effective := jobs.EffectiveFrequency(override, s.tenantDefault(ctx, p.TenantID))
+	baseSecs, isOff := jobs.ScheduleArgs(effective)
+
+	row, err := s.DB.DomainsSetScanFrequency(ctx, store.DomainsSetScanFrequencyParams{
+		ScanFrequency: override,
+		IsOff:         isOff,
+		BaseSecs:      baseSecs,
+		Uid:           uid,
+		TenantID:      pgtype.Int4{Int32: p.TenantID, Valid: true},
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return store.Domains{}, ErrNotFound
+		}
+		return store.Domains{}, fmt.Errorf("set scan frequency: %w", err)
+	}
+
+	return store.Domains{
+		ID:            row.ID,
+		Uid:           row.Uid,
+		TenantID:      row.TenantID,
+		Name:          row.Name,
+		DomainType:    row.DomainType,
+		Source:        row.Source,
+		Status:        row.Status,
+		ScanFrequency: row.ScanFrequency,
+		NextScanAt:    row.NextScanAt,
+		LastScannedAt: row.LastScannedAt,
+		CreatedAt:     row.CreatedAt,
+		UpdatedAt:     row.UpdatedAt,
+	}, nil
+}
+
+// tenantDefault returns the tenant's default scan frequency, falling back to the
+// system default (daily) when no settings row exists yet — the same fallback the
+// scheduling queries use, so the Go and SQL resolutions agree.
+func (s *DomainsService) tenantDefault(ctx context.Context, tenantID int32) store.ScanFrequency {
+	row, err := s.DB.TenantSettingsGet(ctx, tenantID)
+	if err != nil {
+		return store.ScanFrequencyDaily
+	}
+	return row.DefaultScanFrequency
 }
 
 // Delete removes the domain from the caller's tenant.

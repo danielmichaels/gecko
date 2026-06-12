@@ -214,10 +214,25 @@ type DomainDetailPageProps struct {
 	// and the Pause/Resume toggle are driven by it directly, not by Severity —
 	// severityForStatus collapses inactive into "ok", which would hide the pause.
 	Status string
-	Shell  AppShellProps
+	// ScanFrequency is the domain's per-domain cadence override ("" = inheriting
+	// the tenant default). ScanFrequency maps to a store.ScanFrequency preset.
+	ScanFrequency string
+	// ScanFrequencyLabel is the human label for ScanFrequency, shown in the
+	// read-only (viewer) branch so it reads "Weekly" rather than "weekly".
+	ScanFrequencyLabel string
+	// NextScan is the humanised time until the next scheduled scan ("in 3h",
+	// "due", "—"). Computed by nextScanLabel.
+	NextScan string
+	// EffectiveDefaultLabel is the human label for the tenant default cadence,
+	// rendered in the "Use default (X)" select option.
+	EffectiveDefaultLabel string
+	Shell                 AppShellProps
 	// DeleteImpactCount is the number of domains a delete would cascade away (self
 	// plus discovered children), surfaced in the delete confirmation.
 	DeleteImpactCount int
+	// CanManage gates the scan-frequency editable select and save button,
+	// mirroring service.OwnerOrManager; the service enforces the actual guard.
+	CanManage bool
 }
 
 // DomainLifecycleProps is the slice of detail-page data the lifecycle controls
@@ -510,15 +525,18 @@ func srcChipClass(src string) string { return fmt.Sprintf("{'on': $src === '%s'}
 // to InitialTab. When the page is deep-linked to the Timeline tab, tlLoaded starts
 // true so the timeline content loads once via intersect and the tab-click handler
 // does not re-fetch it (which would drop the deep-link's scan highlight).
-func detailSignals(initialTab string) string {
+// scanFrequency is pre-filled with the domain's current override (empty string
+// means inherit the tenant default).
+func detailSignals(initialTab, scanFrequency string) string {
 	tlLoaded := "false"
 	if initialTab == "timeline" {
 		tlLoaded = "true"
 	}
 	return fmt.Sprintf(
-		`{"tab":"%s","tlLoaded":%s,"fnLoaded":false,"lcMenu":false}`,
+		`{"tab":"%s","tlLoaded":%s,"fnLoaded":false,"lcMenu":false,"scanFrequency":"%s"}`,
 		initialTab,
 		tlLoaded,
+		scanFrequency,
 	)
 }
 
@@ -533,12 +551,14 @@ func timelineFullLoad(uid, scan string) string {
 }
 
 // SettingsPageProps holds data for the settings page. CanManage gates the
-// owner/manager-only API-key controls (create, revoke), mirroring the
-// service-layer guard; the 403 stays the authoritative backstop.
+// owner/manager-only API-key controls (create, revoke) and the scan-frequency
+// control, mirroring the service-layer guard; the 403 stays the authoritative
+// backstop. DefaultScanFrequency is the tenant's current default cadence preset.
 type SettingsPageProps struct {
-	Shell     AppShellProps
-	APIKeys   []APIKeyRowView
-	CanManage bool
+	DefaultScanFrequency string
+	Shell                AppShellProps
+	APIKeys              []APIKeyRowView
+	CanManage            bool
 }
 
 // APIKeyRowView is the presentation model for one API key in the settings list.

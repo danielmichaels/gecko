@@ -42,10 +42,13 @@ func (h *Handlers) handleSettingsGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	defaultFreq, _ := h.svc.SettingsService().GetScanSettings(r.Context(), p)
+
 	renderPage(w, r, templates.SettingsPage(templates.SettingsPageProps{
-		Shell:     shell,
-		APIKeys:   apiKeyRows(rows),
-		CanManage: service.OwnerOrManager(p),
+		Shell:                shell,
+		APIKeys:              apiKeyRows(rows),
+		CanManage:            service.OwnerOrManager(p),
+		DefaultScanFrequency: string(defaultFreq),
 	}))
 }
 
@@ -173,6 +176,61 @@ func (h *Handlers) handlePasswordChange(w http.ResponseWriter, r *http.Request) 
 		"newPassword":     "",
 		"confirmPassword": "",
 	})
+}
+
+// handleScanDefaultUpdate sets the tenant-wide default scan cadence. Owner or
+// manager only; ErrForbidden and ErrInvalidInput surface as warn toasts.
+func (h *Handlers) handleScanDefaultUpdate(w http.ResponseWriter, r *http.Request) {
+	p, ok := PrincipalFrom(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var form struct {
+		DefaultScanFrequency string `json:"defaultScanFrequency"`
+	}
+	if err := datastar.ReadSignals(r, &form); err != nil {
+		h.log.Error("scan default update: read signals", "error", err)
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	sse := datastar.NewSSE(w, r)
+
+	freq := store.ScanFrequency(form.DefaultScanFrequency)
+	err := h.svc.SettingsService().SetDefaultScanFrequency(r.Context(), p, freq)
+	if err != nil {
+		if errors.Is(err, service.ErrForbidden) {
+			pushToast(
+				sse,
+				newToast(
+					"warn",
+					"NOTICE",
+					"Permission denied",
+					"You don't have permission to change scan settings",
+				),
+			)
+			return
+		}
+		if errors.Is(err, service.ErrInvalidInput) {
+			pushToast(
+				sse,
+				newToast(
+					"warn",
+					"NOTICE",
+					"Invalid cadence",
+					"Select one of the available cadence options",
+				),
+			)
+			return
+		}
+		h.log.Error("scan default update", "error", err)
+		pushToast(sse, newToast("crit", "ERROR", "Failed to update cadence", "please try again"))
+		return
+	}
+
+	pushToast(sse, newToast("ok", "SCANNING", "Default cadence updated", freqLabel(freq)))
 }
 
 // patchKeyRows re-renders #apikey-rows from the caller's current key set. Shared

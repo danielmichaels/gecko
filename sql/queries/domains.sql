@@ -84,6 +84,9 @@ SELECT id,
        domain_type,
        source,
        status,
+       scan_frequency,
+       next_scan_at,
+       last_scanned_at,
        created_at,
        updated_at
 FROM domains
@@ -164,6 +167,8 @@ SELECT id,
        domain_type,
        source,
        status,
+       last_scanned_at,
+       next_scan_at,
        created_at,
        updated_at,
        count(*) OVER () AS total_count
@@ -180,6 +185,8 @@ SELECT id,
        domain_type,
        source,
        status,
+       last_scanned_at,
+       next_scan_at,
        created_at,
        updated_at,
        count(*) OVER () AS total_count
@@ -205,3 +212,85 @@ WITH RECURSIVE domain_tree AS (
              JOIN domain_tree dt ON d.parent_domain_id = dt.id)
 SELECT COUNT(*)
 FROM domain_tree;
+
+-- name: DomainsListDueForScan :many
+-- The scheduler's hot query: active domains whose scheduling cursor has come due,
+-- oldest-due first, capped at @batch_limit so a burst of simultaneously-due
+-- domains can't thunder-herd queue_scanner (the rest stay due for the next tick).
+-- Rides the partial index idx_domains_next_scan_at. Returns the effective
+-- frequency (own override ?? tenant default) so the caller sets a matching recency
+-- window. 'off' domains have a NULL cursor and are excluded by the index.
+SELECT d.id,
+       d.uid,
+       d.tenant_id,
+       d.name,
+       d.status,
+       COALESCE(d.scan_frequency, ts.default_scan_frequency, 'daily')::scan_frequency AS effective_frequency
+FROM domains d
+         LEFT JOIN tenant_settings ts ON ts.tenant_id = d.tenant_id
+WHERE d.status = 'active'
+  AND d.next_scan_at IS NOT NULL
+  AND d.next_scan_at <= now()
+ORDER BY d.next_scan_at ASC
+LIMIT sqlc.arg(batch_limit);
+
+-- name: DomainsGetScanFrequencies :one
+-- Resolve a domain's scheduling inputs in one read: its own override (NULL =
+-- inherit) and its tenant's default. EnqueueDomainScan's chokepoint uses this to
+-- compute the effective frequency. Falls back to 'daily' when the tenant has no
+-- settings row yet (brand-new tenant before its first settings write).
+SELECT d.scan_frequency,
+       COALESCE(ts.default_scan_frequency, 'daily')::scan_frequency AS default_scan_frequency
+FROM domains d
+         LEFT JOIN tenant_settings ts ON ts.tenant_id = d.tenant_id
+WHERE d.id = sqlc.arg(domain_id);
+
+-- name: DomainsMarkScanned :exec
+-- The single chokepoint stamp, called from EnqueueDomainScan after a scan row is
+-- created — so it fires on EVERY trigger (manual, scheduled, discovered). Stamps
+-- the real last-scan time and advances the scheduling cursor by the effective
+-- interval with ±10% jitter to de-herd a same-tick batch. @is_off true => the
+-- cursor is cleared (NULL) so the domain falls out of the schedule.
+UPDATE domains
+SET last_scanned_at = now(),
+    next_scan_at    = CASE
+                          WHEN sqlc.arg(is_off)::boolean THEN NULL
+                          ELSE now()
+                              + make_interval(secs => sqlc.arg(base_secs)::double precision)
+                              + make_interval(secs => sqlc.arg(base_secs)::double precision * random() * 0.10)
+        END
+WHERE id = sqlc.arg(domain_id);
+
+-- name: DomainsSetScanFrequency :one
+-- Set a domain's per-domain override (NULL = inherit the tenant default) and
+-- recompute its scheduling cursor from the supplied effective interval (±10%
+-- jitter). @is_off true => cursor NULL (paused). Tenant-scoped by uid + tenant_id.
+UPDATE domains
+SET scan_frequency = sqlc.narg(scan_frequency),
+    next_scan_at   = CASE
+                         WHEN sqlc.arg(is_off)::boolean THEN NULL
+                         ELSE now()
+                             + make_interval(secs => sqlc.arg(base_secs)::double precision)
+                             + make_interval(secs => sqlc.arg(base_secs)::double precision * random() * 0.10)
+        END
+WHERE uid = sqlc.arg(uid)
+  AND tenant_id = sqlc.arg(tenant_id)
+RETURNING id, uid, tenant_id, name, domain_type, source, status, scan_frequency,
+    next_scan_at, last_scanned_at, created_at, updated_at;
+
+-- name: DomainsRecomputeNextScanByTenantDefault :exec
+-- Bulk-recompute next_scan_at for a tenant's inheriting domains (no override)
+-- after its default changes. Overridden domains (scan_frequency NOT NULL) are
+-- untouched; inactive domains are skipped (they re-enter via the due path on
+-- reactivation). Bounded to one tenant + active rows; re-jitters per row so a bulk
+-- default change can't herd. @is_off true => those domains are paused (cursor NULL).
+UPDATE domains
+SET next_scan_at = CASE
+                       WHEN sqlc.arg(is_off)::boolean THEN NULL
+                       ELSE now()
+                           + make_interval(secs => sqlc.arg(base_secs)::double precision)
+                           + make_interval(secs => sqlc.arg(base_secs)::double precision * random() * 0.10)
+    END
+WHERE tenant_id = sqlc.arg(tenant_id)
+  AND scan_frequency IS NULL
+  AND status = 'active';

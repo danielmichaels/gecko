@@ -96,15 +96,17 @@ func DomainSearchByNameRowToDomains(rows []store.DomainsSearchByNameRow) []store
 	domains := make([]store.Domains, len(rows))
 	for i, row := range rows {
 		domains[i] = store.Domains{
-			ID:         row.ID,
-			Uid:        row.Uid,
-			TenantID:   row.TenantID,
-			Name:       row.Name,
-			DomainType: row.DomainType,
-			Source:     row.Source,
-			Status:     row.Status,
-			CreatedAt:  row.CreatedAt,
-			UpdatedAt:  row.UpdatedAt,
+			ID:            row.ID,
+			Uid:           row.Uid,
+			TenantID:      row.TenantID,
+			Name:          row.Name,
+			DomainType:    row.DomainType,
+			Source:        row.Source,
+			Status:        row.Status,
+			LastScannedAt: row.LastScannedAt,
+			NextScanAt:    row.NextScanAt,
+			CreatedAt:     row.CreatedAt,
+			UpdatedAt:     row.UpdatedAt,
 		}
 	}
 	return domains
@@ -117,15 +119,17 @@ func DomainsListByTenantIDToDomains(rows []store.DomainsListByTenantIDRow) []sto
 	domains := make([]store.Domains, len(rows))
 	for i, row := range rows {
 		domains[i] = store.Domains{
-			ID:         row.ID,
-			Uid:        row.Uid,
-			TenantID:   row.TenantID,
-			Name:       row.Name,
-			DomainType: row.DomainType,
-			Source:     row.Source,
-			Status:     row.Status,
-			CreatedAt:  row.CreatedAt,
-			UpdatedAt:  row.UpdatedAt,
+			ID:            row.ID,
+			Uid:           row.Uid,
+			TenantID:      row.TenantID,
+			Name:          row.Name,
+			DomainType:    row.DomainType,
+			Source:        row.Source,
+			Status:        row.Status,
+			LastScannedAt: row.LastScannedAt,
+			NextScanAt:    row.NextScanAt,
+			CreatedAt:     row.CreatedAt,
+			UpdatedAt:     row.UpdatedAt,
 		}
 	}
 	return domains

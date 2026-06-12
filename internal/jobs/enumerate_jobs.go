@@ -144,7 +144,7 @@ func (w *EnumerateSubdomainWorker) processDiscoveredHost(
 	}, DomainScanOptions{
 		EnumerateSubdomains: false, // bounded: discovered hosts don't re-enumerate
 		ParentScanID:        &parentScanID,
-		Source:              store.DomainSourceDiscovered,
+		Source:              store.ScanSourceDiscovered,
 		Force:               false, // discovered scans are subject to the recency guard
 		RecencyWindow:       window,
 	})

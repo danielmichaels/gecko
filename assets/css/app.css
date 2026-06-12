@@ -414,7 +414,7 @@ body{
 /* ---------- Scans feed ---------- */
 .stat.changed .v{color:var(--info)}
 .stat.clean .v{color:var(--ok)}
-.chip.src-user i{background:var(--brand)} .chip.src-disc i{background:var(--info)}
+.chip.src-user i{background:var(--brand)} .chip.src-disc i{background:var(--info)} .chip.src-sched i{background:#a78bfa}
 
 /* chronological feed / timeline spine */
 .feed{position:relative;padding-left:30px}
@@ -442,6 +442,7 @@ body{
 .src{font-family:var(--mono);font-size:9px;letter-spacing:1px;text-transform:uppercase;border-radius:4px;padding:2px 7px;border:1px solid var(--line)}
 .src.src-user{color:var(--brand);border-color:var(--brand-dim);background:var(--brand-soft)}
 .src.src-disc{color:var(--info);border-color:rgba(90,167,255,.4);background:var(--info-bg)}
+.src.src-sched{color:#a78bfa;border-color:rgba(167,139,250,.4);background:rgba(167,139,250,.1)}
 .chain{font-family:var(--mono);font-size:10px;color:var(--txt-faint);display:inline-flex;align-items:center;gap:5px}
 .chain a{color:var(--txt-dim);text-decoration:none;border-bottom:1px dotted var(--line)}
 .chain a:hover{color:var(--info)}

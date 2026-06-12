@@ -18,7 +18,7 @@ func seedScanRow(
 	pc *testhelpers.PostgresContainer,
 	tenantID int32,
 	d store.DomainsInsertRow,
-	source store.DomainSource,
+	source store.ScanSource,
 	parent pgtype.Int8,
 ) store.Scans {
 	t.Helper()
@@ -131,9 +131,9 @@ func TestScansAPI(t *testing.T) {
 	disc := seedDomain(t, ctx, pc, tenantA, "disc.example.org")
 	other := seedDomain(t, ctx, pc, tenantB, "other.com")
 
-	recent := seedScanRow(t, ctx, pc, tenantA, acme, store.DomainSourceUserSupplied, pgtype.Int8{})
+	recent := seedScanRow(t, ctx, pc, tenantA, acme, store.ScanSourceUserSupplied, pgtype.Int8{})
 	seedObs(t, ctx, pc, tenantA, acme, recent.ID, "a1", "created")
-	discScan := seedScanRow(t, ctx, pc, tenantA, disc, store.DomainSourceDiscovered, pgtype.Int8{})
+	discScan := seedScanRow(t, ctx, pc, tenantA, disc, store.ScanSourceDiscovered, pgtype.Int8{})
 	seedObs(t, ctx, pc, tenantA, disc, discScan.ID, "a1", "created")
 	otherScan := seedScanRow(
 		t,
@@ -141,7 +141,7 @@ func TestScansAPI(t *testing.T) {
 		pc,
 		tenantB,
 		other,
-		store.DomainSourceUserSupplied,
+		store.ScanSourceUserSupplied,
 		pgtype.Int8{},
 	)
 	seedObs(t, ctx, pc, tenantB, other, otherScan.ID, "a1", "created")
@@ -256,7 +256,7 @@ func TestScansAPI(t *testing.T) {
 	t.Run("changed_only hides clean re-scans, keeps baselines", func(t *testing.T) {
 		clean := seedScanRow(
 			t, ctx, pc, tenantA, acme,
-			store.DomainSourceUserSupplied,
+			store.ScanSourceUserSupplied,
 			pgtype.Int8{Int64: recent.ID, Valid: true},
 		)
 

@@ -166,6 +166,11 @@ func (s *Service) APIKeysService() *APIKeysService {
 	return &APIKeysService{s}
 }
 
+// SettingsService returns the Settings sub-service.
+func (s *Service) SettingsService() *SettingsService {
+	return &SettingsService{s}
+}
+
 // riverScheduler is the production DomainScanScheduler that delegates to
 // jobs.EnqueueDomainScan with the same options the former scheduleUserDomainScan used.
 type riverScheduler struct {
@@ -182,7 +187,7 @@ func (r *riverScheduler) Schedule(
 ) (int64, error) {
 	return jobs.EnqueueDomainScan(ctx, r.rc, tx, st, target, jobs.DomainScanOptions{
 		EnumerateSubdomains: true,
-		Source:              source,
+		Source:              store.ScanSource(source),
 		Force:               true,
 		RecencyWindow:       r.conf.AppConf.ScanRecencyWindow,
 		Concurrency:         r.conf.AppConf.EnumerationConcurrencyLimit,
