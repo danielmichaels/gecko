@@ -3,7 +3,7 @@
 # verify-auth-e2e.sh — start the gecko server, wait for it to be healthy, run
 # scripts/verify-auth.sh against it, then stop the server. Assumes Postgres is already
 # up and migrated (the `verify:auth` Task target handles that). Port comes from
-# API_SERVER_PORT (defaults to 7070).
+# GECKO_HTTP_PORT (defaults to 7070).
 #
 # Lives in a real bash script rather than inline in the Taskfile because Task's
 # embedded shell does not support background-job `$!` under `set -u`.
@@ -11,7 +11,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-BASE="http://localhost:${API_SERVER_PORT:-7070}"
+BASE="http://localhost:${GECKO_HTTP_PORT:-7070}"
 LOG="$(mktemp -t gecko-verify-serve.XXXXXX)"
 BIN="$(mktemp -t gecko-verify-bin.XXXXXX)"
 

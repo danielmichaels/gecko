@@ -24,7 +24,7 @@
 
 ## Local Services
 
-- Local Postgres and supporting services are managed through `Taskfile.yml` and `zarf/compose/docker-compose.yml`.
+- Local Postgres and supporting services are managed through `Taskfile.yml` and `compose.yaml` (the `dev` profile).
 - Use `rtk task compose:up` to start the local stack and run migrations/seed data.
 - Use `rtk task compose:down` to stop the local stack.
 - Schema migrations use Goose via `rtk task db:migration:*`.

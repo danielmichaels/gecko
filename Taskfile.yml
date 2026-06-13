@@ -10,8 +10,8 @@ vars:
   DATABASE_TYPE: "postgres"
   DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?sslmode=${POSTGRES_SSL_MODE}
   DATABASE_CONTAINER_NAME: db
-  DOCKER_COMPOSE_LOCAL: ./zarf/compose/docker-compose.yml
-  DOCKERFILE: ./zarf/docker/Dockerfile
+  DOCKER_COMPOSE_LOCAL: ./compose.yaml
+  DOCKERFILE: ./Dockerfile
 
 tasks:
   default:
@@ -50,7 +50,7 @@ tasks:
   compose:up:
     desc: Run local compose
     cmds:
-      - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} up  --wait -d
+      - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} --profile ${COMPOSE_PROFILE:-dev} up --wait -d
       - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} exec {{.DATABASE_CONTAINER_NAME}} /bin/sh -c 'until pg_isready; do sleep 1; done'
       - task: db:migration:up
       - task: river:migration:up
