@@ -50,7 +50,7 @@ tasks:
   compose:up:
     desc: Run local compose
     cmds:
-      - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} --profile dev up --wait -d
+      - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} --profile ${COMPOSE_PROFILE:-dev} up --wait -d
       - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} exec {{.DATABASE_CONTAINER_NAME}} /bin/sh -c 'until pg_isready; do sleep 1; done'
       - task: db:migration:up
       - task: river:migration:up

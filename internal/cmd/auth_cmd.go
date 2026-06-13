@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -10,10 +9,6 @@ import (
 
 	"github.com/carlmjohnson/requests"
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/danielmichaels/gecko/internal/auth"
-	"github.com/danielmichaels/gecko/internal/store"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"gopkg.in/yaml.v3"
 )
 
@@ -153,7 +148,8 @@ type BootstrapCmd struct {
 
 // Run creates (idempotently) the first owner and credentials directly in the
 // database, adopting the existing tenant if one is present. Intended to make a
-// pre-auth single-tenant install reachable, or to seed a fresh install.
+// pre-auth single-tenant install reachable, or to seed a fresh install. As an
+// explicit operator action it (re)sets the owner's password.
 func (b *BootstrapCmd) Run(g *Globals) error {
 	setup, err := NewSetup("bootstrap", WithSilentLogging())
 	if err != nil {
@@ -161,54 +157,18 @@ func (b *BootstrapCmd) Run(g *Globals) error {
 	}
 	defer setup.Close()
 
-	ctx := setup.Ctx
-	q := setup.Store
-	email := strings.ToLower(strings.TrimSpace(b.Email))
-
-	// Adopt the existing tenant (lowest id) so current single-tenant data becomes
-	// reachable; create one only if the install has none.
-	var tenantID int32
-	err = setup.PgxPool.QueryRow(ctx, `SELECT id FROM tenants ORDER BY id LIMIT 1`).Scan(&tenantID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		t, cerr := q.TenantCreate(ctx, b.TenantName)
-		if cerr != nil {
-			return fmt.Errorf("create tenant: %w", cerr)
-		}
-		tenantID = t.ID
-	} else if err != nil {
-		return fmt.Errorf("look up tenant: %w", err)
-	}
-
-	var userID int32
-	existing, err := q.UserGetByEmail(ctx, email)
-	switch {
-	case err == nil:
-		userID = existing.ID
-	case errors.Is(err, pgx.ErrNoRows):
-		u, perr := q.UserProvision(ctx, store.UserProvisionParams{
-			TenantID: pgtype.Int4{Int32: tenantID, Valid: true},
-			Email:    email,
-			Role:     store.UserRoleOwner,
-		})
-		if perr != nil {
-			return fmt.Errorf("provision owner: %w", perr)
-		}
-		userID = u.ID
-	default:
-		return fmt.Errorf("look up user: %w", err)
-	}
-
-	hash, err := auth.HashPassword(b.Password, setup.Config.Auth.BcryptCost)
+	tenantID, _, err := bootstrapOwner(
+		setup.Ctx, setup.PgxPool, setup.Store, setup.Config.Auth.BcryptCost,
+		bootstrapParams{Email: b.Email, Password: b.Password, TenantName: b.TenantName},
+		true,
+	)
 	if err != nil {
-		return fmt.Errorf("hash password: %w", err)
+		return err
 	}
-	if err := q.UserCredentialUpsert(ctx, store.UserCredentialUpsertParams{
-		UserID:       userID,
-		PasswordHash: hash,
-	}); err != nil {
-		return fmt.Errorf("set credentials: %w", err)
-	}
-
-	fmt.Printf("Bootstrapped owner %s on tenant id=%d\n", email, tenantID)
+	fmt.Printf(
+		"Bootstrapped owner %s on tenant id=%d\n",
+		strings.ToLower(strings.TrimSpace(b.Email)),
+		tenantID,
+	)
 	return nil
 }

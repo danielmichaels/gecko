@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/danielmichaels/gecko/internal/config"
 	"github.com/danielmichaels/gecko/internal/server"
@@ -42,6 +43,35 @@ func (s *ServeCmd) Run() error {
 	defer setup.Close()
 
 	dbtx := store.New(setup.PgxPool)
+
+	if email, pass := setup.Config.Bootstrap.Email, setup.Config.Bootstrap.Password; email != "" &&
+		pass != "" {
+		_, created, berr := bootstrapOwner(
+			setup.Ctx,
+			setup.PgxPool,
+			dbtx,
+			setup.Config.Auth.BcryptCost,
+			bootstrapParams{
+				Email:      email,
+				Password:   pass,
+				TenantName: setup.Config.Bootstrap.TenantName,
+			},
+			false,
+		)
+		if berr != nil {
+			return fmt.Errorf("auto-bootstrap owner: %w", berr)
+		}
+		if created {
+			setup.Logger.Info(
+				"auto-bootstrap: provisioned owner",
+				"email",
+				strings.ToLower(strings.TrimSpace(email)),
+			)
+		} else {
+			setup.Logger.Info("auto-bootstrap: owner already present; skipped")
+		}
+	}
+
 	app, err := server.New(setup.Config, setup.Logger, dbtx, setup.PgxPool, setup.RC)
 	if err != nil {
 		return err

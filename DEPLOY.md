@@ -67,15 +67,20 @@ River) are applied automatically — there is no separate migration command to r
 
 ## 4. Create the first owner
 
-There is no seeded login. Bootstrap the first owner + tenant directly (run after the stack is
-up so migrations have applied):
+There is no seeded login — provision the first owner + tenant one of two ways.
+
+**Auto-bootstrap (optional).** Set `GECKO_BOOTSTRAP_EMAIL` + `GECKO_BOOTSTRAP_PASSWORD` in
+`.env` and `serve` provisions the owner on startup. It is create-if-absent, so restarts never
+overwrite a password you later change in-app. You can unset them again once the owner exists.
+
+**Manual.** Bootstrap directly (run after the stack is up so migrations have applied):
 
 ```bash
 docker compose run --rm serve auth bootstrap --help   # see required flags
 docker compose run --rm serve auth bootstrap ...       # create the owner
 ```
 
-Then sign in at your public URL.
+Either way, sign in at your public URL.
 
 ## 5. Reverse proxy + TLS
 

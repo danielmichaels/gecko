@@ -11,11 +11,21 @@ import (
 )
 
 type Conf struct {
-	Mail    mailConf
-	Db      dbConf
-	Auth    authConf
-	AppConf appConf
-	Server  serverConf
+	Bootstrap bootstrapConf
+	Mail      mailConf
+	Db        dbConf
+	Auth      authConf
+	AppConf   appConf
+	Server    serverConf
+}
+
+// bootstrapConf drives optional auto-bootstrap on `serve` startup: when Email and
+// Password are both set, the server provisions the owner once (create-if-absent,
+// so a restart never overwrites a changed password). Leave empty to disable.
+type bootstrapConf struct {
+	Email      string `env:"GECKO_BOOTSTRAP_EMAIL,default="`
+	Password   string `env:"GECKO_BOOTSTRAP_PASSWORD,default="`
+	TenantName string `env:"GECKO_BOOTSTRAP_TENANT_NAME,default=default"`
 }
 
 type dbConf struct {
@@ -144,7 +154,7 @@ type appConf struct {
 	CertExpiryMediumDays int `env:"CERT_EXPIRY_MEDIUM_DAYS,default=30"`
 }
 type serverConf struct {
-	APIPort      int           `env:"API_SERVER_PORT,default=9090"`
+	APIPort      int           `env:"GECKO_HTTP_PORT,default=9090"`
 	TimeoutRead  time.Duration `env:"SERVER_TIMEOUT_READ,default=5s"`
 	TimeoutIdle  time.Duration `env:"SERVER_TIMEOUT_IDLE,default=5s"`
 	TimeoutWrite time.Duration `env:"SERVER_TIMEOUT_WRITE,default=5s"`

@@ -38,7 +38,7 @@ POSTGRES_PASSWORD=dbuser
 POSTGRES_PORT=5400
 POSTGRES_SSL_MODE=disable
 
-API_SERVER_PORT=7070
+GECKO_HTTP_PORT=7070
 SIGNUP_ENABLED=true
 # optional: speed up password hashing for local poking (prod default is 12)
 AUTH_BCRYPT_COST=10
