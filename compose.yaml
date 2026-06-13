@@ -38,14 +38,15 @@ services:
     depends_on:
       db: { condition: service_healthy }   # not serve, so this stays valid under the dev profile
 
-  mailpit:                             # dev-only SMTP catcher
-    image: axllent/mailpit:latest
-    profiles: [dev]
-    restart: always
-    networks: [gecko]
-    ports:
-      - "127.0.0.1:8025:8025"          # web UI
-      - "127.0.0.1:1025:1025"          # SMTP
+# uncomment for local smtp testing
+  #mailpit:                             # dev-only SMTP catcher
+  #  image: axllent/mailpit:latest
+  #  profiles: [dev]
+  #  restart: always
+  #  networks: [gecko]
+  #  ports:
+  #    - "127.0.0.1:8025:8025"          # web UI
+  #    - "127.0.0.1:1025:1025"          # SMTP
 
   migrate:
     image: ${GECKO_IMAGE:-ghcr.io/danielmichaels/gecko:latest}
