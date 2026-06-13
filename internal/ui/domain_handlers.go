@@ -439,6 +439,12 @@ func (h *Handlers) handleDomainStatusToggle(w http.ResponseWriter, r *http.Reque
 	// Open SSE only on success, then patch the header in place: the badge appears/
 	// disappears and the lifecycle cluster re-renders for the new state (primary
 	// action flips, the overflow menu's contents change).
+	defaultFreq, _ := h.svc.SettingsService().GetScanSettings(r.Context(), p)
+	scanFreq, scanFreqLabel := "", ""
+	if d.ScanFrequency.Valid {
+		scanFreq = string(d.ScanFrequency.ScanFrequency)
+		scanFreqLabel = freqLabel(d.ScanFrequency.ScanFrequency)
+	}
 	sse := datastar.NewSSE(w, r)
 	statusStr := string(d.Status)
 	_ = sse.PatchElementTempl(
@@ -447,11 +453,15 @@ func (h *Handlers) handleDomainStatusToggle(w http.ResponseWriter, r *http.Reque
 	)
 	_ = sse.PatchElementTempl(
 		templates.DomainLifecycleControls(templates.DomainLifecycleProps{
-			UID:               d.Uid,
-			Name:              d.Name,
-			Status:            statusStr,
-			CSRFToken:         CSRFTokenFrom(r.Context()),
-			DeleteImpactCount: deleteImpact,
+			UID:                   d.Uid,
+			Name:                  d.Name,
+			Status:                statusStr,
+			CSRFToken:             CSRFTokenFrom(r.Context()),
+			DeleteImpactCount:     deleteImpact,
+			ScanFrequency:         scanFreq,
+			ScanFrequencyLabel:    scanFreqLabel,
+			EffectiveDefaultLabel: freqLabel(defaultFreq),
+			CanManage:             service.OwnerOrManager(p),
 		}),
 		datastar.WithSelectorID("domain-lifecycle-actions"),
 	)
