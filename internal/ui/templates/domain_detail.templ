@@ -27,7 +27,6 @@ templ DomainDetailPage(props DomainDetailPageProps) {
 						@DomainLifecycleControls(props.Lifecycle())
 					}
 				</div>
-				@DomainCadencePanel(props)
 				<div class="tabs">
 					<a data-on:click__prevent="$tab = 'records'" data-class="{'active': $tab === 'records'}">Records</a>
 					<a
@@ -150,6 +149,25 @@ templ DomainLifecycleControls(p DomainLifecycleProps) {
 					</button>
 					<div class="user-menu-sep"></div>
 				}
+				if p.CanManage {
+					<div class="lc-cadence">
+						<span class="lc-cadence-lbl">Scan cadence</span>
+						<div class="cadence-sel">
+							<select
+								data-bind="scanFrequency"
+								data-on:change={ "$lcMenu = false; " + postWithCSRF("/app/domains/"+p.UID+"/scan-frequency", p.CSRFToken) }
+							>
+								<option value="">Use default ({ p.EffectiveDefaultLabel })</option>
+								<option value="hourly">Hourly</option>
+								<option value="six_hourly">Every 6h</option>
+								<option value="daily">Daily</option>
+								<option value="weekly">Weekly</option>
+								<option value="off">Off</option>
+							</select>
+						</div>
+					</div>
+					<div class="user-menu-sep"></div>
+				}
 				<button
 					class="user-menu-item danger-soft"
 					type="button"
@@ -159,46 +177,6 @@ templ DomainLifecycleControls(p DomainLifecycleProps) {
 					<span class="ico">✕</span> Delete domain…
 				</button>
 			</div>
-		</div>
-	</div>
-}
-
-// DomainCadencePanel renders the per-domain scan cadence control. When the
-// caller can manage domains, a select with the five presets plus an "inherit"
-// option is rendered; otherwise the current effective cadence is shown read-only.
-templ DomainCadencePanel(props DomainDetailPageProps) {
-	<div class="panel set-panel" style="margin-bottom:18px">
-		<div class="panel-h">
-			Scan cadence
-		</div>
-		<div class="set-body">
-			<p class="set-note">
-				Override the scan cadence for this domain. Leave as "Use default" to inherit the tenant setting.
-			</p>
-			if props.CanManage {
-				<label class="lbl">Cadence</label>
-				<select class="inp" data-bind="scanFrequency">
-					<option value="">Use default ({ props.EffectiveDefaultLabel })</option>
-					<option value="hourly">Hourly</option>
-					<option value="six_hourly">Every 6h</option>
-					<option value="daily">Daily</option>
-					<option value="weekly">Weekly</option>
-					<option value="off">Off</option>
-				</select>
-				<button
-					class="btn set-pw-btn"
-					type="button"
-					data-on:click={ postWithCSRF("/app/domains/"+props.UID+"/scan-frequency", props.Shell.CSRFToken) }
-				>Save cadence</button>
-			} else {
-				<div class="set-note">
-					if props.ScanFrequency == "" {
-						Using default ({ props.EffectiveDefaultLabel })
-					} else {
-						{ props.ScanFrequencyLabel }
-					}
-				</div>
-			}
 		</div>
 	</div>
 }

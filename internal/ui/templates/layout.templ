@@ -10,8 +10,8 @@ templ Page(title string) {
 			<link rel="preconnect" href="https://fonts.googleapis.com"/>
 			<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 			<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
-			<link rel="stylesheet" href="/static/app.css"/>
-			<script type="module" src="/static/datastar.js"></script>
+			<link rel="stylesheet" href={ staticURL("/static/app.css") }/>
+			<script type="module" src={ staticURL("/static/datastar.js") }></script>
 		</head>
 		<body>
 			{ children... }
@@ -20,8 +20,14 @@ templ Page(title string) {
 }
 
 templ AppShell(props AppShellProps) {
-	<div class="app">
+	<div class="app" data-signals='{"mobileNav":false}'>
 		<div class="topbar">
+			<button
+				type="button"
+				class="nav-toggle"
+				aria-label="Toggle navigation"
+				data-on:click="$mobileNav = !$mobileNav"
+			>☰</button>
 			<div class="brand">
 				<span class="logo">🦎</span>
 				<span>ge<b>cko</b></span>
@@ -40,7 +46,7 @@ templ AppShell(props AppShellProps) {
 						data-on:click="$userMenu = !$userMenu"
 					>
 						<span class="avatar">{ props.UserInitials }</span>
-						<span>{ props.UserEmail } ▾</span>
+						<span class="email">{ props.UserEmail } ▾</span>
 					</button>
 					<div
 						class="user-menu-backdrop"
@@ -65,7 +71,8 @@ templ AppShell(props AppShellProps) {
 				</div>
 			</div>
 		</div>
-		<nav class="side">
+		<div class="nav-scrim" data-class="{'open': $mobileNav}" data-on:click="$mobileNav = false"></div>
+			<nav class="side" data-class="{'open': $mobileNav}">
 			<div class="nav-label">Monitor</div>
 			<div class="nav">
 				if props.ActiveNav == "domains" {
@@ -86,11 +93,6 @@ templ AppShell(props AppShellProps) {
 			</div>
 			<div class="nav-label" style="margin-top:18px">Workspace</div>
 			<div class="nav">
-				if props.ActiveNav == "dashboard" {
-					<a class="active" href="/app/dashboard"><span class="ico">⊞</span> Dashboard</a>
-				} else {
-					<a class="soon" href="/app/dashboard"><span class="ico">⊞</span> Dashboard <span class="soon-tag">SOON</span></a>
-				}
 				if props.ActiveNav == "team" {
 					<a class="active" href="/app/team"><span class="ico">⊕</span> Team</a>
 				} else {

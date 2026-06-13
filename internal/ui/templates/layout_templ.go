@@ -42,7 +42,33 @@ func Page(title string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</title><link rel=\"preconnect\" href=\"https://fonts.googleapis.com\"><link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin><link href=\"https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap\" rel=\"stylesheet\"><link rel=\"stylesheet\" href=\"/static/app.css\"><script type=\"module\" src=\"/static/datastar.js\"></script></head><body>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</title><link rel=\"preconnect\" href=\"https://fonts.googleapis.com\"><link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin><link href=\"https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap\" rel=\"stylesheet\"><link rel=\"stylesheet\" href=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var3 templ.SafeURL
+		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinURLErrs(staticURL("/static/app.css"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/layout.templ`, Line: 13, Col: 61}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\"><script type=\"module\" src=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var4 string
+		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(staticURL("/static/datastar.js"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/layout.templ`, Line: 14, Col: 63}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "\"></script></head><body>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -50,7 +76,7 @@ func Page(title string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</body></html>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</body></html>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -74,114 +100,103 @@ func AppShell(props AppShellProps) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var3 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var3 == nil {
-			templ_7745c5c3_Var3 = templ.NopComponent
+		templ_7745c5c3_Var5 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var5 == nil {
+			templ_7745c5c3_Var5 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<div class=\"app\"><div class=\"topbar\"><div class=\"brand\"><span class=\"logo\">🦎</span> <span>ge<b>cko</b></span></div><div class=\"topbar-right\"><div class=\"tenant-chip\"><span class=\"dot\"></span> ")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var4 string
-		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(props.TenantName)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/layout.templ`, Line: 32, Col: 23}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</div><div class=\"user-menu\" data-signals='{\"userMenu\":false}'><button type=\"button\" class=\"user-chip\" aria-haspopup=\"menu\" data-attr:aria-expanded=\"$userMenu\" data-on:click=\"$userMenu = !$userMenu\"><span class=\"avatar\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var5 string
-		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(props.UserInitials)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/layout.templ`, Line: 42, Col: 47}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</span> <span>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<div class=\"app\" data-signals='{\"mobileNav\":false}'><div class=\"topbar\"><button type=\"button\" class=\"nav-toggle\" aria-label=\"Toggle navigation\" data-on:click=\"$mobileNav = !$mobileNav\">☰</button><div class=\"brand\"><span class=\"logo\">🦎</span> <span>ge<b>cko</b></span></div><div class=\"topbar-right\"><div class=\"tenant-chip\"><span class=\"dot\"></span> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var6 string
-		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(props.UserEmail)
+		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(props.TenantName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/layout.templ`, Line: 43, Col: 29}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/layout.templ`, Line: 38, Col: 23}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, " ▾</span></button><div class=\"user-menu-backdrop\" style=\"display:none\" data-show=\"$userMenu\" data-on:click=\"$userMenu = false\"></div><div class=\"user-menu-pop\" role=\"menu\" style=\"display:none\" data-show=\"$userMenu\"><a class=\"user-menu-item\" role=\"menuitem\" href=\"/app/settings\"><span class=\"ico\">⚙</span> Settings</a><div class=\"user-menu-sep\"></div><button type=\"button\" class=\"user-menu-item danger\" role=\"menuitem\" data-on:click=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</div><div class=\"user-menu\" data-signals='{\"userMenu\":false}'><button type=\"button\" class=\"user-chip\" aria-haspopup=\"menu\" data-attr:aria-expanded=\"$userMenu\" data-on:click=\"$userMenu = !$userMenu\"><span class=\"avatar\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var7 string
-		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(logoutAction(props.CSRFToken))
+		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(props.UserInitials)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/layout.templ`, Line: 60, Col: 52}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/layout.templ`, Line: 48, Col: 47}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "\"><span class=\"ico\">⤴</span> Log out</button></div></div></div></div><nav class=\"side\"><div class=\"nav-label\">Monitor</div><div class=\"nav\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</span> <span class=\"email\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var8 string
+		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(props.UserEmail)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/layout.templ`, Line: 49, Col: 43}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, " ▾</span></button><div class=\"user-menu-backdrop\" style=\"display:none\" data-show=\"$userMenu\" data-on:click=\"$userMenu = false\"></div><div class=\"user-menu-pop\" role=\"menu\" style=\"display:none\" data-show=\"$userMenu\"><a class=\"user-menu-item\" role=\"menuitem\" href=\"/app/settings\"><span class=\"ico\">⚙</span> Settings</a><div class=\"user-menu-sep\"></div><button type=\"button\" class=\"user-menu-item danger\" role=\"menuitem\" data-on:click=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var9 string
+		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(logoutAction(props.CSRFToken))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/layout.templ`, Line: 66, Col: 52}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "\"><span class=\"ico\">⤴</span> Log out</button></div></div></div></div><div class=\"nav-scrim\" data-class=\"{'open': $mobileNav}\" data-on:click=\"$mobileNav = false\"></div><nav class=\"side\" data-class=\"{'open': $mobileNav}\"><div class=\"nav-label\">Monitor</div><div class=\"nav\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if props.ActiveNav == "domains" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<a class=\"active\" href=\"/app/domains\"><span class=\"ico\">◳</span> Domains</a> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<a class=\"active\" href=\"/app/domains\"><span class=\"ico\">◳</span> Domains</a> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<a href=\"/app/domains\"><span class=\"ico\">◳</span> Domains</a> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<a href=\"/app/domains\"><span class=\"ico\">◳</span> Domains</a> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if props.ActiveNav == "findings" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<a class=\"active\" href=\"/app/findings\"><span class=\"ico\">⚠</span> Findings</a> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<a class=\"active\" href=\"/app/findings\"><span class=\"ico\">⚠</span> Findings</a> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<a href=\"/app/findings\"><span class=\"ico\">⚠</span> Findings</a> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<a href=\"/app/findings\"><span class=\"ico\">⚠</span> Findings</a> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if props.ActiveNav == "scans" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<a class=\"active\" href=\"/app/scans\"><span class=\"ico\">◎</span> Scans</a>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<a class=\"active\" href=\"/app/scans\"><span class=\"ico\">◎</span> Scans</a>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<a href=\"/app/scans\"><span class=\"ico\">◎</span> Scans</a>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "<a href=\"/app/scans\"><span class=\"ico\">◎</span> Scans</a>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</div><div class=\"nav-label\" style=\"margin-top:18px\">Workspace</div><div class=\"nav\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</div><div class=\"nav-label\" style=\"margin-top:18px\">Workspace</div><div class=\"nav\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
-		}
-		if props.ActiveNav == "dashboard" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "<a class=\"active\" href=\"/app/dashboard\"><span class=\"ico\">⊞</span> Dashboard</a> ")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<a class=\"soon\" href=\"/app/dashboard\"><span class=\"ico\">⊞</span> Dashboard <span class=\"soon-tag\">SOON</span></a> ")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
 		}
 		if props.ActiveNav == "team" {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<a class=\"active\" href=\"/app/team\"><span class=\"ico\">⊕</span> Team</a> ")
@@ -209,12 +224,12 @@ func AppShell(props AppShellProps) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var8 string
-		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(props.AppVersion)
+		var templ_7745c5c3_Var10 string
+		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(props.AppVersion)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/layout.templ`, Line: 106, Col: 22}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/layout.templ`, Line: 108, Col: 22}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -237,7 +252,7 @@ func AppShell(props AppShellProps) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templ_7745c5c3_Var3.Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = templ_7745c5c3_Var5.Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

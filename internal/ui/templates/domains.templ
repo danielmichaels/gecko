@@ -179,16 +179,18 @@ templ DomainGroupRow(g DomainGroupView, csrfToken string, canManage bool) {
 				@RollupDots(g.Rollup)
 			}
 		</div>
-		<span class="cell-mono">{ g.Header.RecordCount }</span>
-		<span>
-			<span class={ "badge", g.FindingsSeverity }>
-				if g.FindingsSeverity == "info" && g.FindingsLabel == "scanning" {
-					<span class="pulse"></span>
-				}
-				{ g.FindingsLabel }
+		<span class="row-metrics">
+			<span class="cell-mono cell-rec">{ g.Header.RecordCount }</span>
+			<span class="cell-find">
+				<span class={ "badge", g.FindingsSeverity }>
+					if g.FindingsSeverity == "info" && g.FindingsLabel == "scanning" {
+						<span class="pulse"></span>
+					}
+					{ g.FindingsLabel }
+				</span>
 			</span>
+			<span class="cell-mono cell-scan">{ g.Header.LastScan }</span>
 		</span>
-		<span class="cell-mono">{ g.Header.LastScan }</span>
 		<span class="chev">→</span>
 	</div>
 	for i, c := range g.Children {
@@ -210,16 +212,18 @@ templ DomainChildRow(c DomainRowView, apex string, last bool, csrfToken string, 
 				<span class="sdot"></span>
 				<span class="n"><span class="lead"><b>{ childLabel(c.Name, apex) }</b>.{ apex }</span></span>
 			</div>
-			<span class="cell-mono">{ c.RecordCount }</span>
-			<span>
-				<span class={ "badge", c.FindingsSeverity }>
-					if c.FindingsSeverity == "info" && c.FindingsLabel == "scanning" {
-						<span class="pulse"></span>
-					}
-					{ c.FindingsLabel }
+			<span class="row-metrics">
+				<span class="cell-mono cell-rec">{ c.RecordCount }</span>
+				<span class="cell-find">
+					<span class={ "badge", c.FindingsSeverity }>
+						if c.FindingsSeverity == "info" && c.FindingsLabel == "scanning" {
+							<span class="pulse"></span>
+						}
+						{ c.FindingsLabel }
+					</span>
 				</span>
+				<span class="cell-mono cell-scan">{ c.LastScan }</span>
 			</span>
-			<span class="cell-mono">{ c.LastScan }</span>
 		</a>
 		<span class="chev" style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
 			if canManage {
@@ -265,16 +269,18 @@ templ DomainRow(d DomainRowView, csrfToken string, canManage bool) {
 				<span class="sdot"></span>
 				<span class="n">{ d.Name }</span>
 			</div>
-			<span class="cell-mono">{ d.RecordCount }</span>
-			<span>
-				<span class={ "badge", d.FindingsSeverity }>
-					if d.FindingsSeverity == "info" && d.FindingsLabel == "scanning" {
-						<span class="pulse"></span>
-					}
-					{ d.FindingsLabel }
+			<span class="row-metrics">
+				<span class="cell-mono cell-rec">{ d.RecordCount }</span>
+				<span class="cell-find">
+					<span class={ "badge", d.FindingsSeverity }>
+						if d.FindingsSeverity == "info" && d.FindingsLabel == "scanning" {
+							<span class="pulse"></span>
+						}
+						{ d.FindingsLabel }
+					</span>
 				</span>
+				<span class="cell-mono cell-scan">{ d.LastScan }</span>
 			</span>
-			<span class="cell-mono">{ d.LastScan }</span>
 		</a>
 		<span class="chev" style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
 			if canManage {

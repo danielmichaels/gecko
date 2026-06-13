@@ -1,9 +1,42 @@
 package templates
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
+	"sync"
+
+	"github.com/danielmichaels/gecko/assets"
 )
+
+// staticURL appends a short content hash to an embedded static asset path so a
+// changed asset busts the browser cache (the file server ignores the query
+// string). The hash is derived from the go:embed bytes — fixed at build time —
+// so it is computed once per path and cached. A missing asset is returned
+// unchanged rather than failing the render.
+var (
+	staticVerMu sync.Mutex
+	staticVers  = map[string]string{}
+)
+
+func staticURL(path string) string {
+	staticVerMu.Lock()
+	v, ok := staticVers[path]
+	if !ok {
+		if b, err := assets.EmbeddedAssets.ReadFile(strings.TrimPrefix(path, "/")); err == nil {
+			sum := sha256.Sum256(b)
+			v = hex.EncodeToString(sum[:])[:10]
+		}
+		staticVers[path] = v
+	}
+	staticVerMu.Unlock()
+	if v == "" {
+		return path
+	}
+	return path + "?v=" + v
+}
 
 // postWithCSRF returns a datastar data-on-click action string that POSTs to url
 // carrying the CSRF token in the X-CSRF-Token header.
@@ -239,21 +272,31 @@ type DomainDetailPageProps struct {
 // (primary action + overflow menu) need. It is rendered both inline on first load
 // and re-patched over SSE after a status flip, so it lives as a standalone fragment.
 type DomainLifecycleProps struct {
-	UID               string
-	Name              string
-	Status            string
-	CSRFToken         string
-	DeleteImpactCount int
+	UID       string
+	Name      string
+	Status    string
+	CSRFToken string
+	// Scan cadence now lives inside the overflow menu, so the fragment carries the
+	// same cadence data the standalone panel used to.
+	ScanFrequency         string
+	ScanFrequencyLabel    string
+	EffectiveDefaultLabel string
+	DeleteImpactCount     int
+	CanManage             bool
 }
 
 // Lifecycle projects the detail props onto the lifecycle-controls fragment.
 func (p DomainDetailPageProps) Lifecycle() DomainLifecycleProps {
 	return DomainLifecycleProps{
-		UID:               p.UID,
-		Name:              p.Name,
-		Status:            p.Status,
-		CSRFToken:         p.Shell.CSRFToken,
-		DeleteImpactCount: p.DeleteImpactCount,
+		UID:                   p.UID,
+		Name:                  p.Name,
+		Status:                p.Status,
+		CSRFToken:             p.Shell.CSRFToken,
+		DeleteImpactCount:     p.DeleteImpactCount,
+		ScanFrequency:         p.ScanFrequency,
+		ScanFrequencyLabel:    p.ScanFrequencyLabel,
+		EffectiveDefaultLabel: p.EffectiveDefaultLabel,
+		CanManage:             p.CanManage,
 	}
 }
 
