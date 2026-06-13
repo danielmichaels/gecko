@@ -48,6 +48,7 @@ services:
 
   migrate:
     image: ${GECKO_IMAGE:-ghcr.io/danielmichaels/gecko:latest}
+    pull_policy: always
     command: [migrate]                 # goose schema migrations, then exits
     env_file: [.env]
     environment:                       # reach the bundled db on the compose network,
@@ -60,6 +61,7 @@ services:
 
   serve:
     image: ${GECKO_IMAGE:-ghcr.io/danielmichaels/gecko:latest}
+    pull_policy: always
     command: [serve]                   # applies River migrations on startup
     env_file: [.env]
     environment:
@@ -81,6 +83,7 @@ services:
 
   worker:                              # needs UDP/53 + TCP/53 egress (DNS + AXFR)
     image: ${GECKO_IMAGE:-ghcr.io/danielmichaels/gecko:latest}
+    pull_policy: always
     command: [worker]
     env_file: [.env]
     environment:

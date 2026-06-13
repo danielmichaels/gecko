@@ -69,9 +69,19 @@ River) are applied automatically — there is no separate migration command to r
 
 There is no seeded login — provision the first owner + tenant one of two ways.
 
-**Auto-bootstrap (optional).** Set `GECKO_BOOTSTRAP_EMAIL` + `GECKO_BOOTSTRAP_PASSWORD` in
-`.env` and `serve` provisions the owner on startup. It is create-if-absent, so restarts never
-overwrite a password you later change in-app. You can unset them again once the owner exists.
+**Auto-bootstrap (optional).** Set these in `.env` (or your platform's env settings — e.g.
+the Dokploy Environment tab) and `serve` provisions the owner on its next startup:
+
+```bash
+GECKO_BOOTSTRAP_EMAIL=you@example.com
+GECKO_BOOTSTRAP_PASSWORD=<a strong password>   # bcrypt-hashed; effective length capped at 72 bytes
+GECKO_BOOTSTRAP_TENANT_NAME=default            # optional; only used on a fresh, tenant-less install
+```
+
+The owner is created with the `owner` role. It is create-if-absent: if the owner already
+exists the password is left untouched, so restarts never overwrite one you later change
+in-app — you can leave these set, or unset them once the owner exists. Watch for
+`auto-bootstrap: provisioned owner` in the `serve` logs to confirm.
 
 **Manual.** Bootstrap directly (run after the stack is up so migrations have applied):
 
