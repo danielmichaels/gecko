@@ -22,11 +22,11 @@ type NotificationsService struct {
 // NotificationSettings is the read model for a tenant's notification toggles plus
 // the last-sent timestamps (zero when never sent).
 type NotificationSettings struct {
+	LastDigestAt     time.Time
+	LastAlertAt      time.Time
 	DailyDigest      bool
 	HighImpact       bool
 	HighImpactAlerts bool
-	LastDigestAt     time.Time
-	LastAlertAt      time.Time
 }
 
 // defaultNotificationSettings is the system default for a tenant with no settings

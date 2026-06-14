@@ -63,23 +63,23 @@ func RenderDailyDigest(
 			tenantName,
 		) + "</b> since your last digest.</p>",
 	)
-	htmlB.WriteString(fmt.Sprintf(
+	fmt.Fprintf(&htmlB,
 		"<p><b>%d</b> created, <b>%d</b> updated, <b>%d</b> deleted.</p>",
 		s.Created, s.Updated, s.Deleted,
-	))
+	)
 
 	textB.WriteString("What changed across " + tenantName + " since your last digest.\n\n")
-	textB.WriteString(fmt.Sprintf(
+	fmt.Fprintf(&textB,
 		"%d created, %d updated, %d deleted.\n", s.Created, s.Updated, s.Deleted,
-	))
+	)
 
 	if s.HighImpact > 0 {
-		htmlB.WriteString(fmt.Sprintf(
+		fmt.Fprintf(&htmlB,
 			"<h3>%d high-impact change%s</h3><ul>", s.HighImpact, plural(s.HighImpact),
-		))
-		textB.WriteString(fmt.Sprintf(
+		)
+		fmt.Fprintf(&textB,
 			"\nHigh-impact changes (%d):\n", s.HighImpact,
-		))
+		)
 		for _, hi := range highImpact {
 			line := fmt.Sprintf(
 				"%s — %s %s (%s)",
