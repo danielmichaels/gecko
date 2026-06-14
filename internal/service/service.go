@@ -171,6 +171,11 @@ func (s *Service) SettingsService() *SettingsService {
 	return &SettingsService{s}
 }
 
+// NotificationsService returns the Notifications sub-service.
+func (s *Service) NotificationsService() *NotificationsService {
+	return &NotificationsService{s}
+}
+
 // riverScheduler is the production DomainScanScheduler that delegates to
 // jobs.EnqueueDomainScan with the same options the former scheduleUserDomainScan used.
 type riverScheduler struct {

@@ -8,6 +8,7 @@ import (
 	"github.com/danielmichaels/gecko/internal/config"
 	"github.com/danielmichaels/gecko/internal/dnsclient"
 	"github.com/danielmichaels/gecko/internal/mailer"
+	"github.com/danielmichaels/gecko/internal/notify"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -177,6 +178,29 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 			rw,
 			&ScheduledScanWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},
 		)
+		// notifications — the daily digest and the near-real-time high-impact alert
+		// both dispatch across enabled channels; email is the only bearer today and
+		// reuses the send_email job below.
+		river.AddWorker(
+			rw,
+			&DailyDigestWorker{
+				Logger:     *cfg.Logger,
+				Store:      cfg.Store,
+				PgxPool:    cfg.PgxPool,
+				Dispatcher: notify.NewDispatcher(notify.NewEmailChannel(riverEmailEnqueuer{})),
+				Conf:       config.AppConfig(),
+			},
+		)
+		river.AddWorker(
+			rw,
+			&HighImpactAlertWorker{
+				Logger:     *cfg.Logger,
+				Store:      cfg.Store,
+				PgxPool:    cfg.PgxPool,
+				Dispatcher: notify.NewDispatcher(notify.NewEmailChannel(riverEmailEnqueuer{})),
+				Conf:       config.AppConfig(),
+			},
+		)
 		// email
 		emailerOut := cfg.Mailer
 		if emailerOut == nil {
@@ -237,6 +261,37 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 				),
 			)
 		}
+		// Daily notification digest: a leader-singleton hourly tick that does work
+		// only on the configured send hour (the worker gates on it). RunOnStart is
+		// off so a deploy/restart never fires an off-hour digest. Gated by the global
+		// kill-switch; the per-tenant toggle is the fine-grained control.
+		if config.AppConfig().AppConf.NotifyDigestEnabled {
+			riverConfig.PeriodicJobs = append(
+				riverConfig.PeriodicJobs,
+				river.NewPeriodicJob(
+					river.PeriodicInterval(1*time.Hour),
+					func() (river.JobArgs, *river.InsertOpts) {
+						return DailyDigestArgs{}, nil
+					},
+					&river.PeriodicJobOpts{RunOnStart: false},
+				),
+			)
+		}
+		// Near-real-time high-impact alert sweep: a leader-singleton tick on a short
+		// interval that emails opted-in tenants about new critical/high findings.
+		// RunOnStart catches anything that landed while the fleet was down.
+		if config.AppConfig().AppConf.NotifyAlertsEnabled {
+			riverConfig.PeriodicJobs = append(
+				riverConfig.PeriodicJobs,
+				river.NewPeriodicJob(
+					river.PeriodicInterval(alertInterval()),
+					func() (river.JobArgs, *river.InsertOpts) {
+						return HighImpactAlertArgs{}, nil
+					},
+					&river.PeriodicJobOpts{RunOnStart: true},
+				),
+			)
+		}
 	}
 
 	rc, err := river.NewClient(riverpgxv5.New(cfg.PgxPool), riverConfig)
@@ -244,6 +299,16 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 		return nil, err
 	}
 	return rc, nil
+}
+
+// alertInterval returns the high-impact alert sweep interval from config, falling
+// back to 10 minutes when unset or non-positive.
+func alertInterval() time.Duration {
+	d := config.AppConfig().AppConf.NotifyAlertInterval
+	if d <= 0 {
+		return 10 * time.Minute
+	}
+	return d
 }
 
 // enumerationWorkers returns the per-process cap for the enumeration queue,

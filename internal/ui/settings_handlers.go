@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/danielmichaels/gecko/internal/auth"
 	"github.com/danielmichaels/gecko/internal/service"
@@ -43,13 +44,40 @@ func (h *Handlers) handleSettingsGet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	defaultFreq, _ := h.svc.SettingsService().GetScanSettings(r.Context(), p)
+	notify, err := h.svc.NotificationsService().GetNotificationSettings(r.Context(), p)
+	if err != nil {
+		h.log.Error("settings: get notification settings", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	optOut, err := h.svc.NotificationsService().GetMyNotificationOptOut(r.Context(), p)
+	if err != nil {
+		h.log.Error("settings: get user opt-out", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 
 	renderPage(w, r, templates.SettingsPage(templates.SettingsPageProps{
-		Shell:                shell,
-		APIKeys:              apiKeyRows(rows),
-		CanManage:            service.OwnerOrManager(p),
-		DefaultScanFrequency: string(defaultFreq),
+		Shell:                  shell,
+		APIKeys:                apiKeyRows(rows),
+		CanManage:              service.OwnerOrManager(p),
+		DefaultScanFrequency:   string(defaultFreq),
+		NotifyDailyDigest:      notify.DailyDigest,
+		NotifyHighImpact:       notify.HighImpact,
+		NotifyHighImpactAlerts: notify.HighImpactAlerts,
+		NotifyOptOut:           optOut,
+		LastDigestSent:         sentLabel(notify.LastDigestAt),
+		LastAlertSent:          sentLabel(notify.LastAlertAt),
 	}))
+}
+
+// sentLabel renders a last-sent timestamp for the settings panel, or "never" when
+// nothing has been sent yet (zero time).
+func sentLabel(t time.Time) string {
+	if t.IsZero() {
+		return "never"
+	}
+	return t.UTC().Format("2006-01-02 15:04 UTC")
 }
 
 // handleAPIKeyCreate mints a new API key via a datastar SSE POST and reveals the
@@ -231,6 +259,109 @@ func (h *Handlers) handleScanDefaultUpdate(w http.ResponseWriter, r *http.Reques
 	}
 
 	pushToast(sse, newToast("ok", "SCANNING", "Default cadence updated", freqLabel(freq)))
+}
+
+// handleNotificationSettingsUpdate sets the tenant-wide notification toggles (the
+// daily digest and the high-impact highlight). Owner or manager only; ErrForbidden
+// surfaces as a warn toast.
+func (h *Handlers) handleNotificationSettingsUpdate(w http.ResponseWriter, r *http.Request) {
+	p, ok := PrincipalFrom(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var form struct {
+		NotifyDailyDigest      bool `json:"notifyDailyDigest"`
+		NotifyHighImpact       bool `json:"notifyHighImpact"`
+		NotifyHighImpactAlerts bool `json:"notifyHighImpactAlerts"`
+	}
+	if err := datastar.ReadSignals(r, &form); err != nil {
+		h.log.Error("notification settings update: read signals", "error", err)
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	sse := datastar.NewSSE(w, r)
+
+	err := h.svc.NotificationsService().
+		SetNotificationSettings(r.Context(), p, service.NotificationSettings{
+			DailyDigest:      form.NotifyDailyDigest,
+			HighImpact:       form.NotifyHighImpact,
+			HighImpactAlerts: form.NotifyHighImpactAlerts,
+		})
+	if err != nil {
+		if errors.Is(err, service.ErrForbidden) {
+			pushToast(
+				sse,
+				newToast(
+					"warn",
+					"NOTICE",
+					"Permission denied",
+					"You don't have permission to change notification settings",
+				),
+			)
+			return
+		}
+		h.log.Error("notification settings update", "error", err)
+		pushToast(
+			sse,
+			newToast("crit", "ERROR", "Failed to update notifications", "please try again"),
+		)
+		return
+	}
+
+	pushToast(
+		sse,
+		newToast(
+			"ok",
+			"NOTIFICATIONS",
+			"Notification settings updated",
+			digestStateLabel(form.NotifyDailyDigest),
+		),
+	)
+}
+
+// digestStateLabel renders the toast body for a notification-settings save.
+func digestStateLabel(digestOn bool) string {
+	if digestOn {
+		return "daily digest enabled"
+	}
+	return "daily digest disabled"
+}
+
+// handleNotificationOptOutUpdate sets the caller's personal notification opt-out.
+// Self-service: available to any authenticated user, since it only affects mail
+// addressed to that user.
+func (h *Handlers) handleNotificationOptOutUpdate(w http.ResponseWriter, r *http.Request) {
+	p, ok := PrincipalFrom(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var form struct {
+		NotifyOptOut bool `json:"notifyOptOut"`
+	}
+	if err := datastar.ReadSignals(r, &form); err != nil {
+		h.log.Error("notification opt-out update: read signals", "error", err)
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	sse := datastar.NewSSE(w, r)
+
+	if err := h.svc.NotificationsService().SetMyNotificationOptOut(r.Context(), p, form.NotifyOptOut); err != nil {
+		h.log.Error("notification opt-out update", "error", err)
+		pushToast(sse, newToast("crit", "ERROR", "Failed to update preference", "please try again"))
+		return
+	}
+
+	body := "you will receive notification email"
+	if form.NotifyOptOut {
+		body = "notification email muted for your account"
+	}
+	pushToast(sse, newToast("ok", "NOTIFICATIONS", "Preference updated", body))
 }
 
 // patchKeyRows re-renders #apikey-rows from the caller's current key set. Shared

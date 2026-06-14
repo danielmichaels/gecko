@@ -8,7 +8,7 @@ import (
 templ SettingsPage(props SettingsPageProps) {
 	@Page("gecko · Settings") {
 		@AppShell(props.Shell) {
-			<div data-signals={ settingsSignals(props.DefaultScanFrequency) }>
+			<div data-signals={ settingsSignals(props) }>
 				<div class="page-head">
 					<div>
 						<h1>Settings</h1>
@@ -19,6 +19,7 @@ templ SettingsPage(props SettingsPageProps) {
 					@APIKeysPanel(props)
 					@PasswordPanel(props)
 					@ScanningPanel(props)
+					@NotificationsPanel(props)
 				</div>
 			</div>
 		}
@@ -176,6 +177,53 @@ templ ScanningPanel(props SettingsPageProps) {
 	</section>
 }
 
+// NotificationsPanel renders the tenant-wide notification toggles (daily digest,
+// the high-impact highlight within it, and the opt-in near-real-time alert) plus a
+// per-user mute. The tenant Save is owner/manager only, mirroring ScanningPanel; the
+// personal mute is self-service and shown to everyone.
+templ NotificationsPanel(props SettingsPageProps) {
+	<section class="panel set-panel">
+		<div class="panel-h">Notifications</div>
+		<div class="set-body">
+			<p class="set-note">
+				Email owners and managers a daily summary of DNS changes detected across all tracked domains. No email is sent on days with no changes.
+			</p>
+			<label class="set-toggle">
+				<input type="checkbox" data-bind="notifyDailyDigest"/>
+				<span>Daily change digest</span>
+			</label>
+			<label class="set-toggle">
+				<input type="checkbox" data-bind="notifyHighImpact"/>
+				<span>Highlight high-impact findings in the digest (critical &amp; high severity)</span>
+			</label>
+			<label class="set-toggle">
+				<input type="checkbox" data-bind="notifyHighImpactAlerts"/>
+				<span>Send an immediate alert for new high-impact findings</span>
+			</label>
+			<div class="set-note cell-mono">
+				Last digest sent: { props.LastDigestSent } · Last alert sent: { props.LastAlertSent }
+			</div>
+			if props.CanManage {
+				<button
+					class="btn set-pw-btn"
+					type="button"
+					data-on:click={ postWithCSRF("/app/settings/notifications", props.Shell.CSRFToken) }
+				>Save notifications</button>
+			}
+			<hr class="set-sep"/>
+			<label class="set-toggle">
+				<input type="checkbox" data-bind="notifyOptOut"/>
+				<span>Mute all notification email to me ({ props.Shell.UserEmail })</span>
+			</label>
+			<button
+				class="btn set-pw-btn"
+				type="button"
+				data-on:click={ postWithCSRF("/app/settings/notifications/me", props.Shell.CSRFToken) }
+			>Save my preference</button>
+		</div>
+	</section>
+}
+
 // apiKeyCountLabel renders the panel-header count, singularising for one key.
 func apiKeyCountLabel(n int) string {
 	if n == 1 {
@@ -210,13 +258,15 @@ func changePassword(token string) string {
 
 // settingsSignals builds the page-level datastar signal object for the settings
 // page. The defaultScanFrequency signal is pre-filled with the tenant's current
-// default so the select renders with the right option pre-selected.
-func settingsSignals(defaultScanFreq string) string {
-	if defaultScanFreq == "" {
-		defaultScanFreq = "daily"
+// default so the select renders with the right option pre-selected; the notify
+// toggles are pre-filled so the checkboxes render in their current state.
+func settingsSignals(props SettingsPageProps) string {
+	freq := props.DefaultScanFrequency
+	if freq == "" {
+		freq = "daily"
 	}
 	return fmt.Sprintf(
-		`{"newKeyName":"","currentPassword":"","newPassword":"","confirmPassword":"","defaultScanFrequency":"%s"}`,
-		defaultScanFreq,
+		`{"newKeyName":"","currentPassword":"","newPassword":"","confirmPassword":"","defaultScanFrequency":"%s","notifyDailyDigest":%t,"notifyHighImpact":%t,"notifyHighImpactAlerts":%t,"notifyOptOut":%t}`,
+		freq, props.NotifyDailyDigest, props.NotifyHighImpact, props.NotifyHighImpactAlerts, props.NotifyOptOut,
 	)
 }

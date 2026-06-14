@@ -213,6 +213,53 @@ WHERE o.tenant_id = $1
   AND o.domain_name = $2
 ORDER BY s.started_at DESC, s.id DESC, o.id ASC;
 
+-- name: ObservationsDigestSummaryByTenant :one
+-- Tenant-wide change summary for the daily digest over the window (@since, now].
+-- Mirrors the ScansListByTenant aggregation style: created/updated/deleted counts,
+-- a jsonb breakdown by (entity_type, change_type), and a high_impact_count over
+-- findings whose payload severity is critical or high. Keys on tenant_id +
+-- observed_at so it rides idx_obs_tenant_name. A window with no changes yields all
+-- zeros and an empty breakdown, which the worker treats as "nothing to send".
+WITH changes AS (
+    SELECT entity_type, change_type, payload
+    FROM domain_observations
+    WHERE tenant_id = @tenant_id
+      AND observed_at > @since
+      AND observed_at <= @until
+),
+counts AS (
+    SELECT entity_type, change_type, count(*) AS n
+    FROM changes
+    GROUP BY entity_type, change_type
+)
+SELECT
+    COALESCE((SELECT sum(n) FILTER (WHERE change_type = 'created') FROM counts), 0)::int AS created_count,
+    COALESCE((SELECT sum(n) FILTER (WHERE change_type = 'updated') FROM counts), 0)::int AS updated_count,
+    COALESCE((SELECT sum(n) FILTER (WHERE change_type = 'deleted') FROM counts), 0)::int AS deleted_count,
+    (SELECT count(*) FROM changes WHERE payload->>'severity' IN ('critical', 'high'))::int AS high_impact_count,
+    COALESCE((SELECT jsonb_agg(jsonb_build_object(
+        'entity_type', entity_type,
+        'change_type', change_type,
+        'count', n) ORDER BY entity_type, change_type) FROM counts), '[]'::jsonb) AS breakdown;
+
+-- name: ObservationsDigestHighImpactByTenant :many
+-- Itemized critical/high-severity changes for the digest body over (@since, now],
+-- newest first and capped by @row_limit so a noisy window can't produce a giant
+-- email. severity/status are projected out of the finding payload.
+SELECT domain_name,
+       entity_type,
+       change_type,
+       payload->>'severity' AS severity,
+       payload->>'status'   AS status,
+       observed_at
+FROM domain_observations
+WHERE tenant_id = @tenant_id
+  AND observed_at > @since
+  AND observed_at <= @until
+  AND payload->>'severity' IN ('critical', 'high')
+ORDER BY observed_at DESC
+LIMIT @row_limit;
+
 -- name: ObservationsListWithScanUIDByTenantDomainName :many
 -- Flat timeline for a (tenant, domain name) with each observation's scan uid
 -- joined in, so the records-history API exposes scan_uid (never the numeric id)

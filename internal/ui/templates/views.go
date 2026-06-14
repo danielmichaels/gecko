@@ -598,10 +598,16 @@ func timelineFullLoad(uid, scan string) string {
 // control, mirroring the service-layer guard; the 403 stays the authoritative
 // backstop. DefaultScanFrequency is the tenant's current default cadence preset.
 type SettingsPageProps struct {
-	DefaultScanFrequency string
-	Shell                AppShellProps
-	APIKeys              []APIKeyRowView
-	CanManage            bool
+	DefaultScanFrequency   string
+	LastDigestSent         string
+	LastAlertSent          string
+	Shell                  AppShellProps
+	APIKeys                []APIKeyRowView
+	CanManage              bool
+	NotifyDailyDigest      bool
+	NotifyHighImpact       bool
+	NotifyHighImpactAlerts bool
+	NotifyOptOut           bool
 }
 
 // APIKeyRowView is the presentation model for one API key in the settings list.

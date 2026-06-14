@@ -112,6 +112,8 @@ func (h *Handlers) Routes() http.Handler {
 		r.Delete("/settings/apikeys/{uid}", h.handleAPIKeyRevoke)
 		r.Post("/settings/password", h.handlePasswordChange)
 		r.Post("/settings/scan-frequency", h.handleScanDefaultUpdate)
+		r.Post("/settings/notifications", h.handleNotificationSettingsUpdate)
+		r.Post("/settings/notifications/me", h.handleNotificationOptOutUpdate)
 
 		r.Get("/domains", h.handleDomainsGet)
 		r.Get("/domains/stream", h.handleDomainsStream)
