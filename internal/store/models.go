@@ -990,10 +990,13 @@ type SrvRecords struct {
 }
 
 type TenantSettings struct {
-	TenantID             int32              `json:"tenant_id"`
-	DefaultScanFrequency ScanFrequency      `json:"default_scan_frequency"`
-	CreatedAt            pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
+	TenantID                  int32              `json:"tenant_id"`
+	DefaultScanFrequency      ScanFrequency      `json:"default_scan_frequency"`
+	CreatedAt                 pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt                 pgtype.Timestamptz `json:"updated_at"`
+	NotifyDailyDigest         bool               `json:"notify_daily_digest"`
+	NotifyHighImpact          bool               `json:"notify_high_impact"`
+	NotificationsLastDigestAt pgtype.Timestamptz `json:"notifications_last_digest_at"`
 }
 
 type TenantStats struct {

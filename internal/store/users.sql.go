@@ -363,3 +363,41 @@ func (q *Queries) UsersListByTenant(ctx context.Context, tenantID pgtype.Int4) (
 	}
 	return items, nil
 }
+
+const usersListDigestRecipientsByTenant = `-- name: UsersListDigestRecipientsByTenant :many
+SELECT email, name, role
+FROM users
+WHERE tenant_id = $1
+  AND status = 'active'
+  AND role IN ('owner', 'manager')
+ORDER BY email
+`
+
+type UsersListDigestRecipientsByTenantRow struct {
+	Email string      `json:"email"`
+	Name  pgtype.Text `json:"name"`
+	Role  UserRole    `json:"role"`
+}
+
+// Recipients of a tenant's daily digest: active owners and managers only. Viewers
+// and non-active (pending/inactive) users are excluded. Ordered by email for a
+// stable fan-out.
+func (q *Queries) UsersListDigestRecipientsByTenant(ctx context.Context, tenantID pgtype.Int4) ([]UsersListDigestRecipientsByTenantRow, error) {
+	rows, err := q.db.Query(ctx, usersListDigestRecipientsByTenant, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UsersListDigestRecipientsByTenantRow{}
+	for rows.Next() {
+		var i UsersListDigestRecipientsByTenantRow
+		if err := rows.Scan(&i.Email, &i.Name, &i.Role); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

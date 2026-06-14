@@ -7,23 +7,126 @@ package store
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const tenantSettingsGet = `-- name: TenantSettingsGet :one
-SELECT tenant_id, default_scan_frequency, created_at, updated_at
+const notificationDigestAdvanceWatermark = `-- name: NotificationDigestAdvanceWatermark :exec
+UPDATE tenant_settings
+SET notifications_last_digest_at = $1
+WHERE tenant_id = $2
+`
+
+type NotificationDigestAdvanceWatermarkParams struct {
+	SentAt   pgtype.Timestamptz `json:"sent_at"`
+	TenantID int32              `json:"tenant_id"`
+}
+
+// Advance a tenant's digest watermark to @sent_at (the 'now' captured at the start
+// of the tick). Called inside the same transaction as the digest enqueues so the
+// window and the send commit atomically: a rollback leaves the watermark unmoved
+// and the window is retried on the next tick.
+func (q *Queries) NotificationDigestAdvanceWatermark(ctx context.Context, arg NotificationDigestAdvanceWatermarkParams) error {
+	_, err := q.db.Exec(ctx, notificationDigestAdvanceWatermark, arg.SentAt, arg.TenantID)
+	return err
+}
+
+const notificationSettingsGet = `-- name: NotificationSettingsGet :one
+SELECT tenant_id, notify_daily_digest, notify_high_impact, notifications_last_digest_at
 FROM tenant_settings
 WHERE tenant_id = $1
 `
 
+type NotificationSettingsGetRow struct {
+	TenantID                  int32              `json:"tenant_id"`
+	NotifyDailyDigest         bool               `json:"notify_daily_digest"`
+	NotifyHighImpact          bool               `json:"notify_high_impact"`
+	NotificationsLastDigestAt pgtype.Timestamptz `json:"notifications_last_digest_at"`
+}
+
+// Read a tenant's notification toggles and digest watermark. As with the scan
+// settings, a brand-new tenant may have no row yet; callers treat pgx.ErrNoRows as
+// "use the system defaults" (digest on, high-impact on, never sent).
+func (q *Queries) NotificationSettingsGet(ctx context.Context, tenantID int32) (NotificationSettingsGetRow, error) {
+	row := q.db.QueryRow(ctx, notificationSettingsGet, tenantID)
+	var i NotificationSettingsGetRow
+	err := row.Scan(
+		&i.TenantID,
+		&i.NotifyDailyDigest,
+		&i.NotifyHighImpact,
+		&i.NotificationsLastDigestAt,
+	)
+	return i, err
+}
+
+const notificationSettingsUpsert = `-- name: NotificationSettingsUpsert :one
+INSERT INTO tenant_settings (tenant_id, notify_daily_digest, notify_high_impact)
+VALUES ($1, $2, $3)
+ON CONFLICT (tenant_id)
+    DO UPDATE SET notify_daily_digest = EXCLUDED.notify_daily_digest,
+                  notify_high_impact  = EXCLUDED.notify_high_impact,
+                  updated_at          = now()
+RETURNING tenant_id, notify_daily_digest, notify_high_impact, notifications_last_digest_at
+`
+
+type NotificationSettingsUpsertParams struct {
+	TenantID          int32 `json:"tenant_id"`
+	NotifyDailyDigest bool  `json:"notify_daily_digest"`
+	NotifyHighImpact  bool  `json:"notify_high_impact"`
+}
+
+type NotificationSettingsUpsertRow struct {
+	TenantID                  int32              `json:"tenant_id"`
+	NotifyDailyDigest         bool               `json:"notify_daily_digest"`
+	NotifyHighImpact          bool               `json:"notify_high_impact"`
+	NotificationsLastDigestAt pgtype.Timestamptz `json:"notifications_last_digest_at"`
+}
+
+// Set a tenant's notification toggles, creating the row on first write. Dedicated
+// to the notify_* columns so this write path and the scan-frequency write path
+// never stomp each other's fields. updated_at is refreshed by the trigger on UPDATE
+// and stamped here on INSERT.
+func (q *Queries) NotificationSettingsUpsert(ctx context.Context, arg NotificationSettingsUpsertParams) (NotificationSettingsUpsertRow, error) {
+	row := q.db.QueryRow(ctx, notificationSettingsUpsert, arg.TenantID, arg.NotifyDailyDigest, arg.NotifyHighImpact)
+	var i NotificationSettingsUpsertRow
+	err := row.Scan(
+		&i.TenantID,
+		&i.NotifyDailyDigest,
+		&i.NotifyHighImpact,
+		&i.NotificationsLastDigestAt,
+	)
+	return i, err
+}
+
+const tenantSettingsGet = `-- name: TenantSettingsGet :one
+SELECT tenant_id, default_scan_frequency, notify_daily_digest, notify_high_impact,
+       notifications_last_digest_at, created_at, updated_at
+FROM tenant_settings
+WHERE tenant_id = $1
+`
+
+type TenantSettingsGetRow struct {
+	TenantID                  int32              `json:"tenant_id"`
+	DefaultScanFrequency      ScanFrequency      `json:"default_scan_frequency"`
+	NotifyDailyDigest         bool               `json:"notify_daily_digest"`
+	NotifyHighImpact          bool               `json:"notify_high_impact"`
+	NotificationsLastDigestAt pgtype.Timestamptz `json:"notifications_last_digest_at"`
+	CreatedAt                 pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt                 pgtype.Timestamptz `json:"updated_at"`
+}
+
 // Read a tenant's scan settings. Existing tenants were backfilled with a row; a
 // brand-new tenant has none until first write, so callers treat pgx.ErrNoRows as
 // "use the system default" rather than an error.
-func (q *Queries) TenantSettingsGet(ctx context.Context, tenantID int32) (TenantSettings, error) {
+func (q *Queries) TenantSettingsGet(ctx context.Context, tenantID int32) (TenantSettingsGetRow, error) {
 	row := q.db.QueryRow(ctx, tenantSettingsGet, tenantID)
-	var i TenantSettings
+	var i TenantSettingsGetRow
 	err := row.Scan(
 		&i.TenantID,
 		&i.DefaultScanFrequency,
+		&i.NotifyDailyDigest,
+		&i.NotifyHighImpact,
+		&i.NotificationsLastDigestAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -44,12 +147,19 @@ type TenantSettingsUpsertParams struct {
 	DefaultScanFrequency ScanFrequency `json:"default_scan_frequency"`
 }
 
+type TenantSettingsUpsertRow struct {
+	TenantID             int32              `json:"tenant_id"`
+	DefaultScanFrequency ScanFrequency      `json:"default_scan_frequency"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
+}
+
 // Set a tenant's default scan frequency, creating the row on first write. One row
 // per tenant; updated_at is refreshed by the trigger on UPDATE and stamped here on
 // INSERT.
-func (q *Queries) TenantSettingsUpsert(ctx context.Context, arg TenantSettingsUpsertParams) (TenantSettings, error) {
+func (q *Queries) TenantSettingsUpsert(ctx context.Context, arg TenantSettingsUpsertParams) (TenantSettingsUpsertRow, error) {
 	row := q.db.QueryRow(ctx, tenantSettingsUpsert, arg.TenantID, arg.DefaultScanFrequency)
-	var i TenantSettings
+	var i TenantSettingsUpsertRow
 	err := row.Scan(
 		&i.TenantID,
 		&i.DefaultScanFrequency,
@@ -57,4 +167,39 @@ func (q *Queries) TenantSettingsUpsert(ctx context.Context, arg TenantSettingsUp
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const tenantsListDigestDue = `-- name: TenantsListDigestDue :many
+SELECT tenant_id, notifications_last_digest_at
+FROM tenant_settings
+WHERE notify_daily_digest = true
+ORDER BY tenant_id
+`
+
+type TenantsListDigestDueRow struct {
+	TenantID                  int32              `json:"tenant_id"`
+	NotificationsLastDigestAt pgtype.Timestamptz `json:"notifications_last_digest_at"`
+}
+
+// Tenants eligible for the daily digest (the master toggle is on). The periodic
+// worker filters out empty windows via the observation aggregate; this query just
+// bounds the fan-out to opted-in tenants and carries each one's watermark.
+func (q *Queries) TenantsListDigestDue(ctx context.Context) ([]TenantsListDigestDueRow, error) {
+	rows, err := q.db.Query(ctx, tenantsListDigestDue)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TenantsListDigestDueRow{}
+	for rows.Next() {
+		var i TenantsListDigestDueRow
+		if err := rows.Scan(&i.TenantID, &i.NotificationsLastDigestAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

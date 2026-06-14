@@ -57,6 +57,17 @@ FROM users
 WHERE tenant_id = $1
 ORDER BY created_at DESC;
 
+-- name: UsersListDigestRecipientsByTenant :many
+-- Recipients of a tenant's daily digest: active owners and managers only. Viewers
+-- and non-active (pending/inactive) users are excluded. Ordered by email for a
+-- stable fan-out.
+SELECT email, name, role
+FROM users
+WHERE tenant_id = $1
+  AND status = 'active'
+  AND role IN ('owner', 'manager')
+ORDER BY email;
+
 -- name: UserUpdateInTenant :one
 -- Keyed by uid (the external identifier). tenant_id is intentionally not settable:
 -- a user cannot be re-homed across tenants via update.

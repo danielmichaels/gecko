@@ -8,6 +8,7 @@ import (
 	"github.com/danielmichaels/gecko/internal/config"
 	"github.com/danielmichaels/gecko/internal/dnsclient"
 	"github.com/danielmichaels/gecko/internal/mailer"
+	"github.com/danielmichaels/gecko/internal/notify"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -177,6 +178,18 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 			rw,
 			&ScheduledScanWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},
 		)
+		// notifications — the daily digest dispatches across enabled channels; email
+		// is the only bearer today and reuses the send_email job below.
+		river.AddWorker(
+			rw,
+			&DailyDigestWorker{
+				Logger:     *cfg.Logger,
+				Store:      cfg.Store,
+				PgxPool:    cfg.PgxPool,
+				Dispatcher: notify.NewDispatcher(notify.NewEmailChannel(riverEmailEnqueuer{})),
+				Conf:       config.AppConfig(),
+			},
+		)
 		// email
 		emailerOut := cfg.Mailer
 		if emailerOut == nil {
@@ -234,6 +247,22 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 						return PurgeDNSCacheArgs{}, nil
 					},
 					&river.PeriodicJobOpts{RunOnStart: true},
+				),
+			)
+		}
+		// Daily notification digest: a leader-singleton hourly tick that does work
+		// only on the configured send hour (the worker gates on it). RunOnStart is
+		// off so a deploy/restart never fires an off-hour digest. Gated by the global
+		// kill-switch; the per-tenant toggle is the fine-grained control.
+		if config.AppConfig().AppConf.NotifyDigestEnabled {
+			riverConfig.PeriodicJobs = append(
+				riverConfig.PeriodicJobs,
+				river.NewPeriodicJob(
+					river.PeriodicInterval(1*time.Hour),
+					func() (river.JobArgs, *river.InsertOpts) {
+						return DailyDigestArgs{}, nil
+					},
+					&river.PeriodicJobOpts{RunOnStart: false},
 				),
 			)
 		}

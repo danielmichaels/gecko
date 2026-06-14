@@ -152,6 +152,130 @@ func (q *Queries) ObservationsCreateIfChanged(ctx context.Context, arg Observati
 	return i, err
 }
 
+const observationsDigestHighImpactByTenant = `-- name: ObservationsDigestHighImpactByTenant :many
+SELECT domain_name,
+       entity_type,
+       change_type,
+       payload->>'severity' AS severity,
+       payload->>'status'   AS status,
+       observed_at
+FROM domain_observations
+WHERE tenant_id = $1
+  AND observed_at > $2
+  AND observed_at <= $3
+  AND payload->>'severity' IN ('critical', 'high')
+ORDER BY observed_at DESC
+LIMIT $4
+`
+
+type ObservationsDigestHighImpactByTenantParams struct {
+	TenantID int32              `json:"tenant_id"`
+	Since    pgtype.Timestamptz `json:"since"`
+	Until    pgtype.Timestamptz `json:"until"`
+	RowLimit int32              `json:"row_limit"`
+}
+
+type ObservationsDigestHighImpactByTenantRow struct {
+	DomainName string             `json:"domain_name"`
+	EntityType string             `json:"entity_type"`
+	ChangeType string             `json:"change_type"`
+	Severity   interface{}        `json:"severity"`
+	Status     interface{}        `json:"status"`
+	ObservedAt pgtype.Timestamptz `json:"observed_at"`
+}
+
+// Itemized critical/high-severity changes for the digest body over (@since, now],
+// newest first and capped by @row_limit so a noisy window can't produce a giant
+// email. severity/status are projected out of the finding payload.
+func (q *Queries) ObservationsDigestHighImpactByTenant(ctx context.Context, arg ObservationsDigestHighImpactByTenantParams) ([]ObservationsDigestHighImpactByTenantRow, error) {
+	rows, err := q.db.Query(ctx, observationsDigestHighImpactByTenant,
+		arg.TenantID,
+		arg.Since,
+		arg.Until,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ObservationsDigestHighImpactByTenantRow{}
+	for rows.Next() {
+		var i ObservationsDigestHighImpactByTenantRow
+		if err := rows.Scan(
+			&i.DomainName,
+			&i.EntityType,
+			&i.ChangeType,
+			&i.Severity,
+			&i.Status,
+			&i.ObservedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const observationsDigestSummaryByTenant = `-- name: ObservationsDigestSummaryByTenant :one
+WITH changes AS (
+    SELECT entity_type, change_type, payload
+    FROM domain_observations
+    WHERE tenant_id = $1
+      AND observed_at > $2
+      AND observed_at <= $3
+),
+counts AS (
+    SELECT entity_type, change_type, count(*) AS n
+    FROM changes
+    GROUP BY entity_type, change_type
+)
+SELECT
+    COALESCE((SELECT sum(n) FILTER (WHERE change_type = 'created') FROM counts), 0)::int AS created_count,
+    COALESCE((SELECT sum(n) FILTER (WHERE change_type = 'updated') FROM counts), 0)::int AS updated_count,
+    COALESCE((SELECT sum(n) FILTER (WHERE change_type = 'deleted') FROM counts), 0)::int AS deleted_count,
+    (SELECT count(*) FROM changes WHERE payload->>'severity' IN ('critical', 'high'))::int AS high_impact_count,
+    COALESCE((SELECT jsonb_agg(jsonb_build_object(
+        'entity_type', entity_type,
+        'change_type', change_type,
+        'count', n) ORDER BY entity_type, change_type) FROM counts), '[]'::jsonb) AS breakdown
+`
+
+type ObservationsDigestSummaryByTenantParams struct {
+	TenantID int32              `json:"tenant_id"`
+	Since    pgtype.Timestamptz `json:"since"`
+	Until    pgtype.Timestamptz `json:"until"`
+}
+
+type ObservationsDigestSummaryByTenantRow struct {
+	CreatedCount    int32       `json:"created_count"`
+	UpdatedCount    int32       `json:"updated_count"`
+	DeletedCount    int32       `json:"deleted_count"`
+	HighImpactCount int32       `json:"high_impact_count"`
+	Breakdown       interface{} `json:"breakdown"`
+}
+
+// Tenant-wide change summary for the daily digest over the window (@since, now].
+// Mirrors the ScansListByTenant aggregation style: created/updated/deleted counts,
+// a jsonb breakdown by (entity_type, change_type), and a high_impact_count over
+// findings whose payload severity is critical or high. Keys on tenant_id +
+// observed_at so it rides idx_obs_tenant_name. A window with no changes yields all
+// zeros and an empty breakdown, which the worker treats as "nothing to send".
+func (q *Queries) ObservationsDigestSummaryByTenant(ctx context.Context, arg ObservationsDigestSummaryByTenantParams) (ObservationsDigestSummaryByTenantRow, error) {
+	row := q.db.QueryRow(ctx, observationsDigestSummaryByTenant, arg.TenantID, arg.Since, arg.Until)
+	var i ObservationsDigestSummaryByTenantRow
+	err := row.Scan(
+		&i.CreatedCount,
+		&i.UpdatedCount,
+		&i.DeletedCount,
+		&i.HighImpactCount,
+		&i.Breakdown,
+	)
+	return i, err
+}
+
 const observationsListByScan = `-- name: ObservationsListByScan :many
 SELECT id, tenant_id, domain_id, domain_uid, domain_name, scan_id, entity_type, entity_key, change_type, payload, observed_at
 FROM domain_observations

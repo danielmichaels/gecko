@@ -126,6 +126,24 @@ type appConf struct {
 
 	LogLevel slog.Level `env:"LOG_LEVEL,default=info"`
 
+	// Certificate expiry assessment tiers (days until not_after). A certificate
+	// already past not_after is critical; within High days is high; within Medium
+	// days is medium; anything further out is compliant.
+	CertExpiryHighDays   int `env:"CERT_EXPIRY_HIGH_DAYS,default=7"`
+	CertExpiryMediumDays int `env:"CERT_EXPIRY_MEDIUM_DAYS,default=30"`
+
+	// NotifyDigestFallbackWindow bounds the first digest for a tenant whose
+	// watermark is NULL (never sent): the window is (now - this, now] rather than
+	// the tenant's whole history.
+	NotifyDigestFallbackWindow time.Duration `env:"NOTIFY_DIGEST_FALLBACK_WINDOW,default=24h"`
+	// NotifyDigestHour is the UTC hour-of-day (0-23) the daily digest is sent. The
+	// digest job ticks hourly and only does work on this hour; the per-tenant
+	// watermark prevents a second send within the same day.
+	NotifyDigestHour int `env:"NOTIFY_DIGEST_HOUR,default=8"`
+	// NotifyHighImpactLimit caps how many high-impact items the digest itemizes, so
+	// a noisy window cannot produce an unbounded email.
+	NotifyHighImpactLimit int `env:"NOTIFY_HIGH_IMPACT_LIMIT,default=50"`
+
 	// Fleet-wide shared DNS answer cache (Postgres L2 + in-process L1). Reused
 	// across all instances so one lookup serves the whole fleet.
 	DNSCacheEnabled bool `env:"DNS_CACHE_ENABLED,default=true"`
@@ -147,11 +165,9 @@ type appConf struct {
 	LogResponseHeaders bool `env:"LOG_RESPONSE_HEADERS,default=false"`
 	LogRequestHeaders  bool `env:"LOG_REQUEST_HEADERS,default=true"`
 
-	// Certificate expiry assessment tiers (days until not_after). A certificate
-	// already past not_after is critical; within High days is high; within Medium
-	// days is medium; anything further out is compliant.
-	CertExpiryHighDays   int `env:"CERT_EXPIRY_HIGH_DAYS,default=7"`
-	CertExpiryMediumDays int `env:"CERT_EXPIRY_MEDIUM_DAYS,default=30"`
+	// NotifyDigestEnabled is the global kill-switch: when false the periodic digest
+	// job is never registered. The per-tenant toggle is the fine-grained control.
+	NotifyDigestEnabled bool `env:"NOTIFY_DIGEST_ENABLED,default=true"`
 }
 type serverConf struct {
 	APIPort      int           `env:"GECKO_HTTP_PORT,default=9090"`
