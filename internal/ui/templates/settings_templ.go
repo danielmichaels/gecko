@@ -63,9 +63,9 @@ func SettingsPage(props SettingsPageProps) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var4 string
-				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(settingsSignals(props.DefaultScanFrequency, props.NotifyDailyDigest, props.NotifyHighImpact))
+				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(settingsSignals(props))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/settings.templ`, Line: 11, Col: 115}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/settings.templ`, Line: 11, Col: 45}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 				if templ_7745c5c3_Err != nil {
@@ -560,9 +560,10 @@ func ScanningPanel(props SettingsPageProps) templ.Component {
 	})
 }
 
-// NotificationsPanel renders the tenant-wide notification toggles: the daily
-// change digest and the high-impact highlight within it. Both are opt-out; the
-// Save control is owner/manager only, mirroring ScanningPanel.
+// NotificationsPanel renders the tenant-wide notification toggles (daily digest,
+// the high-impact highlight within it, and the opt-in near-real-time alert) plus a
+// per-user mute. The tenant Save is owner/manager only, mirroring ScanningPanel; the
+// personal mute is self-service and shown to everyone.
 func NotificationsPanel(props SettingsPageProps) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -584,30 +585,82 @@ func NotificationsPanel(props SettingsPageProps) templ.Component {
 			templ_7745c5c3_Var27 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "<section class=\"panel set-panel\"><div class=\"panel-h\">Notifications</div><div class=\"set-body\"><p class=\"set-note\">Email owners and managers a daily summary of DNS changes detected across all tracked domains. No email is sent on days with no changes.</p><label class=\"set-toggle\"><input type=\"checkbox\" data-bind=\"notifyDailyDigest\"> <span>Daily change digest</span></label> <label class=\"set-toggle\"><input type=\"checkbox\" data-bind=\"notifyHighImpact\"> <span>Highlight high-impact findings (critical &amp; high severity)</span></label> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "<section class=\"panel set-panel\"><div class=\"panel-h\">Notifications</div><div class=\"set-body\"><p class=\"set-note\">Email owners and managers a daily summary of DNS changes detected across all tracked domains. No email is sent on days with no changes.</p><label class=\"set-toggle\"><input type=\"checkbox\" data-bind=\"notifyDailyDigest\"> <span>Daily change digest</span></label> <label class=\"set-toggle\"><input type=\"checkbox\" data-bind=\"notifyHighImpact\"> <span>Highlight high-impact findings in the digest (critical &amp; high severity)</span></label> <label class=\"set-toggle\"><input type=\"checkbox\" data-bind=\"notifyHighImpactAlerts\"> <span>Send an immediate alert for new high-impact findings</span></label><div class=\"set-note cell-mono\">Last digest sent: ")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var28 string
+		templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(props.LastDigestSent)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/settings.templ`, Line: 204, Col: 44}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, " · Last alert sent: ")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var29 string
+		templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(props.LastAlertSent)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/settings.templ`, Line: 204, Col: 88}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if props.CanManage {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "<button class=\"btn set-pw-btn\" type=\"button\" data-on:click=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "<button class=\"btn set-pw-btn\" type=\"button\" data-on:click=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var28 string
-			templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(postWithCSRF("/app/settings/notifications", props.Shell.CSRFToken))
+			var templ_7745c5c3_Var30 string
+			templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(postWithCSRF("/app/settings/notifications", props.Shell.CSRFToken))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/settings.templ`, Line: 202, Col: 87}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/settings.templ`, Line: 210, Col: 87}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "\">Save notifications</button>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "\">Save notifications</button>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "</div></section>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "<hr class=\"set-sep\"><label class=\"set-toggle\"><input type=\"checkbox\" data-bind=\"notifyOptOut\"> <span>Mute all notification email to me (")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var31 string
+		templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(props.Shell.UserEmail)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/settings.templ`, Line: 216, Col: 68}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, ")</span></label> <button class=\"btn set-pw-btn\" type=\"button\" data-on:click=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var32 string
+		templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(postWithCSRF("/app/settings/notifications/me", props.Shell.CSRFToken))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/templates/settings.templ`, Line: 221, Col: 89}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "\">Save my preference</button></div></section>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -651,13 +704,14 @@ func changePassword(token string) string {
 // page. The defaultScanFrequency signal is pre-filled with the tenant's current
 // default so the select renders with the right option pre-selected; the notify
 // toggles are pre-filled so the checkboxes render in their current state.
-func settingsSignals(defaultScanFreq string, notifyDigest, notifyHighImpact bool) string {
-	if defaultScanFreq == "" {
-		defaultScanFreq = "daily"
+func settingsSignals(props SettingsPageProps) string {
+	freq := props.DefaultScanFrequency
+	if freq == "" {
+		freq = "daily"
 	}
 	return fmt.Sprintf(
-		`{"newKeyName":"","currentPassword":"","newPassword":"","confirmPassword":"","defaultScanFrequency":"%s","notifyDailyDigest":%t,"notifyHighImpact":%t}`,
-		defaultScanFreq, notifyDigest, notifyHighImpact,
+		`{"newKeyName":"","currentPassword":"","newPassword":"","confirmPassword":"","defaultScanFrequency":"%s","notifyDailyDigest":%t,"notifyHighImpact":%t,"notifyHighImpactAlerts":%t,"notifyOptOut":%t}`,
+		freq, props.NotifyDailyDigest, props.NotifyHighImpact, props.NotifyHighImpactAlerts, props.NotifyOptOut,
 	)
 }
 

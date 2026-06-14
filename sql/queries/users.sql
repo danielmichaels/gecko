@@ -19,17 +19,17 @@ VALUES ($1, $2, $3, $4)
 RETURNING *;
 
 -- name: UserGetByEmail :one
-SELECT id, uid, tenant_id, email, name, role, status, created_at, updated_at
+SELECT id, uid, tenant_id, email, name, role, status, created_at, updated_at, notify_opt_out
 FROM users
 WHERE email = $1;
 
 -- name: UserGetByID :one
-SELECT id, uid, tenant_id, email, name, role, status, created_at, updated_at
+SELECT id, uid, tenant_id, email, name, role, status, created_at, updated_at, notify_opt_out
 FROM users
 WHERE id = $1;
 
 -- name: UserGetInTenant :one
-SELECT id, uid, tenant_id, email, name, role, status, created_at, updated_at
+SELECT id, uid, tenant_id, email, name, role, status, created_at, updated_at, notify_opt_out
 FROM users
 WHERE uid = $1
   AND tenant_id = $2;
@@ -52,21 +52,36 @@ WHERE tenant_id = $1
     FOR UPDATE;
 
 -- name: UsersListByTenant :many
-SELECT id, uid, tenant_id, email, name, role, status, created_at, updated_at
+SELECT id, uid, tenant_id, email, name, role, status, created_at, updated_at, notify_opt_out
 FROM users
 WHERE tenant_id = $1
 ORDER BY created_at DESC;
 
 -- name: UsersListDigestRecipientsByTenant :many
--- Recipients of a tenant's daily digest: active owners and managers only. Viewers
--- and non-active (pending/inactive) users are excluded. Ordered by email for a
--- stable fan-out.
+-- Recipients of a tenant's daily digest: active owners and managers who have not
+-- personally opted out. Viewers and non-active (pending/inactive) users are
+-- excluded. Ordered by email for a stable fan-out.
 SELECT email, name, role
 FROM users
 WHERE tenant_id = $1
   AND status = 'active'
   AND role IN ('owner', 'manager')
+  AND notify_opt_out = false
 ORDER BY email;
+
+-- name: UserNotifyOptOutGet :one
+-- Read a single user's personal notification opt-out flag.
+SELECT notify_opt_out
+FROM users
+WHERE id = $1;
+
+-- name: UserNotifyOptOutSet :exec
+-- Set a user's personal notification opt-out. Self-service: the caller sets their
+-- own flag, so this is keyed on the user id with no role gate.
+UPDATE users
+SET notify_opt_out = @opt_out,
+    updated_at     = now()
+WHERE id = @user_id;
 
 -- name: UserUpdateInTenant :one
 -- Keyed by uid (the external identifier). tenant_id is intentionally not settable:

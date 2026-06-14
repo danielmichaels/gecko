@@ -19,10 +19,11 @@ ON CONFLICT (tenant_id)
 RETURNING tenant_id, default_scan_frequency, created_at, updated_at;
 
 -- name: NotificationSettingsGet :one
--- Read a tenant's notification toggles and digest watermark. As with the scan
--- settings, a brand-new tenant may have no row yet; callers treat pgx.ErrNoRows as
--- "use the system defaults" (digest on, high-impact on, never sent).
-SELECT tenant_id, notify_daily_digest, notify_high_impact, notifications_last_digest_at
+-- Read a tenant's notification toggles and watermarks. As with the scan settings, a
+-- brand-new tenant may have no row yet; callers treat pgx.ErrNoRows as "use the
+-- system defaults" (digest on, high-impact on, alerts off, never sent).
+SELECT tenant_id, notify_daily_digest, notify_high_impact, notify_high_impact_alerts,
+       notifications_last_digest_at, notifications_last_alert_at
 FROM tenant_settings
 WHERE tenant_id = $1;
 
@@ -31,13 +32,30 @@ WHERE tenant_id = $1;
 -- to the notify_* columns so this write path and the scan-frequency write path
 -- never stomp each other's fields. updated_at is refreshed by the trigger on UPDATE
 -- and stamped here on INSERT.
-INSERT INTO tenant_settings (tenant_id, notify_daily_digest, notify_high_impact)
-VALUES ($1, $2, $3)
+INSERT INTO tenant_settings (tenant_id, notify_daily_digest, notify_high_impact, notify_high_impact_alerts)
+VALUES ($1, $2, $3, $4)
 ON CONFLICT (tenant_id)
-    DO UPDATE SET notify_daily_digest = EXCLUDED.notify_daily_digest,
-                  notify_high_impact  = EXCLUDED.notify_high_impact,
-                  updated_at          = now()
-RETURNING tenant_id, notify_daily_digest, notify_high_impact, notifications_last_digest_at;
+    DO UPDATE SET notify_daily_digest       = EXCLUDED.notify_daily_digest,
+                  notify_high_impact        = EXCLUDED.notify_high_impact,
+                  notify_high_impact_alerts = EXCLUDED.notify_high_impact_alerts,
+                  updated_at                = now()
+RETURNING tenant_id, notify_daily_digest, notify_high_impact, notify_high_impact_alerts,
+          notifications_last_digest_at, notifications_last_alert_at;
+
+-- name: TenantsListAlertDue :many
+-- Tenants opted in to near-real-time high-impact alerts, with each one's alert
+-- watermark. The sweep filters empty windows itself; this just bounds the fan-out.
+SELECT tenant_id, notifications_last_alert_at
+FROM tenant_settings
+WHERE notify_high_impact_alerts = true
+ORDER BY tenant_id;
+
+-- name: NotificationAlertAdvanceWatermark :exec
+-- Advance a tenant's alert watermark to @sent_at, committed in the same transaction
+-- as the alert enqueues so the window and the send move together.
+UPDATE tenant_settings
+SET notifications_last_alert_at = @sent_at
+WHERE tenant_id = @tenant_id;
 
 -- name: TenantsListDigestDue :many
 -- Tenants eligible for the daily digest (the master toggle is on). The periodic

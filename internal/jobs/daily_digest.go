@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/danielmichaels/gecko/internal/config"
-	"github.com/danielmichaels/gecko/internal/mailer"
 	"github.com/danielmichaels/gecko/internal/notify"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5"
@@ -80,12 +79,13 @@ func (w *DailyDigestWorker) EnqueueDueDigests(ctx context.Context) (int, error) 
 		return 0, fmt.Errorf("list digest-due tenants: %w", err)
 	}
 
-	sent := 0
+	var sent, empty, noRecipients, failed int
 	for _, t := range due {
-		dispatched, err := w.digestOne(ctx, t, until)
+		outcome, err := w.digestOne(ctx, t, until)
 		if err != nil {
 			// One tenant's failure must not abort the batch; its watermark stays put
 			// so the window is retried on the next eligible tick.
+			failed++
 			w.Logger.ErrorContext(
 				ctx,
 				"daily digest failed",
@@ -94,12 +94,36 @@ func (w *DailyDigestWorker) EnqueueDueDigests(ctx context.Context) (int, error) 
 			)
 			continue
 		}
-		if dispatched {
+		switch outcome {
+		case digestDispatched:
 			sent++
+		case digestSkippedEmpty:
+			empty++
+		case digestSkippedNoRecipients:
+			noRecipients++
 		}
 	}
+	w.Logger.InfoContext(
+		ctx,
+		"daily digest sweep complete",
+		"tenants", len(due),
+		"sent", sent,
+		"skipped_empty", empty,
+		"skipped_no_recipients", noRecipients,
+		"failed", failed,
+	)
 	return sent, nil
 }
+
+// digestOutcome records what happened for one tenant in a digest sweep, so the
+// sweep can tally per-reason counts for observability.
+type digestOutcome int
+
+const (
+	digestDispatched digestOutcome = iota
+	digestSkippedEmpty
+	digestSkippedNoRecipients
+)
 
 // digestOne processes a single tenant: it reads the change summary for the window,
 // and — when there are changes and recipients — renders and dispatches the digest
@@ -111,7 +135,7 @@ func (w *DailyDigestWorker) digestOne(
 	ctx context.Context,
 	t store.TenantsListDigestDueRow,
 	until pgtype.Timestamptz,
-) (dispatched bool, err error) {
+) (outcome digestOutcome, err error) {
 	since := t.NotificationsLastDigestAt
 	if !since.Valid {
 		// Never sent: bound the first digest to the fallback window rather than the
@@ -131,44 +155,51 @@ func (w *DailyDigestWorker) digestOne(
 		},
 	)
 	if err != nil {
-		return false, fmt.Errorf("digest summary: %w", err)
+		return digestSkippedEmpty, fmt.Errorf("digest summary: %w", err)
 	}
 
 	summary, err := toDigestSummary(summaryRow)
 	if err != nil {
-		return false, err
+		return digestSkippedEmpty, err
 	}
 
 	// Empty window: advance the watermark (so we don't re-scan it) and send nothing.
 	if summary.Total() == 0 {
-		return false, w.advanceWatermark(ctx, w.Store, t.TenantID, until)
+		return digestSkippedEmpty, w.advanceWatermark(ctx, w.Store, t.TenantID, until)
 	}
 
-	recipients, err := w.recipients(ctx, t.TenantID)
+	recipients, err := loadDigestRecipients(ctx, w.Store, t.TenantID)
 	if err != nil {
-		return false, err
+		return digestSkippedEmpty, err
 	}
 	// Changes but nobody to tell: still advance the watermark so the next window
 	// starts clean (recipients may be added before the next tick).
 	if len(recipients) == 0 {
-		return false, w.advanceWatermark(ctx, w.Store, t.TenantID, until)
+		return digestSkippedNoRecipients, w.advanceWatermark(ctx, w.Store, t.TenantID, until)
 	}
 
 	// The high-impact section is opt-out per tenant. When off, suppress both the
 	// itemized list and the summary count so the subject and body never mention it.
 	var highImpact []notify.HighImpactItem
 	if t.NotifyHighImpact {
-		highImpact, err = w.highImpact(ctx, t.TenantID, since, until)
+		highImpact, err = loadHighImpactItems(
+			ctx,
+			w.Store,
+			t.TenantID,
+			since,
+			until,
+			w.highImpactLimit(),
+		)
 	} else {
 		summary.HighImpact = 0
 	}
 	if err != nil {
-		return false, err
+		return digestSkippedEmpty, err
 	}
 
 	tenant, err := w.Store.TenantGetByID(ctx, t.TenantID)
 	if err != nil {
-		return false, fmt.Errorf("get tenant: %w", err)
+		return digestSkippedEmpty, fmt.Errorf("get tenant: %w", err)
 	}
 
 	n := notify.RenderDailyDigest(tenant.Name, w.Conf.AppConf.PublicBaseURL, summary, highImpact)
@@ -176,7 +207,7 @@ func (w *DailyDigestWorker) digestOne(
 
 	tx, err := w.PgxPool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return false, fmt.Errorf("begin tx: %w", err)
+		return digestSkippedEmpty, fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() {
 		if err != nil {
@@ -187,15 +218,15 @@ func (w *DailyDigestWorker) digestOne(
 	}()
 
 	if err = w.Dispatcher.Dispatch(ctx, tx, w.enabledChannels(), n, recipients); err != nil {
-		return false, fmt.Errorf("dispatch digest: %w", err)
+		return digestSkippedEmpty, fmt.Errorf("dispatch digest: %w", err)
 	}
 	if err = w.advanceWatermark(ctx, w.Store.WithTx(tx), t.TenantID, until); err != nil {
-		return false, err
+		return digestSkippedEmpty, err
 	}
 	if err = tx.Commit(ctx); err != nil {
-		return false, fmt.Errorf("commit: %w", err)
+		return digestSkippedEmpty, fmt.Errorf("commit: %w", err)
 	}
-	return true, nil
+	return digestDispatched, nil
 }
 
 func (w *DailyDigestWorker) advanceWatermark(
@@ -211,55 +242,6 @@ func (w *DailyDigestWorker) advanceWatermark(
 		return fmt.Errorf("advance watermark: %w", err)
 	}
 	return nil
-}
-
-func (w *DailyDigestWorker) recipients(
-	ctx context.Context,
-	tenantID int32,
-) ([]notify.Recipient, error) {
-	rows, err := w.Store.UsersListDigestRecipientsByTenant(
-		ctx,
-		pgtype.Int4{Int32: tenantID, Valid: true},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("list recipients: %w", err)
-	}
-	out := make([]notify.Recipient, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, notify.Recipient{Email: r.Email, Name: textOrEmpty(r.Name)})
-	}
-	return out, nil
-}
-
-func (w *DailyDigestWorker) highImpact(
-	ctx context.Context,
-	tenantID int32,
-	since, until pgtype.Timestamptz,
-) ([]notify.HighImpactItem, error) {
-	rows, err := w.Store.ObservationsDigestHighImpactByTenant(
-		ctx,
-		store.ObservationsDigestHighImpactByTenantParams{
-			TenantID: tenantID,
-			Since:    since,
-			Until:    until,
-			RowLimit: int32(w.highImpactLimit()),
-		},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("list high-impact: %w", err)
-	}
-	out := make([]notify.HighImpactItem, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, notify.HighImpactItem{
-			DomainName: r.DomainName,
-			EntityType: r.EntityType,
-			ChangeType: r.ChangeType,
-			Severity:   ifaceText(r.Severity),
-			Status:     ifaceText(r.Status),
-			ObservedAt: r.ObservedAt.Time,
-		})
-	}
-	return out, nil
 }
 
 func (w *DailyDigestWorker) enabledChannels() []string {
@@ -321,38 +303,5 @@ func toDigestSummary(row store.ObservationsDigestSummaryByTenantRow) (notify.Dig
 	return s, nil
 }
 
-// ifaceText coerces a sqlc interface{} column (payload->>'x' projects as untyped
-// text) to a string, tolerating a NULL (nil) value.
-func ifaceText(v any) string {
-	if s, ok := v.(string); ok {
-		return s
-	}
-	return ""
-}
-
-func textOrEmpty(t pgtype.Text) string {
-	if t.Valid {
-		return t.String
-	}
-	return ""
-}
-
-// riverEmailEnqueuer satisfies notify.EmailEnqueuer by inserting a send_email job on
-// the caller's transaction, reusing exactly the path riverScheduler.EnqueueEmail
-// uses. The River client comes from context (populated inside a running worker), so
-// the email channel stays decoupled from the client lifecycle.
-type riverEmailEnqueuer struct{}
-
-func (riverEmailEnqueuer) EnqueueEmail(ctx context.Context, tx pgx.Tx, msg mailer.Message) error {
-	rc := river.ClientFromContext[pgx.Tx](ctx)
-	if rc == nil {
-		return errors.New("no river client in context")
-	}
-	_, err := rc.InsertTx(ctx, tx, SendEmailArgs{
-		To:      msg.To,
-		Subject: msg.Subject,
-		HTML:    msg.HTML,
-		Text:    msg.Text,
-	}, nil)
-	return err
-}
+// toDigestSummary is defined above; the shared recipient/high-impact loaders and the
+// riverEmailEnqueuer live in notification_shared.go.

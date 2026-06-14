@@ -997,6 +997,8 @@ type TenantSettings struct {
 	NotifyDailyDigest         bool               `json:"notify_daily_digest"`
 	NotifyHighImpact          bool               `json:"notify_high_impact"`
 	NotificationsLastDigestAt pgtype.Timestamptz `json:"notifications_last_digest_at"`
+	NotifyHighImpactAlerts    bool               `json:"notify_high_impact_alerts"`
+	NotificationsLastAlertAt  pgtype.Timestamptz `json:"notifications_last_alert_at"`
 }
 
 type TenantStats struct {
@@ -1033,15 +1035,16 @@ type UserCredentials struct {
 }
 
 type Users struct {
-	ID        int32              `json:"id"`
-	Uid       string             `json:"uid"`
-	TenantID  pgtype.Int4        `json:"tenant_id"`
-	Email     string             `json:"email"`
-	Name      pgtype.Text        `json:"name"`
-	Role      UserRole           `json:"role"`
-	Status    UserStatus         `json:"status"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	ID           int32              `json:"id"`
+	Uid          string             `json:"uid"`
+	TenantID     pgtype.Int4        `json:"tenant_id"`
+	Email        string             `json:"email"`
+	Name         pgtype.Text        `json:"name"`
+	Role         UserRole           `json:"role"`
+	Status       UserStatus         `json:"status"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	NotifyOptOut bool               `json:"notify_opt_out"`
 }
 
 type ZoneTransferAttempts struct {

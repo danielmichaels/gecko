@@ -136,6 +136,12 @@ type appConf struct {
 	// watermark is NULL (never sent): the window is (now - this, now] rather than
 	// the tenant's whole history.
 	NotifyDigestFallbackWindow time.Duration `env:"NOTIFY_DIGEST_FALLBACK_WINDOW,default=24h"`
+	// NotifyAlertInterval is how often the near-real-time high-impact alert sweep
+	// runs. Smaller means lower alert latency at the cost of more frequent ticks.
+	NotifyAlertInterval time.Duration `env:"NOTIFY_ALERT_INTERVAL,default=10m"`
+	// NotifyAlertFallbackWindow bounds the first alert sweep for a tenant whose
+	// alert watermark is NULL (just opted in).
+	NotifyAlertFallbackWindow time.Duration `env:"NOTIFY_ALERT_FALLBACK_WINDOW,default=1h"`
 	// NotifyDigestHour is the UTC hour-of-day (0-23) the daily digest is sent. The
 	// digest job ticks hourly and only does work on this hour; the per-tenant
 	// watermark prevents a second send within the same day.
@@ -168,6 +174,10 @@ type appConf struct {
 	// NotifyDigestEnabled is the global kill-switch: when false the periodic digest
 	// job is never registered. The per-tenant toggle is the fine-grained control.
 	NotifyDigestEnabled bool `env:"NOTIFY_DIGEST_ENABLED,default=true"`
+	// NotifyAlertsEnabled is the global kill-switch for the near-real-time
+	// high-impact alert sweep. The per-tenant notify_high_impact_alerts toggle is the
+	// fine-grained, opt-in control.
+	NotifyAlertsEnabled bool `env:"NOTIFY_ALERTS_ENABLED,default=true"`
 }
 type serverConf struct {
 	APIPort      int           `env:"GECKO_HTTP_PORT,default=9090"`

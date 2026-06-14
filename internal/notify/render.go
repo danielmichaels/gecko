@@ -116,6 +116,46 @@ func RenderDailyDigest(
 	}
 }
 
+// RenderHighImpactAlert builds the channel-agnostic Notification for a near-real-time
+// high-impact alert: an itemized list of the critical/high findings detected in the
+// sweep window. It is a separate, terser message from the daily digest (Kind
+// distinguishes them) so an immediate alert reads as urgent, not as a summary.
+func RenderHighImpactAlert(
+	tenantName, baseURL string,
+	items []HighImpactItem,
+) Notification {
+	subject := fmt.Sprintf(
+		"gecko: %d high-impact DNS finding%s detected", len(items), plural(len(items)),
+	)
+	link := baseURL + "/app/findings"
+
+	var htmlB, textB strings.Builder
+	htmlB.WriteString(
+		"<p>New high-impact finding" + plural(len(items)) + " on <b>" +
+			html.EscapeString(tenantName) + "</b>:</p><ul>",
+	)
+	textB.WriteString("New high-impact findings on " + tenantName + ":\n\n")
+	for _, hi := range items {
+		line := fmt.Sprintf(
+			"%s — %s %s (%s)",
+			hi.DomainName, hi.ChangeType, humanizeEntity(hi.EntityType), hi.Severity,
+		)
+		htmlB.WriteString("<li>" + html.EscapeString(line) + "</li>")
+		textB.WriteString("  - " + line + "\n")
+	}
+	htmlB.WriteString("</ul>")
+	htmlB.WriteString("<p><a href=\"" + html.EscapeString(link) + "\">Review findings</a></p>")
+	textB.WriteString("\nReview findings: " + link + "\n")
+
+	return Notification{
+		TenantID: 0,
+		Kind:     KindHighImpact,
+		Subject:  subject,
+		HTML:     htmlB.String(),
+		Text:     textB.String(),
+	}
+}
+
 func plural(n int) string {
 	if n == 1 {
 		return ""

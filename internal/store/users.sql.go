@@ -89,7 +89,7 @@ WHERE EXISTS (SELECT 1
               WHERE u.id = $5
                 AND u.tenant_id = $1
                 AND u.role IN ('manager', 'owner', 'superadmin'))
-RETURNING id, uid, tenant_id, email, name, role, status, created_at, updated_at
+RETURNING id, uid, tenant_id, email, name, role, status, created_at, updated_at, notify_opt_out
 `
 
 type UserCreateParams struct {
@@ -122,6 +122,7 @@ func (q *Queries) UserCreate(ctx context.Context, arg UserCreateParams) (Users, 
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.NotifyOptOut,
 	)
 	return i, err
 }
@@ -159,7 +160,7 @@ func (q *Queries) UserDeleteInTenant(ctx context.Context, arg UserDeleteInTenant
 }
 
 const userGetByEmail = `-- name: UserGetByEmail :one
-SELECT id, uid, tenant_id, email, name, role, status, created_at, updated_at
+SELECT id, uid, tenant_id, email, name, role, status, created_at, updated_at, notify_opt_out
 FROM users
 WHERE email = $1
 `
@@ -177,12 +178,13 @@ func (q *Queries) UserGetByEmail(ctx context.Context, email string) (Users, erro
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.NotifyOptOut,
 	)
 	return i, err
 }
 
 const userGetByID = `-- name: UserGetByID :one
-SELECT id, uid, tenant_id, email, name, role, status, created_at, updated_at
+SELECT id, uid, tenant_id, email, name, role, status, created_at, updated_at, notify_opt_out
 FROM users
 WHERE id = $1
 `
@@ -200,12 +202,13 @@ func (q *Queries) UserGetByID(ctx context.Context, id int32) (Users, error) {
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.NotifyOptOut,
 	)
 	return i, err
 }
 
 const userGetInTenant = `-- name: UserGetInTenant :one
-SELECT id, uid, tenant_id, email, name, role, status, created_at, updated_at
+SELECT id, uid, tenant_id, email, name, role, status, created_at, updated_at, notify_opt_out
 FROM users
 WHERE uid = $1
   AND tenant_id = $2
@@ -229,14 +232,48 @@ func (q *Queries) UserGetInTenant(ctx context.Context, arg UserGetInTenantParams
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.NotifyOptOut,
 	)
 	return i, err
+}
+
+const userNotifyOptOutGet = `-- name: UserNotifyOptOutGet :one
+SELECT notify_opt_out
+FROM users
+WHERE id = $1
+`
+
+// Read a single user's personal notification opt-out flag.
+func (q *Queries) UserNotifyOptOutGet(ctx context.Context, id int32) (bool, error) {
+	row := q.db.QueryRow(ctx, userNotifyOptOutGet, id)
+	var notify_opt_out bool
+	err := row.Scan(&notify_opt_out)
+	return notify_opt_out, err
+}
+
+const userNotifyOptOutSet = `-- name: UserNotifyOptOutSet :exec
+UPDATE users
+SET notify_opt_out = $1,
+    updated_at     = now()
+WHERE id = $2
+`
+
+type UserNotifyOptOutSetParams struct {
+	OptOut bool  `json:"opt_out"`
+	UserID int32 `json:"user_id"`
+}
+
+// Set a user's personal notification opt-out. Self-service: the caller sets their
+// own flag, so this is keyed on the user id with no role gate.
+func (q *Queries) UserNotifyOptOutSet(ctx context.Context, arg UserNotifyOptOutSetParams) error {
+	_, err := q.db.Exec(ctx, userNotifyOptOutSet, arg.OptOut, arg.UserID)
+	return err
 }
 
 const userProvision = `-- name: UserProvision :one
 INSERT INTO users (tenant_id, email, name, role)
 VALUES ($1, $2, $3, $4)
-RETURNING id, uid, tenant_id, email, name, role, status, created_at, updated_at
+RETURNING id, uid, tenant_id, email, name, role, status, created_at, updated_at, notify_opt_out
 `
 
 type UserProvisionParams struct {
@@ -266,6 +303,7 @@ func (q *Queries) UserProvision(ctx context.Context, arg UserProvisionParams) (U
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.NotifyOptOut,
 	)
 	return i, err
 }
@@ -277,7 +315,7 @@ SET email = $3,
     role  = $5
 WHERE uid = $1
   AND tenant_id = $2
-RETURNING id, uid, tenant_id, email, name, role, status, created_at, updated_at
+RETURNING id, uid, tenant_id, email, name, role, status, created_at, updated_at, notify_opt_out
 `
 
 type UserUpdateInTenantParams struct {
@@ -309,6 +347,7 @@ func (q *Queries) UserUpdateInTenant(ctx context.Context, arg UserUpdateInTenant
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.NotifyOptOut,
 	)
 	return i, err
 }
@@ -328,7 +367,7 @@ func (q *Queries) UsersCountOwnersInTenant(ctx context.Context, tenantID pgtype.
 }
 
 const usersListByTenant = `-- name: UsersListByTenant :many
-SELECT id, uid, tenant_id, email, name, role, status, created_at, updated_at
+SELECT id, uid, tenant_id, email, name, role, status, created_at, updated_at, notify_opt_out
 FROM users
 WHERE tenant_id = $1
 ORDER BY created_at DESC
@@ -353,6 +392,7 @@ func (q *Queries) UsersListByTenant(ctx context.Context, tenantID pgtype.Int4) (
 			&i.Status,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.NotifyOptOut,
 		); err != nil {
 			return nil, err
 		}
@@ -370,6 +410,7 @@ FROM users
 WHERE tenant_id = $1
   AND status = 'active'
   AND role IN ('owner', 'manager')
+  AND notify_opt_out = false
 ORDER BY email
 `
 
@@ -379,9 +420,9 @@ type UsersListDigestRecipientsByTenantRow struct {
 	Role  UserRole    `json:"role"`
 }
 
-// Recipients of a tenant's daily digest: active owners and managers only. Viewers
-// and non-active (pending/inactive) users are excluded. Ordered by email for a
-// stable fan-out.
+// Recipients of a tenant's daily digest: active owners and managers who have not
+// personally opted out. Viewers and non-active (pending/inactive) users are
+// excluded. Ordered by email for a stable fan-out.
 func (q *Queries) UsersListDigestRecipientsByTenant(ctx context.Context, tenantID pgtype.Int4) ([]UsersListDigestRecipientsByTenantRow, error) {
 	rows, err := q.db.Query(ctx, usersListDigestRecipientsByTenant, tenantID)
 	if err != nil {

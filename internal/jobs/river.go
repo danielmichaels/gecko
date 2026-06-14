@@ -178,11 +178,22 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 			rw,
 			&ScheduledScanWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},
 		)
-		// notifications — the daily digest dispatches across enabled channels; email
-		// is the only bearer today and reuses the send_email job below.
+		// notifications — the daily digest and the near-real-time high-impact alert
+		// both dispatch across enabled channels; email is the only bearer today and
+		// reuses the send_email job below.
 		river.AddWorker(
 			rw,
 			&DailyDigestWorker{
+				Logger:     *cfg.Logger,
+				Store:      cfg.Store,
+				PgxPool:    cfg.PgxPool,
+				Dispatcher: notify.NewDispatcher(notify.NewEmailChannel(riverEmailEnqueuer{})),
+				Conf:       config.AppConfig(),
+			},
+		)
+		river.AddWorker(
+			rw,
+			&HighImpactAlertWorker{
 				Logger:     *cfg.Logger,
 				Store:      cfg.Store,
 				PgxPool:    cfg.PgxPool,
@@ -266,6 +277,21 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 				),
 			)
 		}
+		// Near-real-time high-impact alert sweep: a leader-singleton tick on a short
+		// interval that emails opted-in tenants about new critical/high findings.
+		// RunOnStart catches anything that landed while the fleet was down.
+		if config.AppConfig().AppConf.NotifyAlertsEnabled {
+			riverConfig.PeriodicJobs = append(
+				riverConfig.PeriodicJobs,
+				river.NewPeriodicJob(
+					river.PeriodicInterval(alertInterval()),
+					func() (river.JobArgs, *river.InsertOpts) {
+						return HighImpactAlertArgs{}, nil
+					},
+					&river.PeriodicJobOpts{RunOnStart: true},
+				),
+			)
+		}
 	}
 
 	rc, err := river.NewClient(riverpgxv5.New(cfg.PgxPool), riverConfig)
@@ -273,6 +299,16 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 		return nil, err
 	}
 	return rc, nil
+}
+
+// alertInterval returns the high-impact alert sweep interval from config, falling
+// back to 10 minutes when unset or non-positive.
+func alertInterval() time.Duration {
+	d := config.AppConfig().AppConf.NotifyAlertInterval
+	if d <= 0 {
+		return 10 * time.Minute
+	}
+	return d
 }
 
 // enumerationWorkers returns the per-process cap for the enumeration queue,
