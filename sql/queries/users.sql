@@ -44,16 +44,6 @@ SET notify_opt_out = @opt_out,
     updated_at     = now()
 WHERE id = @user_id;
 
--- name: UserUpdateIdentity :one
--- Updates the tenant-agnostic identity (email, name) by uid. Authorization is the
--- caller's: a tenant admin may edit a member's identity, having already confirmed
--- membership. Role is per-tenant and changed via MembershipUpdateRole instead.
-UPDATE users
-SET email = $2,
-    name  = $3
-WHERE uid = $1
-RETURNING *;
-
 -- name: TenantCreate :one
 INSERT INTO tenants (name)
 VALUES ($1)

@@ -173,9 +173,7 @@ func (h *Handlers) handleTeamMemberRole(w http.ResponseWriter, r *http.Request) 
 	}
 
 	_, err = h.svc.UsersService().Update(r.Context(), p, uid, service.UsersUpdateParams{
-		Email: current.Email,
-		Name:  current.Name,
-		Role:  role,
+		Role: role,
 	})
 	if err != nil {
 		switch {

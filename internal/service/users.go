@@ -30,9 +30,7 @@ type Member struct {
 
 // UsersUpdateParams holds the caller-supplied fields for a user update.
 type UsersUpdateParams struct {
-	Email string
-	Name  string
-	Role  string
+	Role string
 }
 
 // List returns the members of the caller's tenant with their per-tenant role. Any
@@ -89,19 +87,6 @@ func (s *UsersService) Update(
 	}
 
 	mutate := func(st *store.Queries) error {
-		if _, err := st.UserUpdateIdentity(ctx, store.UserUpdateIdentityParams{
-			Uid:   uid,
-			Email: normaliseEmail(params.Email),
-			Name:  pgtype.Text{String: params.Name, Valid: params.Name != ""},
-		}); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return msgErr(ErrNotFound, "user not found")
-			}
-			if isUniqueViolation(err) {
-				return msgErr(ErrConflict, "email already in use")
-			}
-			return err
-		}
 		if _, err := st.MembershipUpdateRole(ctx, store.MembershipUpdateRoleParams{
 			Uid:      uid,
 			TenantID: p.TenantID,

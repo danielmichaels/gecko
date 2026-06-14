@@ -290,7 +290,7 @@ func TestAuth_UserManagementScoping(t *testing.T) {
 	}
 	// A cannot update or delete B's user.
 	if code := doJSON(t, http.MethodPut, base+"/api/users/"+bUser.Uid, a.APIKey,
-		map[string]string{"email": "owner@b.com", "role": "viewer"}, nil); code != http.StatusNotFound {
+		map[string]string{"role": "viewer"}, nil); code != http.StatusNotFound {
 		t.Errorf("A update B user status = %d, want 404", code)
 	}
 	if code := doJSON(t, http.MethodDelete, base+"/api/users/"+bUser.Uid, a.APIKey, nil, nil); code != http.StatusNotFound {

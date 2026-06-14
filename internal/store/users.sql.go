@@ -175,39 +175,6 @@ func (q *Queries) UserProvisionIdentity(ctx context.Context, arg UserProvisionId
 	return i, err
 }
 
-const userUpdateIdentity = `-- name: UserUpdateIdentity :one
-UPDATE users
-SET email = $2,
-    name  = $3
-WHERE uid = $1
-RETURNING id, uid, email, name, status, created_at, updated_at, notify_opt_out
-`
-
-type UserUpdateIdentityParams struct {
-	Uid   string      `json:"uid"`
-	Email string      `json:"email"`
-	Name  pgtype.Text `json:"name"`
-}
-
-// Updates the tenant-agnostic identity (email, name) by uid. Authorization is the
-// caller's: a tenant admin may edit a member's identity, having already confirmed
-// membership. Role is per-tenant and changed via MembershipUpdateRole instead.
-func (q *Queries) UserUpdateIdentity(ctx context.Context, arg UserUpdateIdentityParams) (Users, error) {
-	row := q.db.QueryRow(ctx, userUpdateIdentity, arg.Uid, arg.Email, arg.Name)
-	var i Users
-	err := row.Scan(
-		&i.ID,
-		&i.Uid,
-		&i.Email,
-		&i.Name,
-		&i.Status,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.NotifyOptOut,
-	)
-	return i, err
-}
-
 const usersListDigestRecipientsByTenant = `-- name: UsersListDigestRecipientsByTenant :many
 SELECT u.email, u.name, m.role
 FROM users u

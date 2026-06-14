@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
 	"strings"
 	"time"
 
@@ -877,12 +878,14 @@ func (s *AuthService) ResetPassword(ctx context.Context, token, newPassword stri
 // new owner, so a request-derived origin would be injectable.
 func welcomeEmail(to, tenantName, baseURL string) mailer.Message {
 	link := baseURL + "/app/domains"
+	safeTenant := html.EscapeString(tenantName)
+	safeLink := html.EscapeString(link)
 	return mailer.Message{
 		To:      to,
 		Subject: "Welcome to gecko",
-		HTML: "<p>Welcome to gecko — your workspace <b>" + tenantName + "</b> is ready.</p>" +
+		HTML: "<p>Welcome to gecko — your workspace <b>" + safeTenant + "</b> is ready.</p>" +
 			"<p>Add your first domain and we'll start watching its DNS for misconfigurations.</p>" +
-			"<p><a href=\"" + link + "\">Open your dashboard</a></p>",
+			"<p><a href=\"" + safeLink + "\">Open your dashboard</a></p>",
 		Text: "Welcome to gecko — your workspace " + tenantName + " is ready.\n\n" +
 			"Add your first domain and we'll start watching its DNS for misconfigurations.\n" +
 			"Open your dashboard: " + link,
@@ -893,11 +896,12 @@ func welcomeEmail(to, tenantName, baseURL string) mailer.Message {
 // the codebase yet, the body is built here so the worker stays a thin transport.
 func passwordResetEmail(to, baseURL, rawToken string) mailer.Message {
 	link := baseURL + "/app/reset-password?token=" + rawToken
+	safeLink := html.EscapeString(link)
 	return mailer.Message{
 		To:      to,
 		Subject: "Reset your gecko password",
 		HTML: "<p>We received a request to reset your gecko password.</p>" +
-			"<p><a href=\"" + link + "\">Reset your password</a></p>" +
+			"<p><a href=\"" + safeLink + "\">Reset your password</a></p>" +
 			"<p>If you did not request this, you can ignore this email.</p>",
 		Text: "Reset your gecko password using this link:\n" + link +
 			"\n\nIf you did not request this, you can ignore this email.",
@@ -910,14 +914,19 @@ func passwordResetEmail(to, baseURL, rawToken string) mailer.Message {
 func invitationEmail(to, tenantName, inviterEmail, baseURL, rawToken string) mailer.Message {
 	link := baseURL + "/app/invite?token=" + rawToken
 	intro := "You have been invited to join the workspace " + tenantName + " on gecko."
+	safeIntro := "You have been invited to join the workspace " +
+		html.EscapeString(tenantName) + " on gecko."
 	if inviterEmail != "" {
 		intro = inviterEmail + " invited you to join the workspace " + tenantName + " on gecko."
+		safeIntro = html.EscapeString(inviterEmail) + " invited you to join the workspace " +
+			html.EscapeString(tenantName) + " on gecko."
 	}
+	safeLink := html.EscapeString(link)
 	return mailer.Message{
 		To:      to,
 		Subject: "You've been invited to " + tenantName + " on gecko",
-		HTML: "<p>" + intro + "</p>" +
-			"<p><a href=\"" + link + "\">Accept your invitation</a></p>" +
+		HTML: "<p>" + safeIntro + "</p>" +
+			"<p><a href=\"" + safeLink + "\">Accept your invitation</a></p>" +
 			"<p>If you weren't expecting this, you can ignore this email.</p>",
 		Text: intro + "\n\nAccept your invitation: " + link +
 			"\n\nIf you weren't expecting this, you can ignore this email.",
