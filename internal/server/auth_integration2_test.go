@@ -176,10 +176,11 @@ func TestAuth_InviteFlow(t *testing.T) {
 		map[string]string{"token": "bogus", "password": "supersecret"}, nil); code != http.StatusBadRequest {
 		t.Errorf("bad token status = %d, want 400", code)
 	}
-	// Inviting an already-registered email → 409.
+	// Inviting an email that is already a member of THIS tenant → 409. (An email in
+	// another tenant, or with no account, is invitable — see TestAuth_InviteExistingUser.)
 	if code := doJSON(t, http.MethodPost, base+"/api/invitations", owner.APIKey,
 		map[string]string{"email": "viewer@a.com", "role": "viewer"}, nil); code != http.StatusConflict {
-		t.Errorf("invite existing email status = %d, want 409", code)
+		t.Errorf("invite existing member status = %d, want 409", code)
 	}
 
 	// Revoked invite cannot be accepted.

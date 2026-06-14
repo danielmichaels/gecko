@@ -15,6 +15,19 @@ type UsersService struct {
 	*Service
 }
 
+// Member is a tenant member: a user identity plus the role they hold in the
+// caller's tenant. Role and JoinedAt come from the membership; email/name/status
+// from the shared identity.
+type Member struct {
+	JoinedAt pgtype.Timestamptz
+	UID      string
+	Email    string
+	Name     string
+	Role     string
+	Status   string
+	UserID   int32
+}
+
 // UsersUpdateParams holds the caller-supplied fields for a user update.
 type UsersUpdateParams struct {
 	Email string
@@ -22,55 +35,65 @@ type UsersUpdateParams struct {
 	Role  string
 }
 
-// List returns all users in the caller's tenant. Any authenticated member may
-// list; the query is tenant-scoped so no cross-tenant rows are returned.
-func (s *UsersService) List(ctx context.Context, p *auth.Principal) ([]store.Users, error) {
-	rows, err := s.DB.UsersListByTenant(ctx, pgtype.Int4{Int32: p.TenantID, Valid: true})
+// List returns the members of the caller's tenant with their per-tenant role. Any
+// authenticated member may list; the query is tenant-scoped so no cross-tenant
+// rows are returned.
+func (s *UsersService) List(ctx context.Context, p *auth.Principal) ([]Member, error) {
+	rows, err := s.DB.MembershipsListByTenant(ctx, p.TenantID)
 	if err != nil {
 		return nil, err
 	}
-	return rows, nil
+	members := make([]Member, len(rows))
+	for i, r := range rows {
+		members[i] = Member{
+			UserID:   r.UserID,
+			UID:      r.UserUid,
+			Email:    r.Email,
+			Name:     r.Name.String,
+			Role:     string(r.Role),
+			Status:   string(r.Status),
+			JoinedAt: r.JoinedAt,
+		}
+	}
+	return members, nil
 }
 
-// Update applies email/name/role changes to the target user, enforcing authz
-// and the last-owner guard. Returns messaged sentinels so the handler can surface
-// exact client-facing messages via err.Error().
+// Update applies email/name/role changes to a member of the caller's tenant,
+// enforcing authz and the last-owner guard. Email/name update the shared identity;
+// role updates the membership. Returns messaged sentinels so the handler can
+// surface exact client-facing messages via err.Error().
 func (s *UsersService) Update(
 	ctx context.Context,
 	p *auth.Principal,
 	uid string,
 	params UsersUpdateParams,
-) (store.Users, error) {
+) (Member, error) {
 	if err := ownerOrManager(p); err != nil {
-		return store.Users{}, err
+		return Member{}, err
 	}
 	if err := requireCanGrant(p, params.Role); err != nil {
-		return store.Users{}, err
+		return Member{}, err
 	}
-	target, err := s.DB.UserGetInTenant(ctx, store.UserGetInTenantParams{
+	target, err := s.DB.MembershipGetInTenant(ctx, store.MembershipGetInTenantParams{
 		Uid:      uid,
-		TenantID: pgtype.Int4{Int32: p.TenantID, Valid: true},
+		TenantID: p.TenantID,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return store.Users{}, msgErr(ErrNotFound, "user not found")
+			return Member{}, msgErr(ErrNotFound, "user not found")
 		}
-		return store.Users{}, err
+		return Member{}, err
 	}
 	if err := requireCanManage(p, string(target.Role)); err != nil {
-		return store.Users{}, err
+		return Member{}, err
 	}
 
-	var updated store.Users
-	update := func(st *store.Queries) error {
-		u, err := st.UserUpdateInTenant(ctx, store.UserUpdateInTenantParams{
-			Uid:      uid,
-			TenantID: pgtype.Int4{Int32: p.TenantID, Valid: true},
-			Email:    normaliseEmail(params.Email),
-			Name:     pgtype.Text{String: params.Name, Valid: params.Name != ""},
-			Role:     store.UserRole(params.Role),
-		})
-		if err != nil {
+	mutate := func(st *store.Queries) error {
+		if _, err := st.UserUpdateIdentity(ctx, store.UserUpdateIdentityParams{
+			Uid:   uid,
+			Email: normaliseEmail(params.Email),
+			Name:  pgtype.Text{String: params.Name, Valid: params.Name != ""},
+		}); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return msgErr(ErrNotFound, "user not found")
 			}
@@ -79,7 +102,16 @@ func (s *UsersService) Update(
 			}
 			return err
 		}
-		updated = u
+		if _, err := st.MembershipUpdateRole(ctx, store.MembershipUpdateRoleParams{
+			Uid:      uid,
+			TenantID: p.TenantID,
+			Role:     store.UserRole(params.Role),
+		}); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return msgErr(ErrNotFound, "user not found")
+			}
+			return err
+		}
 		return nil
 	}
 
@@ -87,24 +119,41 @@ func (s *UsersService) Update(
 	demotingOwner := target.Role == store.UserRoleOwner &&
 		store.UserRole(params.Role) != store.UserRoleOwner
 	if demotingOwner {
-		if err := s.withLastOwnerGuard(ctx, p.TenantID, update); err != nil {
-			return store.Users{}, err
+		if err := s.withLastOwnerGuard(ctx, p.TenantID, mutate); err != nil {
+			return Member{}, err
 		}
-	} else if err := update(s.DB); err != nil {
-		return store.Users{}, err
+	} else if err := s.inTx(ctx, mutate); err != nil {
+		return Member{}, err
 	}
-	return updated, nil
+
+	updated, err := s.DB.MembershipGetInTenant(ctx, store.MembershipGetInTenantParams{
+		Uid:      uid,
+		TenantID: p.TenantID,
+	})
+	if err != nil {
+		return Member{}, err
+	}
+	return Member{
+		UserID:   updated.UserID,
+		UID:      updated.UserUid,
+		Email:    updated.Email,
+		Name:     updated.Name.String,
+		Role:     string(updated.Role),
+		Status:   string(updated.Status),
+		JoinedAt: updated.JoinedAt,
+	}, nil
 }
 
-// Delete removes a user from the caller's tenant, enforcing authz and the
-// last-owner guard.
+// Delete removes a member from the caller's tenant, enforcing authz and the
+// last-owner guard. Only the membership is deleted: the user's identity and their
+// memberships in other tenants survive.
 func (s *UsersService) Delete(ctx context.Context, p *auth.Principal, uid string) error {
 	if err := ownerOrManager(p); err != nil {
 		return err
 	}
-	target, err := s.DB.UserGetInTenant(ctx, store.UserGetInTenantParams{
+	target, err := s.DB.MembershipGetInTenant(ctx, store.MembershipGetInTenantParams{
 		Uid:      uid,
-		TenantID: pgtype.Int4{Int32: p.TenantID, Valid: true},
+		TenantID: p.TenantID,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -117,24 +166,38 @@ func (s *UsersService) Delete(ctx context.Context, p *auth.Principal, uid string
 	}
 
 	del := func(st *store.Queries) error {
-		if _, err := st.UserDeleteInTenant(ctx, store.UserDeleteInTenantParams{
+		if _, err := st.MembershipDelete(ctx, store.MembershipDeleteParams{
 			Uid:      uid,
-			TenantID: pgtype.Int4{Int32: p.TenantID, Valid: true},
+			TenantID: p.TenantID,
 		}); err != nil {
 			return msgErr(ErrNotFound, "user not found")
 		}
 		return nil
 	}
 
-	// Deleting an owner is guarded so the tenant cannot be left ownerless.
+	// Removing an owner is guarded so the tenant cannot be left ownerless.
 	if target.Role == store.UserRoleOwner {
 		return s.withLastOwnerGuard(ctx, p.TenantID, del)
 	}
 	return del(s.DB)
 }
 
+// inTx runs mutate inside a transaction, committing on success. Used by callers
+// that need a multi-statement mutation to be atomic but do not need the owner lock.
+func (s *Service) inTx(ctx context.Context, mutate func(*store.Queries) error) error {
+	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := mutate(s.DB.WithTx(tx)); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 // withLastOwnerGuard runs mutate inside a transaction after locking the tenant's
-// owner rows FOR UPDATE and confirming more than one owner remains. The lock
+// owner memberships FOR UPDATE and confirming more than one owner remains. The lock
 // serialises concurrent owner removals so two callers cannot each observe a second
 // owner that the other is deleting and both proceed, orphaning the tenant. mutate
 // receives the transaction-scoped Queries and must return messaged sentinels.
@@ -150,7 +213,7 @@ func (s *Service) withLastOwnerGuard(
 	defer func() { _ = tx.Rollback(ctx) }()
 	st := s.DB.WithTx(tx)
 
-	owners, err := st.OwnersLockInTenant(ctx, pgtype.Int4{Int32: tenantID, Valid: true})
+	owners, err := st.MembershipOwnersLockInTenant(ctx, tenantID)
 	if err != nil {
 		return err
 	}

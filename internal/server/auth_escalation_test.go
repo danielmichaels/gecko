@@ -193,6 +193,10 @@ func TestAuth_LastOwnerConcurrentDelete(t *testing.T) {
 		t.Fatalf("o2 lookup: %v", err)
 	}
 
+	// Capture the tenant before the concurrent deletes: owner@a.com may be the
+	// account that gets removed, after which its membership no longer resolves.
+	tenantID := testhelpers.TenantIDForEmail(t, ctx, pc, "owner@a.com")
+
 	uids := []string{o1.Uid, o2.Uid}
 	codes := make([]int, len(uids))
 	var wg sync.WaitGroup
@@ -230,7 +234,7 @@ func TestAuth_LastOwnerConcurrentDelete(t *testing.T) {
 	if succeeded != 1 {
 		t.Errorf("status codes = %v, want exactly one 204", codes)
 	}
-	remaining, err := pc.Queries.UsersCountOwnersInTenant(ctx, o1.TenantID)
+	remaining, err := pc.Queries.MembershipsCountOwnersInTenant(ctx, tenantID)
 	if err != nil {
 		t.Fatalf("count owners: %v", err)
 	}

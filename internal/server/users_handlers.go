@@ -39,12 +39,12 @@ func (app *Server) handleUserList(ctx context.Context, _ *struct{}) (*ListUsersO
 	out.Body.Users = make([]userView, 0, len(rows))
 	for _, u := range rows {
 		out.Body.Users = append(out.Body.Users, userView{
-			UID:       u.Uid,
+			UID:       u.UID,
 			Email:     u.Email,
-			Name:      u.Name.String,
-			Role:      string(u.Role),
-			Status:    string(u.Status),
-			CreatedAt: tsPtr(u.CreatedAt),
+			Name:      u.Name,
+			Role:      u.Role,
+			Status:    u.Status,
+			CreatedAt: tsPtr(u.JoinedAt),
 		})
 	}
 	return out, nil
@@ -88,12 +88,12 @@ func (app *Server) handleUserUpdate(ctx context.Context, i *UpdateUserInput) (*U
 		}
 	}
 	return &UserOutput{Body: userView{
-		UID:       u.Uid,
+		UID:       u.UID,
 		Email:     u.Email,
-		Name:      u.Name.String,
-		Role:      string(u.Role),
-		Status:    string(u.Status),
-		CreatedAt: tsPtr(u.CreatedAt),
+		Name:      u.Name,
+		Role:      u.Role,
+		Status:    u.Status,
+		CreatedAt: tsPtr(u.JoinedAt),
 	}}, nil
 }
 

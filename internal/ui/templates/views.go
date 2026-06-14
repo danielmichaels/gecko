@@ -77,6 +77,36 @@ func inviteSignals(token string) string {
 	return fmt.Sprintf(`{"token":"%s","password":"","name":""}`, token)
 }
 
+// attachSignals returns the signals string carrying just the invite token for the
+// one-click "attach to an existing account" accept action.
+func attachSignals(token string) string {
+	return fmt.Sprintf(`{"token":"%s"}`, token)
+}
+
+// switchTenantAction returns the data-on:click action that POSTs a tenant switch.
+// The tenant uid is server-generated (tenant_xxxx), but it is JSON-encoded for the
+// query string as defence-in-depth.
+func switchTenantAction(uid, token string) string {
+	uidJSON, _ := json.Marshal(uid)
+	tokenJSON, _ := json.Marshal(token)
+	return fmt.Sprintf(
+		"@post('/app/switch-tenant?tenant='+encodeURIComponent(%s), {headers: {'X-CSRF-Token': %s}})",
+		uidJSON,
+		tokenJSON,
+	)
+}
+
+// createWorkspaceAction prompts for a workspace name and POSTs it to create a new
+// tenant, then the handler switches the session to it. The name is stashed in the
+// wsName signal so it travels in the request body.
+func createWorkspaceAction(token string) string {
+	tokenJSON, _ := json.Marshal(token)
+	return fmt.Sprintf(
+		"const n=prompt('Name your new workspace'); if(!n){return}; $wsName=n; @post('/app/workspaces', {headers: {'X-CSRF-Token': %s}})",
+		tokenJSON,
+	)
+}
+
 // resetSignals returns a JSON signals string for the reset-password form, with the
 // token pre-populated so it travels in the POST body.
 func resetSignals(token string) string {
@@ -143,6 +173,18 @@ type AppShellProps struct {
 	// delete). It mirrors the service-layer guard so the UI hides what the API would
 	// reject; the 403 remains the authoritative backstop.
 	CanManageDomains bool
+	// Tenants lists every workspace the caller belongs to, driving the topbar tenant
+	// switcher. When the caller belongs to a single tenant the chip renders static.
+	Tenants []TenantOption
+}
+
+// TenantOption is one workspace in the topbar tenant switcher. Active marks the
+// caller's current active tenant; UID feeds the switch endpoint.
+type TenantOption struct {
+	UID    string
+	Name   string
+	Role   string
+	Active bool
 }
 
 // LoginPageProps holds data for the login page.
@@ -170,7 +212,11 @@ type ResetPasswordPageProps struct {
 	Error string
 }
 
-// AcceptInvitePageProps holds data for the accept-invitation page.
+// AcceptInvitePageProps holds data for the accept-invitation page. Mode selects
+// the acceptance flow: "new" sets a password for a brand-new account; "attach"
+// shows a one-click accept for an already-logged-in matching account; "login"
+// tells an existing account to sign in first (a link alone never attaches a tenant
+// to someone else's identity).
 type AcceptInvitePageProps struct {
 	CSRFToken    string
 	Token        string
@@ -180,6 +226,7 @@ type AcceptInvitePageProps struct {
 	InviteeEmail string
 	Expiry       string
 	Error        string
+	Mode         string
 }
 
 // DomainsStats holds the four stat-strip values for the domains list page.

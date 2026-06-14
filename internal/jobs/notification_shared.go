@@ -21,10 +21,7 @@ func loadDigestRecipients(
 	st *store.Queries,
 	tenantID int32,
 ) ([]notify.Recipient, error) {
-	rows, err := st.UsersListDigestRecipientsByTenant(
-		ctx,
-		pgtype.Int4{Int32: tenantID, Valid: true},
-	)
+	rows, err := st.UsersListDigestRecipientsByTenant(ctx, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("list recipients: %w", err)
 	}

@@ -31,11 +31,14 @@ type InvitationsCreateResult struct {
 	Role      string
 }
 
-// Create issues an invitation for a new teammate. Owner/manager only.
+// Create issues an invitation for a teammate. Owner/manager only.
 //
-// Single-tenant emails: an already-registered email is rejected (ErrConflict)
-// before a token is minted; a stale expired invite for the same email is cleared
-// first, while a still-live one collides on the partial unique index (ErrConflict).
+// Multi-tenant: an already-registered email is allowed — the invitee accepts while
+// logged in to attach a membership. Only an email that is already a member of THIS
+// tenant is rejected (ErrConflict). A stale expired invite for the same email is
+// cleared first, while a still-live one collides on the partial unique index
+// (ErrConflict). The invitation row and its email enqueue commit atomically; the
+// raw token is also returned so the UI can reveal a copyable link as a fallback.
 func (s *InvitationsService) Create(
 	ctx context.Context,
 	p *auth.Principal,
@@ -49,17 +52,19 @@ func (s *InvitationsService) Create(
 	}
 	email := normaliseEmail(params.Email)
 
-	if _, err := s.DB.UserGetByEmail(ctx, email); err == nil {
-		return InvitationsCreateResult{}, msgErr(ErrConflict, "email already registered")
+	// Reject only if the email is already a member of THIS tenant; membership in
+	// other tenants (or no account at all) is fine.
+	if existing, err := s.DB.UserGetByEmail(ctx, email); err == nil {
+		if _, mErr := s.DB.MembershipGetRole(ctx, store.MembershipGetRoleParams{
+			UserID:   existing.ID,
+			TenantID: p.TenantID,
+		}); mErr == nil {
+			return InvitationsCreateResult{}, msgErr(ErrConflict, "already a member of this tenant")
+		} else if !errors.Is(mErr, pgx.ErrNoRows) {
+			return InvitationsCreateResult{}, fmt.Errorf("create invitation: membership check: %w", mErr)
+		}
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return InvitationsCreateResult{}, fmt.Errorf("create invitation: lookup existing user: %w", err)
-	}
-
-	if err := s.DB.InvitationExpiredDelete(ctx, store.InvitationExpiredDeleteParams{
-		TenantID: p.TenantID,
-		Email:    email,
-	}); err != nil {
-		return InvitationsCreateResult{}, fmt.Errorf("create invitation: clear expired: %w", err)
 	}
 
 	token, err := auth.GenerateToken()
@@ -68,7 +73,21 @@ func (s *InvitationsService) Create(
 	}
 	expiresAt := time.Now().Add(s.Conf.Auth.InviteTTL)
 
-	if _, err := s.DB.InvitationCreate(ctx, store.InvitationCreateParams{
+	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return InvitationsCreateResult{}, fmt.Errorf("create invitation: begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	st := s.DB.WithTx(tx)
+
+	if err := st.InvitationExpiredDelete(ctx, store.InvitationExpiredDeleteParams{
+		TenantID: p.TenantID,
+		Email:    email,
+	}); err != nil {
+		return InvitationsCreateResult{}, fmt.Errorf("create invitation: clear expired: %w", err)
+	}
+
+	if _, err := st.InvitationCreate(ctx, store.InvitationCreateParams{
 		TenantID:  p.TenantID,
 		Email:     email,
 		Role:      store.UserRole(params.Role),
@@ -83,6 +102,18 @@ func (s *InvitationsService) Create(
 			)
 		}
 		return InvitationsCreateResult{}, fmt.Errorf("create invitation: insert: %w", err)
+	}
+
+	if s.emailer != nil {
+		tenantName, _ := s.AuthService().TenantName(ctx, p.TenantID)
+		msg := invitationEmail(email, tenantName, p.Email, s.Conf.AppConf.PublicBaseURL, token)
+		if err := s.emailer.EnqueueEmail(ctx, tx, msg); err != nil {
+			return InvitationsCreateResult{}, fmt.Errorf("create invitation: enqueue email: %w", err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return InvitationsCreateResult{}, fmt.Errorf("create invitation: commit: %w", err)
 	}
 
 	return InvitationsCreateResult{

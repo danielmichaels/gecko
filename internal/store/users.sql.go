@@ -81,6 +81,25 @@ func (q *Queries) TenantGetByID(ctx context.Context, id int32) (Tenants, error) 
 	return i, err
 }
 
+const tenantGetByUID = `-- name: TenantGetByUID :one
+SELECT id, uid, name, created_at, updated_at
+FROM tenants
+WHERE uid = $1
+`
+
+func (q *Queries) TenantGetByUID(ctx context.Context, uid string) (Tenants, error) {
+	row := q.db.QueryRow(ctx, tenantGetByUID, uid)
+	var i Tenants
+	err := row.Scan(
+		&i.ID,
+		&i.Uid,
+		&i.Name,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const userCreate = `-- name: UserCreate :one
 INSERT INTO users (tenant_id, email, name, role)
 SELECT $1, $2, $3, $4
@@ -308,34 +327,58 @@ func (q *Queries) UserProvision(ctx context.Context, arg UserProvisionParams) (U
 	return i, err
 }
 
-const userUpdateInTenant = `-- name: UserUpdateInTenant :one
-UPDATE users
-SET email = $3,
-    name  = $4,
-    role  = $5
-WHERE uid = $1
-  AND tenant_id = $2
+const userProvisionIdentity = `-- name: UserProvisionIdentity :one
+INSERT INTO users (email, name)
+VALUES ($1, $2)
 RETURNING id, uid, tenant_id, email, name, role, status, created_at, updated_at, notify_opt_out
 `
 
-type UserUpdateInTenantParams struct {
-	Uid      string      `json:"uid"`
-	TenantID pgtype.Int4 `json:"tenant_id"`
-	Email    string      `json:"email"`
-	Name     pgtype.Text `json:"name"`
-	Role     UserRole    `json:"role"`
+type UserProvisionIdentityParams struct {
+	Email string      `json:"email"`
+	Name  pgtype.Text `json:"name"`
 }
 
-// Keyed by uid (the external identifier). tenant_id is intentionally not settable:
-// a user cannot be re-homed across tenants via update.
-func (q *Queries) UserUpdateInTenant(ctx context.Context, arg UserUpdateInTenantParams) (Users, error) {
-	row := q.db.QueryRow(ctx, userUpdateInTenant,
-		arg.Uid,
-		arg.TenantID,
-		arg.Email,
-		arg.Name,
-		arg.Role,
+// Creates a tenant-agnostic identity (email + optional name). Tenant and role are
+// carried by memberships, not the user row, so signup/accept-invite insert the
+// identity here and attach a membership separately. users.tenant_id/role are left
+// at their defaults (NULL / 'viewer') and are not consulted by any read path.
+func (q *Queries) UserProvisionIdentity(ctx context.Context, arg UserProvisionIdentityParams) (Users, error) {
+	row := q.db.QueryRow(ctx, userProvisionIdentity, arg.Email, arg.Name)
+	var i Users
+	err := row.Scan(
+		&i.ID,
+		&i.Uid,
+		&i.TenantID,
+		&i.Email,
+		&i.Name,
+		&i.Role,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.NotifyOptOut,
 	)
+	return i, err
+}
+
+const userUpdateIdentity = `-- name: UserUpdateIdentity :one
+UPDATE users
+SET email = $2,
+    name  = $3
+WHERE uid = $1
+RETURNING id, uid, tenant_id, email, name, role, status, created_at, updated_at, notify_opt_out
+`
+
+type UserUpdateIdentityParams struct {
+	Uid   string      `json:"uid"`
+	Email string      `json:"email"`
+	Name  pgtype.Text `json:"name"`
+}
+
+// Updates the tenant-agnostic identity (email, name) by uid. Authorization is the
+// caller's: a tenant admin may edit a member's identity, having already confirmed
+// membership. Role is per-tenant and changed via MembershipUpdateRole instead.
+func (q *Queries) UserUpdateIdentity(ctx context.Context, arg UserUpdateIdentityParams) (Users, error) {
+	row := q.db.QueryRow(ctx, userUpdateIdentity, arg.Uid, arg.Email, arg.Name)
 	var i Users
 	err := row.Scan(
 		&i.ID,
@@ -405,13 +448,14 @@ func (q *Queries) UsersListByTenant(ctx context.Context, tenantID pgtype.Int4) (
 }
 
 const usersListDigestRecipientsByTenant = `-- name: UsersListDigestRecipientsByTenant :many
-SELECT email, name, role
-FROM users
-WHERE tenant_id = $1
-  AND status = 'active'
-  AND role IN ('owner', 'manager')
-  AND notify_opt_out = false
-ORDER BY email
+SELECT u.email, u.name, m.role
+FROM users u
+         JOIN memberships m ON m.user_id = u.id
+WHERE m.tenant_id = $1
+  AND u.status = 'active'
+  AND m.role IN ('owner', 'manager')
+  AND u.notify_opt_out = false
+ORDER BY u.email
 `
 
 type UsersListDigestRecipientsByTenantRow struct {
@@ -420,10 +464,11 @@ type UsersListDigestRecipientsByTenantRow struct {
 	Role  UserRole    `json:"role"`
 }
 
-// Recipients of a tenant's daily digest: active owners and managers who have not
-// personally opted out. Viewers and non-active (pending/inactive) users are
-// excluded. Ordered by email for a stable fan-out.
-func (q *Queries) UsersListDigestRecipientsByTenant(ctx context.Context, tenantID pgtype.Int4) ([]UsersListDigestRecipientsByTenantRow, error) {
+// Recipients of a tenant's daily digest: active owners/managers in the tenant who
+// have not personally opted out. Role and tenant come from memberships (users.role
+// /tenant_id are retired); viewers and non-active users are excluded. Ordered by
+// email for a stable fan-out.
+func (q *Queries) UsersListDigestRecipientsByTenant(ctx context.Context, tenantID int32) ([]UsersListDigestRecipientsByTenantRow, error) {
 	rows, err := q.db.Query(ctx, usersListDigestRecipientsByTenant, tenantID)
 	if err != nil {
 		return nil, err

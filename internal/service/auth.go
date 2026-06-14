@@ -176,11 +176,9 @@ func (s *AuthService) createTenantOwner(
 	if err != nil {
 		return provisioned{}, fmt.Errorf("signup: create tenant: %w", err)
 	}
-	user, err := st.UserProvision(ctx, store.UserProvisionParams{
-		TenantID: pgtype.Int4{Int32: tenant.ID, Valid: true},
-		Email:    email,
-		Name:     pgtype.Text{String: params.Name, Valid: params.Name != ""},
-		Role:     store.UserRoleOwner,
+	user, err := st.UserProvisionIdentity(ctx, store.UserProvisionIdentityParams{
+		Email: email,
+		Name:  pgtype.Text{String: params.Name, Valid: params.Name != ""},
 	})
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -193,6 +191,13 @@ func (s *AuthService) createTenantOwner(
 		PasswordHash: hash,
 	}); err != nil {
 		return provisioned{}, fmt.Errorf("signup: credential upsert: %w", err)
+	}
+	if _, err := st.MembershipCreate(ctx, store.MembershipCreateParams{
+		UserID:   user.ID,
+		TenantID: tenant.ID,
+		Role:     store.UserRoleOwner,
+	}); err != nil {
+		return provisioned{}, fmt.Errorf("signup: create membership: %w", err)
 	}
 	if mintStep != nil {
 		if err := mintStep(st, tenant.ID, user.ID); err != nil {
@@ -271,11 +276,13 @@ type AcceptInviteParams struct {
 	Name     string
 }
 
-// consumeInvitation runs the shared accept-invite transaction: resolve the token,
-// hash the password, provision the user with the invited role in the inviting
-// tenant, store the credential, mark the invitation accepted, and run mintStep (if
-// any) in-tx. The two public methods differ only in mintStep and result shape.
-// Invalid/expired token → ErrNotFound. Duplicate email → ErrConflict.
+// consumeInvitation runs the new-user accept-invite transaction: resolve the
+// token, create the identity, store the credential, attach a membership with the
+// invited role, mark the invitation accepted, and run mintStep (if any) in-tx. It
+// is only for invitees who do NOT yet have an account; an invite addressed to an
+// existing identity must be accepted while logged in (AttachInviteWeb), so a link
+// alone never attaches a tenant to someone else's account.
+// Invalid/expired token → ErrNotFound. Existing account → ErrConflict (login).
 func (s *AuthService) consumeInvitation(
 	ctx context.Context,
 	params AcceptInviteParams,
@@ -286,6 +293,20 @@ func (s *AuthService) consumeInvitation(
 		// Deliberately opaque: expired and invalid tokens both return not-found
 		// so callers cannot distinguish the two cases.
 		return provisioned{}, fmt.Errorf("%w: invalid or expired invitation", ErrNotFound)
+	}
+	// An invite to an already-registered email must be accepted while authenticated
+	// as that identity; reject the password-based path here.
+	if _, err := s.DB.UserGetByEmail(ctx, inv.Email); err == nil {
+		return provisioned{}, msgErr(
+			ErrConflict,
+			"an account already exists for this email — log in to accept the invitation",
+		)
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return provisioned{}, fmt.Errorf("accept invite: lookup user: %w", err)
+	}
+
+	if len(params.Password) < minPasswordLength {
+		return provisioned{}, msgErr(ErrInvalidInput, "password must be at least 8 characters")
 	}
 	hash, err := auth.HashPassword(params.Password, s.Conf.Auth.BcryptCost)
 	if err != nil {
@@ -299,15 +320,16 @@ func (s *AuthService) consumeInvitation(
 	defer func() { _ = tx.Rollback(ctx) }()
 	st := s.DB.WithTx(tx)
 
-	user, err := st.UserProvision(ctx, store.UserProvisionParams{
-		TenantID: pgtype.Int4{Int32: inv.TenantID, Valid: true},
-		Email:    inv.Email,
-		Name:     pgtype.Text{String: params.Name, Valid: params.Name != ""},
-		Role:     inv.Role,
+	user, err := st.UserProvisionIdentity(ctx, store.UserProvisionIdentityParams{
+		Email: inv.Email,
+		Name:  pgtype.Text{String: params.Name, Valid: params.Name != ""},
 	})
 	if err != nil {
 		if isUniqueViolation(err) {
-			return provisioned{}, fmt.Errorf("%w: email already registered", ErrConflict)
+			return provisioned{}, msgErr(
+				ErrConflict,
+				"an account already exists for this email — log in to accept the invitation",
+			)
 		}
 		return provisioned{}, fmt.Errorf("accept invite: provision user: %w", err)
 	}
@@ -316,6 +338,13 @@ func (s *AuthService) consumeInvitation(
 		PasswordHash: hash,
 	}); err != nil {
 		return provisioned{}, fmt.Errorf("accept invite: credential upsert: %w", err)
+	}
+	if _, err := st.MembershipCreate(ctx, store.MembershipCreateParams{
+		UserID:   user.ID,
+		TenantID: inv.TenantID,
+		Role:     inv.Role,
+	}); err != nil {
+		return provisioned{}, fmt.Errorf("accept invite: create membership: %w", err)
 	}
 	if err := st.InvitationMarkAccepted(ctx, inv.ID); err != nil {
 		return provisioned{}, fmt.Errorf("accept invite: mark accepted: %w", err)
@@ -334,6 +363,52 @@ func (s *AuthService) consumeInvitation(
 		email:    inv.Email,
 		role:     inv.Role,
 	}, nil
+}
+
+// AttachInviteWeb attaches the authenticated caller to the tenant named by an
+// invitation token, for invitees who already have an account. It verifies the
+// invite was addressed to the caller's own email (a link alone cannot attach a
+// tenant to a different identity), creates the membership with the invited role,
+// marks the invite accepted, and returns the tenant id so the caller can switch
+// the active session to it. Invalid/expired token → ErrNotFound; an invite for a
+// different identity → ErrForbidden; already a member → ErrConflict.
+func (s *AuthService) AttachInviteWeb(
+	ctx context.Context,
+	p *auth.Principal,
+	token string,
+) (int32, error) {
+	inv, err := s.DB.InvitationGetByTokenHash(ctx, auth.HashToken(token))
+	if err != nil {
+		return 0, fmt.Errorf("%w: invalid or expired invitation", ErrNotFound)
+	}
+	if normaliseEmail(inv.Email) != normaliseEmail(p.Email) {
+		return 0, msgErr(ErrForbidden, "this invitation was sent to a different account")
+	}
+
+	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return 0, fmt.Errorf("attach invite: begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	st := s.DB.WithTx(tx)
+
+	if _, err := st.MembershipCreate(ctx, store.MembershipCreateParams{
+		UserID:   p.UserID,
+		TenantID: inv.TenantID,
+		Role:     inv.Role,
+	}); err != nil {
+		if isUniqueViolation(err) {
+			return 0, msgErr(ErrConflict, "you are already a member of this tenant")
+		}
+		return 0, fmt.Errorf("attach invite: create membership: %w", err)
+	}
+	if err := st.InvitationMarkAccepted(ctx, inv.ID); err != nil {
+		return 0, fmt.Errorf("attach invite: mark accepted: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("attach invite: commit: %w", err)
+	}
+	return inv.TenantID, nil
 }
 
 // AcceptInvite consumes an invitation token, creating the user with the
@@ -394,6 +469,9 @@ type InviteContext struct {
 	Role         string
 	Expiry       string
 	TenantName   string
+	// ExistingUser is true when the invitee email already has an account, so the
+	// UI directs them to log in and attach the membership rather than set a password.
+	ExistingUser bool
 }
 
 // InviteContextFromToken looks up the invitation and returns display fields.
@@ -410,6 +488,11 @@ func (s *AuthService) InviteContextFromToken(
 		InviteeEmail: inv.Email,
 		Role:         string(inv.Role),
 		Expiry:       inv.ExpiresAt.Time.Format("2006-01-02 15:04 UTC"),
+	}
+	if _, err := s.DB.UserGetByEmail(ctx, normaliseEmail(inv.Email)); err == nil {
+		ic.ExistingUser = true
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return InviteContext{}, fmt.Errorf("invite context: lookup user: %w", err)
 	}
 	if tenant, err := s.DB.TenantGetByID(ctx, inv.TenantID); err == nil {
 		ic.TenantName = tenant.Name
@@ -433,6 +516,134 @@ func (s *AuthService) TenantName(ctx context.Context, tenantID int32) (string, e
 		return "", fmt.Errorf("tenant name: %w", err)
 	}
 	return tenant.Name, nil
+}
+
+// MembershipSummary is one tenant a user belongs to, for the UI tenant switcher.
+// Active marks the membership matching the caller's current active tenant.
+type MembershipSummary struct {
+	TenantUID  string
+	TenantName string
+	Role       string
+	Active     bool
+}
+
+// ListMemberships returns the tenants the caller belongs to, flagging the one that
+// is currently active. Drives the topbar tenant switcher.
+func (s *AuthService) ListMemberships(
+	ctx context.Context,
+	p *auth.Principal,
+) ([]MembershipSummary, error) {
+	rows, err := s.DB.MembershipsListForUser(ctx, p.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("list memberships: %w", err)
+	}
+	out := make([]MembershipSummary, len(rows))
+	for i, r := range rows {
+		out[i] = MembershipSummary{
+			TenantUID:  r.TenantUid,
+			TenantName: r.TenantName,
+			Role:       string(r.Role),
+			Active:     r.TenantID == p.TenantID,
+		}
+	}
+	return out, nil
+}
+
+// Workspace identifies a newly created tenant.
+type Workspace struct {
+	TenantUID  string
+	TenantName string
+	TenantID   int32
+}
+
+// CreateWorkspace creates a new tenant owned by the authenticated caller and
+// attaches them as its owner. It is the in-app path for an existing account to
+// spin up an additional workspace (public signup only creates brand-new
+// identities). The caller switches the active session to it separately.
+func (s *AuthService) CreateWorkspace(
+	ctx context.Context,
+	p *auth.Principal,
+	name string,
+) (Workspace, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return Workspace{}, msgErr(ErrInvalidInput, "workspace name is required")
+	}
+
+	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return Workspace{}, fmt.Errorf("create workspace: begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	st := s.DB.WithTx(tx)
+
+	tenant, err := st.TenantCreate(ctx, name)
+	if err != nil {
+		return Workspace{}, fmt.Errorf("create workspace: create tenant: %w", err)
+	}
+	if _, err := st.MembershipCreate(ctx, store.MembershipCreateParams{
+		UserID:   p.UserID,
+		TenantID: tenant.ID,
+		Role:     store.UserRoleOwner,
+	}); err != nil {
+		return Workspace{}, fmt.Errorf("create workspace: create membership: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Workspace{}, fmt.Errorf("create workspace: commit: %w", err)
+	}
+	return Workspace{TenantID: tenant.ID, TenantUID: tenant.Uid, TenantName: tenant.Name}, nil
+}
+
+// SwitchTenant points the caller's current session at a different tenant they
+// belong to. It validates membership in the target tenant (ErrForbidden / ErrNotFound
+// otherwise) and updates the session row's active tenant in place, so the cookie and
+// CSRF token stay valid. rawSessionToken is the caller's current session token.
+func (s *AuthService) SwitchTenant(
+	ctx context.Context,
+	p *auth.Principal,
+	tenantUID, rawSessionToken string,
+) error {
+	tenant, err := s.DB.TenantGetByUID(ctx, tenantUID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return msgErr(ErrNotFound, "tenant not found")
+		}
+		return fmt.Errorf("switch tenant: lookup tenant: %w", err)
+	}
+	if _, err := s.DB.MembershipGetRole(ctx, store.MembershipGetRoleParams{
+		UserID:   p.UserID,
+		TenantID: tenant.ID,
+	}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return msgErr(ErrForbidden, "you are not a member of that tenant")
+		}
+		return fmt.Errorf("switch tenant: membership check: %w", err)
+	}
+	if err := s.DB.SessionUpdateTenant(ctx, store.SessionUpdateTenantParams{
+		TokenHash: auth.HashToken(rawSessionToken),
+		TenantID:  tenant.ID,
+	}); err != nil {
+		return fmt.Errorf("switch tenant: update session: %w", err)
+	}
+	return nil
+}
+
+// SetSessionTenant points the given session at tenantID without re-checking
+// membership. Callers that have just established membership (e.g. accepting an
+// invite) use this to land the user in the new tenant; untrusted switches must go
+// through SwitchTenant, which validates membership first.
+func (s *AuthService) SetSessionTenant(
+	ctx context.Context,
+	rawSessionToken string,
+	tenantID int32,
+) error {
+	if err := s.DB.SessionUpdateTenant(ctx, store.SessionUpdateTenantParams{
+		TokenHash: auth.HashToken(rawSessionToken),
+		TenantID:  tenantID,
+	}); err != nil {
+		return fmt.Errorf("set session tenant: %w", err)
+	}
+	return nil
 }
 
 // Logout revokes the API key that authenticated the request. Ignores missing rows.
@@ -626,6 +837,26 @@ func passwordResetEmail(to, baseURL, rawToken string) mailer.Message {
 			"<p>If you did not request this, you can ignore this email.</p>",
 		Text: "Reset your gecko password using this link:\n" + link +
 			"\n\nIf you did not request this, you can ignore this email.",
+	}
+}
+
+// invitationEmail renders the team-invitation message. The accept link uses the
+// trusted PublicBaseURL (config), never request headers, since the message is
+// emailed — a request-derived origin would be injectable (link poisoning).
+func invitationEmail(to, tenantName, inviterEmail, baseURL, rawToken string) mailer.Message {
+	link := baseURL + "/app/invite?token=" + rawToken
+	intro := "You have been invited to join the workspace " + tenantName + " on gecko."
+	if inviterEmail != "" {
+		intro = inviterEmail + " invited you to join the workspace " + tenantName + " on gecko."
+	}
+	return mailer.Message{
+		To:      to,
+		Subject: "You've been invited to " + tenantName + " on gecko",
+		HTML: "<p>" + intro + "</p>" +
+			"<p><a href=\"" + link + "\">Accept your invitation</a></p>" +
+			"<p>If you weren't expecting this, you can ignore this email.</p>",
+		Text: intro + "\n\nAccept your invitation: " + link +
+			"\n\nIf you weren't expecting this, you can ignore this email.",
 	}
 }
 

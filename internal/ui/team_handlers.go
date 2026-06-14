@@ -148,8 +148,8 @@ func (h *Handlers) handleTeamInviteRevoke(w http.ResponseWriter, r *http.Request
 }
 
 // handleTeamMemberRole changes a member's role. The new role arrives as the ?role
-// query param; the member's current email/name are carried through because
-// UserUpdateInTenant overwrites all three columns unconditionally.
+// query param; the member's current email/name are carried through because the
+// update rewrites identity (email/name) alongside the membership role.
 func (h *Handlers) handleTeamMemberRole(w http.ResponseWriter, r *http.Request) {
 	p, ok := PrincipalFrom(r.Context())
 	if !ok {
@@ -172,13 +172,9 @@ func (h *Handlers) handleTeamMemberRole(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	name := ""
-	if current.Name.Valid {
-		name = current.Name.String
-	}
 	_, err = h.svc.UsersService().Update(r.Context(), p, uid, service.UsersUpdateParams{
 		Email: current.Email,
-		Name:  name,
+		Name:  current.Name,
 		Role:  role,
 	})
 	if err != nil {
@@ -289,25 +285,21 @@ func (h *Handlers) teamData(
 
 	emailByID := make(map[int32]string, len(users))
 	for _, u := range users {
-		emailByID[u.ID] = u.Email
+		emailByID[u.UserID] = u.Email
 	}
 
 	members := make([]templates.MemberRowView, len(users))
 	for i, u := range users {
-		name := ""
-		if u.Name.Valid {
-			name = u.Name.String
-		}
 		members[i] = templates.MemberRowView{
-			UID:         u.Uid,
+			UID:         u.UID,
 			Email:       u.Email,
-			Name:        name,
+			Name:        u.Name,
 			Initials:    initials(u.Email),
-			Role:        string(u.Role),
-			Status:      string(u.Status),
+			Role:        u.Role,
+			Status:      u.Status,
 			StatusClass: memberStatusClass(u.Status),
-			Joined:      joinedLabel(u.CreatedAt),
-			Manageable:  canManageMemberRole(p.Role, string(u.Role)),
+			Joined:      joinedLabel(u.JoinedAt),
+			Manageable:  canManageMemberRole(p.Role, u.Role),
 		}
 	}
 
@@ -339,17 +331,17 @@ func (h *Handlers) findMember(
 	ctx context.Context,
 	p *auth.Principal,
 	uid string,
-) (store.Users, error) {
+) (service.Member, error) {
 	users, err := h.svc.UsersService().List(ctx, p)
 	if err != nil {
-		return store.Users{}, err
+		return service.Member{}, err
 	}
 	for _, u := range users {
-		if u.Uid == uid {
+		if u.UID == uid {
 			return u, nil
 		}
 	}
-	return store.Users{}, service.ErrNotFound
+	return service.Member{}, service.ErrNotFound
 }
 
 // canManageMemberRole reports whether the actor outranks-or-equals the target role.
@@ -375,11 +367,11 @@ func teamStats(
 }
 
 // memberStatusClass maps a user status to its badge accent class.
-func memberStatusClass(status store.UserStatus) string {
+func memberStatusClass(status string) string {
 	switch status {
-	case store.UserStatusActive:
+	case string(store.UserStatusActive):
 		return "ok"
-	case store.UserStatusPending:
+	case string(store.UserStatusPending):
 		return "warn"
 	default:
 		return ""

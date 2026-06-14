@@ -33,9 +33,50 @@ templ AppShell(props AppShellProps) {
 				<span>ge<b>cko</b></span>
 			</div>
 			<div class="topbar-right">
-				<div class="tenant-chip">
-					<span class="dot"></span>
-					{ props.TenantName }
+				<div class="tenant-menu" data-signals='{"tenantMenu":false,"wsName":""}'>
+					<button
+						type="button"
+						class="tenant-chip"
+						aria-haspopup="menu"
+						data-attr:aria-expanded="$tenantMenu"
+						data-on:click="$tenantMenu = !$tenantMenu"
+					>
+						<span class="dot"></span>
+						{ props.TenantName } ▾
+					</button>
+					<div
+						class="user-menu-backdrop"
+						style="display:none"
+						data-show="$tenantMenu"
+						data-on:click="$tenantMenu = false"
+					></div>
+					<div class="user-menu-pop" role="menu" style="display:none" data-show="$tenantMenu">
+						for _, t := range props.Tenants {
+							if t.Active {
+								<div class="user-menu-item" role="menuitem" aria-current="true">
+									<span class="ico">✓</span> { t.Name }
+								</div>
+							} else {
+								<button
+									type="button"
+									class="user-menu-item"
+									role="menuitem"
+									data-on:click={ switchTenantAction(t.UID, props.CSRFToken) }
+								>
+									<span class="ico">◦</span> { t.Name }
+								</button>
+							}
+						}
+						<div class="user-menu-sep"></div>
+						<button
+							type="button"
+							class="user-menu-item"
+							role="menuitem"
+							data-on:click={ createWorkspaceAction(props.CSRFToken) }
+						>
+							<span class="ico">＋</span> New workspace
+						</button>
+					</div>
 				</div>
 				<div class="user-menu" data-signals='{"userMenu":false}'>
 					<button

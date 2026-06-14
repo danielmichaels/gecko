@@ -18,6 +18,15 @@ INSERT INTO users (tenant_id, email, name, role)
 VALUES ($1, $2, $3, $4)
 RETURNING *;
 
+-- name: UserProvisionIdentity :one
+-- Creates a tenant-agnostic identity (email + optional name). Tenant and role are
+-- carried by memberships, not the user row, so signup/accept-invite insert the
+-- identity here and attach a membership separately. users.tenant_id/role are left
+-- at their defaults (NULL / 'viewer') and are not consulted by any read path.
+INSERT INTO users (email, name)
+VALUES ($1, $2)
+RETURNING *;
+
 -- name: UserGetByEmail :one
 SELECT id, uid, tenant_id, email, name, role, status, created_at, updated_at, notify_opt_out
 FROM users
@@ -58,16 +67,18 @@ WHERE tenant_id = $1
 ORDER BY created_at DESC;
 
 -- name: UsersListDigestRecipientsByTenant :many
--- Recipients of a tenant's daily digest: active owners and managers who have not
--- personally opted out. Viewers and non-active (pending/inactive) users are
--- excluded. Ordered by email for a stable fan-out.
-SELECT email, name, role
-FROM users
-WHERE tenant_id = $1
-  AND status = 'active'
-  AND role IN ('owner', 'manager')
-  AND notify_opt_out = false
-ORDER BY email;
+-- Recipients of a tenant's daily digest: active owners/managers in the tenant who
+-- have not personally opted out. Role and tenant come from memberships (users.role
+-- /tenant_id are retired); viewers and non-active users are excluded. Ordered by
+-- email for a stable fan-out.
+SELECT u.email, u.name, m.role
+FROM users u
+         JOIN memberships m ON m.user_id = u.id
+WHERE m.tenant_id = $1
+  AND u.status = 'active'
+  AND m.role IN ('owner', 'manager')
+  AND u.notify_opt_out = false
+ORDER BY u.email;
 
 -- name: UserNotifyOptOutGet :one
 -- Read a single user's personal notification opt-out flag.
@@ -83,15 +94,14 @@ SET notify_opt_out = @opt_out,
     updated_at     = now()
 WHERE id = @user_id;
 
--- name: UserUpdateInTenant :one
--- Keyed by uid (the external identifier). tenant_id is intentionally not settable:
--- a user cannot be re-homed across tenants via update.
+-- name: UserUpdateIdentity :one
+-- Updates the tenant-agnostic identity (email, name) by uid. Authorization is the
+-- caller's: a tenant admin may edit a member's identity, having already confirmed
+-- membership. Role is per-tenant and changed via MembershipUpdateRole instead.
 UPDATE users
-SET email = $3,
-    name  = $4,
-    role  = $5
+SET email = $2,
+    name  = $3
 WHERE uid = $1
-  AND tenant_id = $2
 RETURNING *;
 
 -- name: UserDeleteInTenant :one
@@ -110,3 +120,8 @@ RETURNING *;
 SELECT id, uid, name, created_at, updated_at
 FROM tenants
 WHERE id = $1;
+
+-- name: TenantGetByUID :one
+SELECT id, uid, name, created_at, updated_at
+FROM tenants
+WHERE uid = $1;

@@ -181,8 +181,11 @@ func (app *Server) handleAcceptInvite(
 		if errors.Is(err, service.ErrNotFound) {
 			return nil, huma.Error400BadRequest("invalid or expired invitation")
 		}
+		if errors.Is(err, service.ErrInvalidInput) {
+			return nil, huma.Error400BadRequest(err.Error())
+		}
 		if errors.Is(err, service.ErrConflict) {
-			return nil, huma.Error409Conflict("email already registered")
+			return nil, huma.Error409Conflict(err.Error())
 		}
 		return nil, huma.Error500InternalServerError("accept failed", err)
 	}

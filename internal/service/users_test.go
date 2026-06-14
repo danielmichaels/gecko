@@ -47,16 +47,7 @@ func principalForEmail(
 	email string,
 ) *auth.Principal {
 	t.Helper()
-	u, err := pc.Queries.UserGetByEmail(ctx, email)
-	if err != nil {
-		t.Fatalf("principal for %s: %v", email, err)
-	}
-	return &auth.Principal{
-		UserID:   u.ID,
-		TenantID: u.TenantID.Int32,
-		Email:    u.Email,
-		Role:     string(u.Role),
-	}
+	return testhelpers.PrincipalForEmail(t, ctx, pc, email)
 }
 
 // inviteMember invites email at role via authSvc invitation flow + accept.
@@ -143,8 +134,8 @@ func TestUsersService_Update_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("update: %v", err)
 	}
-	if updated.Name.String != "Vee" {
-		t.Errorf("name = %q, want %q", updated.Name.String, "Vee")
+	if updated.Name != "Vee" {
+		t.Errorf("name = %q, want %q", updated.Name, "Vee")
 	}
 }
 

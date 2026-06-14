@@ -210,24 +210,48 @@ templ AcceptInvitePage(props AcceptInvitePageProps) {
 				} else {
 					<div id="invite-error" style="display:none"></div>
 				}
-				<div data-signals={ inviteSignals(props.Token) }>
-					<div class="invite-card">
-						<span class="dot"></span>
-						Joining as <b>{ props.InviteeEmail }</b>
-					</div>
-					<label class="lbl">Display name (optional)</label>
-					<input class="inp" type="text" placeholder="Your name" data-bind="name"/>
-					<label class="lbl">Choose a password</label>
-					<input class="inp" type="password" placeholder="..." data-bind="password"/>
-					<div class="meter">
-						<i></i><i></i><i></i><i></i><i></i>
-					</div>
-					<button
-						class="btn"
-						type="button"
-						data-on:click="@post('/app/invite')"
-					>Accept &amp; continue &#x2192;</button>
-				</div>
+				switch props.Mode {
+					case "attach":
+						<div data-signals={ attachSignals(props.Token) }>
+							<div class="invite-card">
+								<span class="dot"></span>
+								Joining as <b>{ props.InviteeEmail }</b>
+							</div>
+							<p class="lead">You&#39;re signed in as this account. Accept to join { props.TenantName } and switch to it.</p>
+							<button
+								class="btn"
+								type="button"
+								data-on:click={ postWithCSRF("/app/invite/accept", props.CSRFToken) }
+							>Accept &amp; switch &#x2192;</button>
+						</div>
+					case "login":
+						<div class="invite-card">
+							<span class="dot"></span>
+							This invitation is for <b>{ props.InviteeEmail }</b>
+						</div>
+						<p class="lead" style="margin-top:14px">
+							An account already exists for this email. <a href="/app/login">Sign in</a> as { props.InviteeEmail }, then re-open this invitation link to accept and join { props.TenantName }.
+						</p>
+					default:
+						<div data-signals={ inviteSignals(props.Token) }>
+							<div class="invite-card">
+								<span class="dot"></span>
+								Joining as <b>{ props.InviteeEmail }</b>
+							</div>
+							<label class="lbl">Display name (optional)</label>
+							<input class="inp" type="text" placeholder="Your name" data-bind="name"/>
+							<label class="lbl">Choose a password</label>
+							<input class="inp" type="password" placeholder="..." data-bind="password"/>
+							<div class="meter">
+								<i></i><i></i><i></i><i></i><i></i>
+							</div>
+							<button
+								class="btn"
+								type="button"
+								data-on:click="@post('/app/invite')"
+							>Accept &amp; continue &#x2192;</button>
+						</div>
+				}
 			</div>
 		</div>
 	}

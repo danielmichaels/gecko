@@ -138,6 +138,28 @@ func signupUser(
 	return result
 }
 
+// tenantOf returns u's default-membership tenant id (tenant lives on memberships).
+func tenantOf(
+	t *testing.T,
+	ctx context.Context,
+	pc *testhelpers.PostgresContainer,
+	u store.Users,
+) int32 {
+	t.Helper()
+	return testhelpers.PrincipalForEmail(t, ctx, pc, u.Email).TenantID
+}
+
+// roleOf returns u's default-membership role (role lives on memberships).
+func roleOf(
+	t *testing.T,
+	ctx context.Context,
+	pc *testhelpers.PostgresContainer,
+	u store.Users,
+) string {
+	t.Helper()
+	return testhelpers.PrincipalForEmail(t, ctx, pc, u.Email).Role
+}
+
 // seedInvitation inserts a live invitation directly into the DB for AcceptInvite tests.
 func seedInvitation(
 	t *testing.T,
@@ -298,7 +320,7 @@ func TestAuthService_AcceptInvite_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lookup owner: %v", err)
 	}
-	tenantID := ownerUser.TenantID.Int32
+	tenantID := tenantOf(t, ctx, pc, ownerUser)
 
 	rawToken := seedInvitation(t, ctx, pc, tenantID, "invited@company.com",
 		store.UserRoleViewer, pgtype.Int4{Int32: ownerUser.ID, Valid: true})
@@ -342,7 +364,7 @@ func TestAuthService_InviteContextFromToken_InviterEmail(t *testing.T) {
 	}
 
 	t.Run("populates inviter email", func(t *testing.T) {
-		token := seedInvitation(t, ctx, pc, ownerUser.TenantID.Int32, "invited@company.com",
+		token := seedInvitation(t, ctx, pc, tenantOf(t, ctx, pc, ownerUser), "invited@company.com",
 			store.UserRoleViewer, pgtype.Int4{Int32: ownerUser.ID, Valid: true})
 		ic, err := svc.InviteContextFromToken(ctx, token)
 		if err != nil {
@@ -357,7 +379,7 @@ func TestAuthService_InviteContextFromToken_InviterEmail(t *testing.T) {
 	})
 
 	t.Run("empty when inviter unset", func(t *testing.T) {
-		token := seedInvitation(t, ctx, pc, ownerUser.TenantID.Int32, "noinviter@company.com",
+		token := seedInvitation(t, ctx, pc, tenantOf(t, ctx, pc, ownerUser), "noinviter@company.com",
 			store.UserRoleViewer, pgtype.Int4{})
 		ic, err := svc.InviteContextFromToken(ctx, token)
 		if err != nil {
@@ -409,7 +431,7 @@ func TestAuthService_AcceptInvite_DuplicateEmail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lookup owner: %v", err)
 	}
-	tenantID := ownerUser.TenantID.Int32
+	tenantID := tenantOf(t, ctx, pc, ownerUser)
 
 	// Seed an invitation for the already-registered email in the same tenant.
 	rawToken := seedInvitation(t, ctx, pc, tenantID, "existing@company.com",
@@ -445,9 +467,9 @@ func TestAuthService_Session_MintAndResolve(t *testing.T) {
 	}
 	p := &auth.Principal{
 		UserID:   ownerUser.ID,
-		TenantID: ownerUser.TenantID.Int32,
+		TenantID: tenantOf(t, ctx, pc, ownerUser),
 		Email:    "user@example.com",
-		Role:     string(ownerUser.Role),
+		Role:     roleOf(t, ctx, pc, ownerUser),
 	}
 	_ = signup
 
@@ -519,9 +541,9 @@ func TestAuthService_Session_LastUsedAtAdvances(t *testing.T) {
 	}
 	p := &auth.Principal{
 		UserID:   ownerUser.ID,
-		TenantID: ownerUser.TenantID.Int32,
+		TenantID: tenantOf(t, ctx, pc, ownerUser),
 		Email:    "user@example.com",
-		Role:     string(ownerUser.Role),
+		Role:     roleOf(t, ctx, pc, ownerUser),
 	}
 
 	rawToken, _, err := svc.MintSession(ctx, p, "", "")
@@ -592,7 +614,7 @@ func TestAuthService_Session_ExpiredToken(t *testing.T) {
 		ctx,
 		`INSERT INTO sessions (user_id, tenant_id, token_hash, expires_at)
 		 VALUES ($1, $2, $3, NOW() - INTERVAL '1 hour')`,
-		ownerUser.ID, ownerUser.TenantID.Int32, auth.HashToken(rawToken),
+		ownerUser.ID, tenantOf(t, ctx, pc, ownerUser), auth.HashToken(rawToken),
 	)
 	if err != nil {
 		t.Fatalf("insert expired session: %v", err)
@@ -645,9 +667,9 @@ func TestAuthService_Session_Revoke(t *testing.T) {
 	}
 	p := &auth.Principal{
 		UserID:   ownerUser.ID,
-		TenantID: ownerUser.TenantID.Int32,
+		TenantID: tenantOf(t, ctx, pc, ownerUser),
 		Email:    "user@example.com",
-		Role:     string(ownerUser.Role),
+		Role:     roleOf(t, ctx, pc, ownerUser),
 	}
 
 	rawToken, _, err := svc.MintSession(ctx, p, "", "")
@@ -711,9 +733,9 @@ func TestAuthService_Session_RawTokenNotStored(t *testing.T) {
 	}
 	p := &auth.Principal{
 		UserID:   ownerUser.ID,
-		TenantID: ownerUser.TenantID.Int32,
+		TenantID: tenantOf(t, ctx, pc, ownerUser),
 		Email:    "user@example.com",
-		Role:     string(ownerUser.Role),
+		Role:     roleOf(t, ctx, pc, ownerUser),
 	}
 
 	rawToken, _, err := svc.MintSession(ctx, p, "Mozilla/5.0", "192.168.1.1")
@@ -801,7 +823,7 @@ func TestAuthService_AcceptInviteWeb_Valid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lookup owner: %v", err)
 	}
-	tenantID := ownerUser.TenantID.Int32
+	tenantID := tenantOf(t, ctx, pc, ownerUser)
 
 	rawToken := seedInvitation(t, ctx, pc, tenantID, "web-invited@company.com",
 		store.UserRoleViewer, pgtype.Int4{Int32: ownerUser.ID, Valid: true})
@@ -1116,7 +1138,7 @@ func TestAuthService_ResetPassword_HappyPath(t *testing.T) {
 	}
 	p := &auth.Principal{
 		UserID:   user.ID,
-		TenantID: user.TenantID.Int32,
+		TenantID: tenantOf(t, ctx, pc, user),
 		Email:    user.Email,
 		Role:     string(user.Role),
 	}
@@ -1214,5 +1236,129 @@ func TestAuthService_ResetPassword_WeakPassword(t *testing.T) {
 
 	if err := svc.ResetPassword(ctx, rawToken, "short"); !isErr(err, service.ErrInvalidInput) {
 		t.Errorf("weak password: got %v, want ErrInvalidInput", err)
+	}
+}
+
+// TestAuthService_CreateWorkspace verifies an existing account can spin up an
+// additional workspace, becoming its owner and ending up with multiple memberships.
+func TestAuthService_CreateWorkspace(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc := newAuthSvc(t, pc)
+	signupUser(t, svc, "owner@a.com", "supersecret")
+	p := principalForEmail(t, ctx, pc, "owner@a.com")
+
+	ws, err := svc.CreateWorkspace(ctx, p, "Second Workspace")
+	if err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	if ws.TenantUID == "" || ws.TenantID == 0 {
+		t.Fatalf("create workspace: empty identifiers %+v", ws)
+	}
+
+	role, err := pc.Queries.MembershipGetRole(ctx, store.MembershipGetRoleParams{
+		UserID:   p.UserID,
+		TenantID: ws.TenantID,
+	})
+	if err != nil {
+		t.Fatalf("membership lookup: %v", err)
+	}
+	if role != store.UserRoleOwner {
+		t.Errorf("workspace role = %q, want owner", role)
+	}
+
+	memberships, err := svc.ListMemberships(ctx, p)
+	if err != nil {
+		t.Fatalf("list memberships: %v", err)
+	}
+	if len(memberships) != 2 {
+		t.Errorf("memberships = %d, want 2 (original + new workspace)", len(memberships))
+	}
+}
+
+// TestAuthService_AttachInviteWeb verifies an already-registered user can accept an
+// invitation to another tenant while authenticated, gaining a second membership,
+// and that an invite addressed to a different identity is refused.
+func TestAuthService_AttachInviteWeb(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc := newAuthSvc(t, pc)
+	signupUser(t, svc, "owner@a.com", "supersecret")  // tenant A
+	signupUser(t, svc, "member@b.com", "supersecret") // their own tenant B
+	pOwnerA := principalForEmail(t, ctx, pc, "owner@a.com")
+	pMemberB := principalForEmail(t, ctx, pc, "member@b.com")
+	tenantA := pOwnerA.TenantID
+
+	token := seedInvitation(t, ctx, pc, tenantA, "member@b.com",
+		store.UserRoleViewer, pgtype.Int4{Int32: pOwnerA.UserID, Valid: true})
+
+	// An invite addressed to member@b.com cannot be claimed by a different identity.
+	if _, err := svc.AttachInviteWeb(ctx, pOwnerA, token); !isErr(err, service.ErrForbidden) {
+		t.Errorf("wrong-identity attach: got %v, want ErrForbidden", err)
+	}
+
+	// The matching identity attaches and gains a membership in tenant A.
+	got, err := svc.AttachInviteWeb(ctx, pMemberB, token)
+	if err != nil {
+		t.Fatalf("attach invite: %v", err)
+	}
+	if got != tenantA {
+		t.Errorf("attach tenant = %d, want %d", got, tenantA)
+	}
+	role, err := pc.Queries.MembershipGetRole(ctx, store.MembershipGetRoleParams{
+		UserID:   pMemberB.UserID,
+		TenantID: tenantA,
+	})
+	if err != nil {
+		t.Fatalf("membership lookup: %v", err)
+	}
+	if role != store.UserRoleViewer {
+		t.Errorf("attached role = %q, want viewer", role)
+	}
+
+	// Re-attaching is a conflict (already a member).
+	if _, err := svc.AttachInviteWeb(ctx, pMemberB, token); !isErr(err, service.ErrConflict) {
+		t.Errorf("re-attach: got %v, want ErrConflict", err)
+	}
+}
+
+// TestAuthService_SwitchTenant_NonMemberForbidden verifies switching to a tenant
+// the caller does not belong to is refused.
+func TestAuthService_SwitchTenant_NonMemberForbidden(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc := newAuthSvc(t, pc)
+	signupUser(t, svc, "owner@a.com", "supersecret")
+	signupUser(t, svc, "owner@b.com", "supersecret")
+	pA := principalForEmail(t, ctx, pc, "owner@a.com")
+	bUser, err := pc.Queries.UserGetByEmail(ctx, "owner@b.com")
+	if err != nil {
+		t.Fatalf("b lookup: %v", err)
+	}
+	tenantB, err := pc.Queries.MembershipsListForUser(ctx, bUser.ID)
+	if err != nil || len(tenantB) == 0 {
+		t.Fatalf("tenant B memberships: %v", err)
+	}
+
+	if err := svc.SwitchTenant(ctx, pA, tenantB[0].TenantUid, "no-session"); !isErr(err, service.ErrForbidden) {
+		t.Errorf("non-member switch: got %v, want ErrForbidden", err)
 	}
 }
