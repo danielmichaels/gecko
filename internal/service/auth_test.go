@@ -1140,7 +1140,7 @@ func TestAuthService_ResetPassword_HappyPath(t *testing.T) {
 		UserID:   user.ID,
 		TenantID: tenantOf(t, ctx, pc, user),
 		Email:    user.Email,
-		Role:     string(user.Role),
+		Role:     roleOf(t, ctx, pc, user),
 	}
 	// Two live sessions that must be revoked by the reset.
 	if _, _, err := svc.MintSession(ctx, p, "", ""); err != nil {

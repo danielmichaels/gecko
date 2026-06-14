@@ -1047,10 +1047,8 @@ type UserCredentials struct {
 type Users struct {
 	ID           int32              `json:"id"`
 	Uid          string             `json:"uid"`
-	TenantID     pgtype.Int4        `json:"tenant_id"`
 	Email        string             `json:"email"`
 	Name         pgtype.Text        `json:"name"`
-	Role         UserRole           `json:"role"`
 	Status       UserStatus         `json:"status"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`

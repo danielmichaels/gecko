@@ -12,6 +12,14 @@ WHERE token_hash = $1
   AND accepted_at IS NULL
   AND expires_at > NOW();
 
+-- name: InvitationGetByTokenHashIncludingUsed :one
+-- Resolves an invite by token ignoring accepted_at/expiry. Used only by attach to
+-- tell an already-claimed invite (caller is now a member → conflict) apart from a
+-- genuinely unknown token (→ not found); never use it to grant access.
+SELECT id, uid, tenant_id, email, role, token_hash, invited_by, expires_at, accepted_at, created_at
+FROM invitations
+WHERE token_hash = $1;
+
 -- name: InvitationExpiredDelete :exec
 -- Clear any stale expired-but-unaccepted invite for (tenant, email) so it does not
 -- wedge the partial unique index when re-inviting.

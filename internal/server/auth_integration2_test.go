@@ -297,3 +297,71 @@ func TestAuth_UserManagementScoping(t *testing.T) {
 		t.Errorf("A delete B user status = %d, want 404", code)
 	}
 }
+
+// TestAuth_AttachInviteAPI verifies an existing account can join another tenant via
+// the API: it accepts an invitation addressed to its own email and receives an API
+// key scoped to the newly joined tenant, which then works against that tenant.
+func TestAuth_AttachInviteAPI(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+	_, base := newAuthAPI(t, pc)
+
+	owner := signup(t, base, "owner@a.com", "supersecret")   // tenant A
+	member := signup(t, base, "member@b.com", "supersecret") // their own tenant B
+
+	// Owner of tenant A invites member@b.com (who already has an account).
+	var inv struct {
+		Token string `json:"token"`
+	}
+	if code := doJSON(t, http.MethodPost, base+"/api/invitations", owner.APIKey,
+		map[string]string{"email": "member@b.com", "role": "manager"}, &inv); code != http.StatusCreated {
+		t.Fatalf("invite existing user: status %d", code)
+	}
+
+	// An identity that is NOT the invitee cannot claim the invite.
+	if code := doJSON(t, http.MethodPost, base+"/api/invitations/attach", owner.APIKey,
+		map[string]string{"token": inv.Token}, nil); code != http.StatusForbidden {
+		t.Errorf("wrong-identity attach status = %d, want 403", code)
+	}
+
+	// The invitee attaches using their tenant-B key and gets a key scoped to tenant A.
+	var att tokenResp
+	if code := doJSON(t, http.MethodPost, base+"/api/invitations/attach", member.APIKey,
+		map[string]string{"token": inv.Token}, &att); code != http.StatusCreated {
+		t.Fatalf("attach: status %d", code)
+	}
+	if att.APIKey == "" {
+		t.Fatal("attach: empty api key")
+	}
+	if att.Role != "manager" {
+		t.Errorf("attach role = %q, want manager", att.Role)
+	}
+
+	// The new key acts in tenant A: its user list includes both members.
+	var users struct {
+		Users []struct {
+			Email string `json:"email"`
+		} `json:"users"`
+	}
+	if code := doJSON(t, http.MethodGet, base+"/api/users", att.APIKey, nil, &users); code != http.StatusOK {
+		t.Fatalf("list users with attached key: status %d", code)
+	}
+	seen := map[string]bool{}
+	for _, u := range users.Users {
+		seen[u.Email] = true
+	}
+	if !seen["owner@a.com"] || !seen["member@b.com"] {
+		t.Errorf("tenant A users = %v, want both owner@a.com and member@b.com", users.Users)
+	}
+
+	// Re-attaching is a conflict (already a member).
+	if code := doJSON(t, http.MethodPost, base+"/api/invitations/attach", member.APIKey,
+		map[string]string{"token": inv.Token}, nil); code != http.StatusConflict {
+		t.Errorf("re-attach status = %d, want 409", code)
+	}
+}

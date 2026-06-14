@@ -11,38 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const ownersLockInTenant = `-- name: OwnersLockInTenant :many
-SELECT id
-FROM users
-WHERE tenant_id = $1
-  AND role = 'owner'
-    FOR UPDATE
-`
-
-// Locks the tenant's owner rows FOR UPDATE so a concurrent transaction cannot remove
-// a different owner between this count and the caller's mutation. The caller treats a
-// result of one row or fewer as "last owner". (FOR UPDATE disallows aggregates, so
-// the rows are returned and counted in Go.)
-func (q *Queries) OwnersLockInTenant(ctx context.Context, tenantID pgtype.Int4) ([]int32, error) {
-	rows, err := q.db.Query(ctx, ownersLockInTenant, tenantID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []int32{}
-	for rows.Next() {
-		var id int32
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		items = append(items, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const tenantCreate = `-- name: TenantCreate :one
 INSERT INTO tenants (name)
 VALUES ($1)
@@ -100,86 +68,8 @@ func (q *Queries) TenantGetByUID(ctx context.Context, uid string) (Tenants, erro
 	return i, err
 }
 
-const userCreate = `-- name: UserCreate :one
-INSERT INTO users (tenant_id, email, name, role)
-SELECT $1, $2, $3, $4
-WHERE EXISTS (SELECT 1
-              FROM users u
-              WHERE u.id = $5
-                AND u.tenant_id = $1
-                AND u.role IN ('manager', 'owner', 'superadmin'))
-RETURNING id, uid, tenant_id, email, name, role, status, created_at, updated_at, notify_opt_out
-`
-
-type UserCreateParams struct {
-	TenantID pgtype.Int4 `json:"tenant_id"`
-	Email    string      `json:"email"`
-	Name     pgtype.Text `json:"name"`
-	Role     UserRole    `json:"role"`
-	ID       int32       `json:"id"`
-}
-
-// Guarded insert: the acting user ($5) must be manager/owner/superadmin in the
-// target tenant ($1). Retained for in-tenant invite-by-manager flows; signup and
-// accept-invite use UserProvision instead (no acting user exists yet).
-func (q *Queries) UserCreate(ctx context.Context, arg UserCreateParams) (Users, error) {
-	row := q.db.QueryRow(ctx, userCreate,
-		arg.TenantID,
-		arg.Email,
-		arg.Name,
-		arg.Role,
-		arg.ID,
-	)
-	var i Users
-	err := row.Scan(
-		&i.ID,
-		&i.Uid,
-		&i.TenantID,
-		&i.Email,
-		&i.Name,
-		&i.Role,
-		&i.Status,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.NotifyOptOut,
-	)
-	return i, err
-}
-
-const userDeleteInTenant = `-- name: UserDeleteInTenant :one
-DELETE
-FROM users
-WHERE uid = $1
-  AND tenant_id = $2
-RETURNING id, uid, tenant_id, email
-`
-
-type UserDeleteInTenantParams struct {
-	Uid      string      `json:"uid"`
-	TenantID pgtype.Int4 `json:"tenant_id"`
-}
-
-type UserDeleteInTenantRow struct {
-	ID       int32       `json:"id"`
-	Uid      string      `json:"uid"`
-	TenantID pgtype.Int4 `json:"tenant_id"`
-	Email    string      `json:"email"`
-}
-
-func (q *Queries) UserDeleteInTenant(ctx context.Context, arg UserDeleteInTenantParams) (UserDeleteInTenantRow, error) {
-	row := q.db.QueryRow(ctx, userDeleteInTenant, arg.Uid, arg.TenantID)
-	var i UserDeleteInTenantRow
-	err := row.Scan(
-		&i.ID,
-		&i.Uid,
-		&i.TenantID,
-		&i.Email,
-	)
-	return i, err
-}
-
 const userGetByEmail = `-- name: UserGetByEmail :one
-SELECT id, uid, tenant_id, email, name, role, status, created_at, updated_at, notify_opt_out
+SELECT id, uid, email, name, status, created_at, updated_at, notify_opt_out
 FROM users
 WHERE email = $1
 `
@@ -190,10 +80,8 @@ func (q *Queries) UserGetByEmail(ctx context.Context, email string) (Users, erro
 	err := row.Scan(
 		&i.ID,
 		&i.Uid,
-		&i.TenantID,
 		&i.Email,
 		&i.Name,
-		&i.Role,
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -203,7 +91,7 @@ func (q *Queries) UserGetByEmail(ctx context.Context, email string) (Users, erro
 }
 
 const userGetByID = `-- name: UserGetByID :one
-SELECT id, uid, tenant_id, email, name, role, status, created_at, updated_at, notify_opt_out
+SELECT id, uid, email, name, status, created_at, updated_at, notify_opt_out
 FROM users
 WHERE id = $1
 `
@@ -214,40 +102,8 @@ func (q *Queries) UserGetByID(ctx context.Context, id int32) (Users, error) {
 	err := row.Scan(
 		&i.ID,
 		&i.Uid,
-		&i.TenantID,
 		&i.Email,
 		&i.Name,
-		&i.Role,
-		&i.Status,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.NotifyOptOut,
-	)
-	return i, err
-}
-
-const userGetInTenant = `-- name: UserGetInTenant :one
-SELECT id, uid, tenant_id, email, name, role, status, created_at, updated_at, notify_opt_out
-FROM users
-WHERE uid = $1
-  AND tenant_id = $2
-`
-
-type UserGetInTenantParams struct {
-	Uid      string      `json:"uid"`
-	TenantID pgtype.Int4 `json:"tenant_id"`
-}
-
-func (q *Queries) UserGetInTenant(ctx context.Context, arg UserGetInTenantParams) (Users, error) {
-	row := q.db.QueryRow(ctx, userGetInTenant, arg.Uid, arg.TenantID)
-	var i Users
-	err := row.Scan(
-		&i.ID,
-		&i.Uid,
-		&i.TenantID,
-		&i.Email,
-		&i.Name,
-		&i.Role,
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -289,48 +145,10 @@ func (q *Queries) UserNotifyOptOutSet(ctx context.Context, arg UserNotifyOptOutS
 	return err
 }
 
-const userProvision = `-- name: UserProvision :one
-INSERT INTO users (tenant_id, email, name, role)
-VALUES ($1, $2, $3, $4)
-RETURNING id, uid, tenant_id, email, name, role, status, created_at, updated_at, notify_opt_out
-`
-
-type UserProvisionParams struct {
-	TenantID pgtype.Int4 `json:"tenant_id"`
-	Email    string      `json:"email"`
-	Name     pgtype.Text `json:"name"`
-	Role     UserRole    `json:"role"`
-}
-
-// Unguarded insert for signup (role 'owner') and accept-invite (role from the
-// invite). Authorized by SIGNUP_ENABLED / the invite token, not by an actor.
-func (q *Queries) UserProvision(ctx context.Context, arg UserProvisionParams) (Users, error) {
-	row := q.db.QueryRow(ctx, userProvision,
-		arg.TenantID,
-		arg.Email,
-		arg.Name,
-		arg.Role,
-	)
-	var i Users
-	err := row.Scan(
-		&i.ID,
-		&i.Uid,
-		&i.TenantID,
-		&i.Email,
-		&i.Name,
-		&i.Role,
-		&i.Status,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.NotifyOptOut,
-	)
-	return i, err
-}
-
 const userProvisionIdentity = `-- name: UserProvisionIdentity :one
 INSERT INTO users (email, name)
 VALUES ($1, $2)
-RETURNING id, uid, tenant_id, email, name, role, status, created_at, updated_at, notify_opt_out
+RETURNING id, uid, email, name, status, created_at, updated_at, notify_opt_out
 `
 
 type UserProvisionIdentityParams struct {
@@ -340,18 +158,15 @@ type UserProvisionIdentityParams struct {
 
 // Creates a tenant-agnostic identity (email + optional name). Tenant and role are
 // carried by memberships, not the user row, so signup/accept-invite insert the
-// identity here and attach a membership separately. users.tenant_id/role are left
-// at their defaults (NULL / 'viewer') and are not consulted by any read path.
+// identity here and attach a membership separately.
 func (q *Queries) UserProvisionIdentity(ctx context.Context, arg UserProvisionIdentityParams) (Users, error) {
 	row := q.db.QueryRow(ctx, userProvisionIdentity, arg.Email, arg.Name)
 	var i Users
 	err := row.Scan(
 		&i.ID,
 		&i.Uid,
-		&i.TenantID,
 		&i.Email,
 		&i.Name,
-		&i.Role,
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -365,7 +180,7 @@ UPDATE users
 SET email = $2,
     name  = $3
 WHERE uid = $1
-RETURNING id, uid, tenant_id, email, name, role, status, created_at, updated_at, notify_opt_out
+RETURNING id, uid, email, name, status, created_at, updated_at, notify_opt_out
 `
 
 type UserUpdateIdentityParams struct {
@@ -383,68 +198,14 @@ func (q *Queries) UserUpdateIdentity(ctx context.Context, arg UserUpdateIdentity
 	err := row.Scan(
 		&i.ID,
 		&i.Uid,
-		&i.TenantID,
 		&i.Email,
 		&i.Name,
-		&i.Role,
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.NotifyOptOut,
 	)
 	return i, err
-}
-
-const usersCountOwnersInTenant = `-- name: UsersCountOwnersInTenant :one
-SELECT COUNT(*)
-FROM users
-WHERE tenant_id = $1
-  AND role = 'owner'
-`
-
-func (q *Queries) UsersCountOwnersInTenant(ctx context.Context, tenantID pgtype.Int4) (int64, error) {
-	row := q.db.QueryRow(ctx, usersCountOwnersInTenant, tenantID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
-const usersListByTenant = `-- name: UsersListByTenant :many
-SELECT id, uid, tenant_id, email, name, role, status, created_at, updated_at, notify_opt_out
-FROM users
-WHERE tenant_id = $1
-ORDER BY created_at DESC
-`
-
-func (q *Queries) UsersListByTenant(ctx context.Context, tenantID pgtype.Int4) ([]Users, error) {
-	rows, err := q.db.Query(ctx, usersListByTenant, tenantID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Users{}
-	for rows.Next() {
-		var i Users
-		if err := rows.Scan(
-			&i.ID,
-			&i.Uid,
-			&i.TenantID,
-			&i.Email,
-			&i.Name,
-			&i.Role,
-			&i.Status,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.NotifyOptOut,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const usersListDigestRecipientsByTenant = `-- name: UsersListDigestRecipientsByTenant :many

@@ -365,29 +365,41 @@ func (s *AuthService) consumeInvitation(
 	}, nil
 }
 
-// AttachInviteWeb attaches the authenticated caller to the tenant named by an
-// invitation token, for invitees who already have an account. It verifies the
-// invite was addressed to the caller's own email (a link alone cannot attach a
-// tenant to a different identity), creates the membership with the invited role,
-// marks the invite accepted, and returns the tenant id so the caller can switch
-// the active session to it. Invalid/expired token → ErrNotFound; an invite for a
-// different identity → ErrForbidden; already a member → ErrConflict.
-func (s *AuthService) AttachInviteWeb(
+// attachInvite validates an invitation token against the authenticated caller's
+// own email, creates the membership with the invited role, marks the invite
+// accepted, and runs mintStep (if any) in-tx. It is the shared core of the web and
+// API "existing account joins another tenant" flows. A link alone can never attach
+// a tenant to a different identity. Invalid/expired token → ErrNotFound; an invite
+// for a different identity → ErrForbidden; already a member → ErrConflict.
+func (s *AuthService) attachInvite(
 	ctx context.Context,
 	p *auth.Principal,
 	token string,
-) (int32, error) {
+	mintStep withTxStep,
+) (tenantID int32, role store.UserRole, err error) {
 	inv, err := s.DB.InvitationGetByTokenHash(ctx, auth.HashToken(token))
 	if err != nil {
-		return 0, fmt.Errorf("%w: invalid or expired invitation", ErrNotFound)
+		// The live invite is gone: unknown token, expired, or already claimed. If
+		// the caller is the invitee and is already a member of the invited tenant,
+		// surface that as a conflict rather than a misleading not-found.
+		if used, lookupErr := s.DB.InvitationGetByTokenHashIncludingUsed(ctx, auth.HashToken(token)); lookupErr == nil &&
+			normaliseEmail(used.Email) == normaliseEmail(p.Email) {
+			if _, mErr := s.DB.MembershipGetRole(ctx, store.MembershipGetRoleParams{
+				UserID:   p.UserID,
+				TenantID: used.TenantID,
+			}); mErr == nil {
+				return 0, "", msgErr(ErrConflict, "you are already a member of this tenant")
+			}
+		}
+		return 0, "", fmt.Errorf("%w: invalid or expired invitation", ErrNotFound)
 	}
 	if normaliseEmail(inv.Email) != normaliseEmail(p.Email) {
-		return 0, msgErr(ErrForbidden, "this invitation was sent to a different account")
+		return 0, "", msgErr(ErrForbidden, "this invitation was sent to a different account")
 	}
 
 	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return 0, fmt.Errorf("attach invite: begin tx: %w", err)
+		return 0, "", fmt.Errorf("attach invite: begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	st := s.DB.WithTx(tx)
@@ -398,17 +410,69 @@ func (s *AuthService) AttachInviteWeb(
 		Role:     inv.Role,
 	}); err != nil {
 		if isUniqueViolation(err) {
-			return 0, msgErr(ErrConflict, "you are already a member of this tenant")
+			return 0, "", msgErr(ErrConflict, "you are already a member of this tenant")
 		}
-		return 0, fmt.Errorf("attach invite: create membership: %w", err)
+		return 0, "", fmt.Errorf("attach invite: create membership: %w", err)
 	}
 	if err := st.InvitationMarkAccepted(ctx, inv.ID); err != nil {
-		return 0, fmt.Errorf("attach invite: mark accepted: %w", err)
+		return 0, "", fmt.Errorf("attach invite: mark accepted: %w", err)
+	}
+	if mintStep != nil {
+		if err := mintStep(st, inv.TenantID, p.UserID); err != nil {
+			return 0, "", err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return 0, fmt.Errorf("attach invite: commit: %w", err)
+		return 0, "", fmt.Errorf("attach invite: commit: %w", err)
 	}
-	return inv.TenantID, nil
+	return inv.TenantID, inv.Role, nil
+}
+
+// AttachInviteWeb attaches the authenticated caller to the tenant named by an
+// invitation token (for invitees who already have an account) and returns the
+// tenant id so the caller can switch the active session to it.
+func (s *AuthService) AttachInviteWeb(
+	ctx context.Context,
+	p *auth.Principal,
+	token string,
+) (int32, error) {
+	tenantID, _, err := s.attachInvite(ctx, p, token, nil)
+	return tenantID, err
+}
+
+// AttachInvite is the API counterpart of AttachInviteWeb: it attaches the
+// authenticated caller to the invited tenant and mints an API key scoped to that
+// tenant, returning it. This is how an existing API user obtains their first key
+// for a newly joined tenant (keys are per-tenant).
+func (s *AuthService) AttachInvite(
+	ctx context.Context,
+	p *auth.Principal,
+	token string,
+) (AcceptInviteResult, error) {
+	var key auth.APIKey
+	var exp pgtype.Timestamptz
+	_, role, err := s.attachInvite(
+		ctx,
+		p,
+		token,
+		func(st *store.Queries, tenantID, userID int32) error {
+			k, _, e, mErr := s.mintAPIKey(ctx, st, tenantID, userID, "invite-attach")
+			if mErr != nil {
+				return fmt.Errorf("attach invite: mint key: %w", mErr)
+			}
+			key, exp = k, e
+			return nil
+		},
+	)
+	if err != nil {
+		return AcceptInviteResult{}, err
+	}
+	return AcceptInviteResult{
+		RawKey:    key.Raw,
+		ExpiresAt: exp,
+		Email:     p.Email,
+		Role:      string(role),
+	}, nil
 }
 
 // AcceptInvite consumes an invitation token, creating the user with the
