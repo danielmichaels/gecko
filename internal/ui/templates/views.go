@@ -602,6 +602,8 @@ type SettingsPageProps struct {
 	Shell                AppShellProps
 	APIKeys              []APIKeyRowView
 	CanManage            bool
+	NotifyDailyDigest    bool
+	NotifyHighImpact     bool
 }
 
 // APIKeyRowView is the presentation model for one API key in the settings list.

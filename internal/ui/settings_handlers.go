@@ -43,12 +43,20 @@ func (h *Handlers) handleSettingsGet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	defaultFreq, _ := h.svc.SettingsService().GetScanSettings(r.Context(), p)
+	notify, err := h.svc.NotificationsService().GetNotificationSettings(r.Context(), p)
+	if err != nil {
+		h.log.Error("settings: get notification settings", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 
 	renderPage(w, r, templates.SettingsPage(templates.SettingsPageProps{
 		Shell:                shell,
 		APIKeys:              apiKeyRows(rows),
 		CanManage:            service.OwnerOrManager(p),
 		DefaultScanFrequency: string(defaultFreq),
+		NotifyDailyDigest:    notify.DailyDigest,
+		NotifyHighImpact:     notify.HighImpact,
 	}))
 }
 
@@ -231,6 +239,73 @@ func (h *Handlers) handleScanDefaultUpdate(w http.ResponseWriter, r *http.Reques
 	}
 
 	pushToast(sse, newToast("ok", "SCANNING", "Default cadence updated", freqLabel(freq)))
+}
+
+// handleNotificationSettingsUpdate sets the tenant-wide notification toggles (the
+// daily digest and the high-impact highlight). Owner or manager only; ErrForbidden
+// surfaces as a warn toast.
+func (h *Handlers) handleNotificationSettingsUpdate(w http.ResponseWriter, r *http.Request) {
+	p, ok := PrincipalFrom(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var form struct {
+		NotifyDailyDigest bool `json:"notifyDailyDigest"`
+		NotifyHighImpact  bool `json:"notifyHighImpact"`
+	}
+	if err := datastar.ReadSignals(r, &form); err != nil {
+		h.log.Error("notification settings update: read signals", "error", err)
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	sse := datastar.NewSSE(w, r)
+
+	err := h.svc.NotificationsService().
+		SetNotificationSettings(r.Context(), p, service.NotificationSettings{
+			DailyDigest: form.NotifyDailyDigest,
+			HighImpact:  form.NotifyHighImpact,
+		})
+	if err != nil {
+		if errors.Is(err, service.ErrForbidden) {
+			pushToast(
+				sse,
+				newToast(
+					"warn",
+					"NOTICE",
+					"Permission denied",
+					"You don't have permission to change notification settings",
+				),
+			)
+			return
+		}
+		h.log.Error("notification settings update", "error", err)
+		pushToast(
+			sse,
+			newToast("crit", "ERROR", "Failed to update notifications", "please try again"),
+		)
+		return
+	}
+
+	pushToast(
+		sse,
+		newToast(
+			"ok",
+			"NOTIFICATIONS",
+			"Notification settings updated",
+			digestStateLabel(form.NotifyDailyDigest),
+		),
+	)
+}
+
+// digestStateLabel renders the toast body for a notification-settings save.
+func digestStateLabel(digestOn bool) string {
+	if digestOn {
+		return "daily digest enabled"
+	}
+	return "daily digest disabled"
 }
 
 // patchKeyRows re-renders #apikey-rows from the caller's current key set. Shared

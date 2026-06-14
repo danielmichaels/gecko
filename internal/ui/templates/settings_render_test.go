@@ -142,6 +142,47 @@ func TestAPIKeyRow_MaliciousNameCannotBreakOutOfJS(t *testing.T) {
 	}
 }
 
+func TestSettingsPage_NotificationsToggles(t *testing.T) {
+	var buf bytes.Buffer
+	props := settingsProps(true, nil)
+	props.NotifyDailyDigest = true
+	props.NotifyHighImpact = false
+	if err := templates.SettingsPage(props).Render(context.Background(), &buf); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	out := buf.String()
+
+	if !strings.Contains(out, "/app/settings/notifications") {
+		t.Error("expected the notifications save POST target for a manager")
+	}
+	if !strings.Contains(out, "notifyDailyDigest") || !strings.Contains(out, "notifyHighImpact") {
+		t.Error("expected both notification toggles bound to signals")
+	}
+	// The page-level signal object reflects the tenant's current toggle state so the
+	// checkboxes render pre-checked/unchecked. The data-signals attribute is
+	// HTML-escaped, so the JSON quotes appear as &#34;.
+	if !strings.Contains(out, `notifyDailyDigest&#34;:true`) ||
+		!strings.Contains(out, `notifyHighImpact&#34;:false`) {
+		t.Errorf("expected signals to seed current toggle state; got:\n%s", out)
+	}
+}
+
+func TestSettingsPage_NotificationsViewerHidesSave(t *testing.T) {
+	var buf bytes.Buffer
+	if err := templates.SettingsPage(settingsProps(false, nil)).Render(context.Background(), &buf); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	out := buf.String()
+
+	if strings.Contains(out, "/app/settings/notifications") {
+		t.Error("viewer must not see the notifications save control")
+	}
+	// The toggles themselves still render (read-only) so a viewer can see the state.
+	if !strings.Contains(out, "notifyDailyDigest") {
+		t.Error("viewer should still see the notification toggles")
+	}
+}
+
 func TestSettingsPage_EmptyKeyList(t *testing.T) {
 	var buf bytes.Buffer
 	if err := templates.SettingsPage(settingsProps(true, nil)).Render(context.Background(), &buf); err != nil {

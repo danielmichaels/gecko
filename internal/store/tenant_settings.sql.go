@@ -170,7 +170,7 @@ func (q *Queries) TenantSettingsUpsert(ctx context.Context, arg TenantSettingsUp
 }
 
 const tenantsListDigestDue = `-- name: TenantsListDigestDue :many
-SELECT tenant_id, notifications_last_digest_at
+SELECT tenant_id, notify_high_impact, notifications_last_digest_at
 FROM tenant_settings
 WHERE notify_daily_digest = true
 ORDER BY tenant_id
@@ -178,12 +178,14 @@ ORDER BY tenant_id
 
 type TenantsListDigestDueRow struct {
 	TenantID                  int32              `json:"tenant_id"`
+	NotifyHighImpact          bool               `json:"notify_high_impact"`
 	NotificationsLastDigestAt pgtype.Timestamptz `json:"notifications_last_digest_at"`
 }
 
 // Tenants eligible for the daily digest (the master toggle is on). The periodic
 // worker filters out empty windows via the observation aggregate; this query just
-// bounds the fan-out to opted-in tenants and carries each one's watermark.
+// bounds the fan-out to opted-in tenants and carries each one's watermark and
+// high-impact preference.
 func (q *Queries) TenantsListDigestDue(ctx context.Context) ([]TenantsListDigestDueRow, error) {
 	rows, err := q.db.Query(ctx, tenantsListDigestDue)
 	if err != nil {
@@ -193,7 +195,7 @@ func (q *Queries) TenantsListDigestDue(ctx context.Context) ([]TenantsListDigest
 	items := []TenantsListDigestDueRow{}
 	for rows.Next() {
 		var i TenantsListDigestDueRow
-		if err := rows.Scan(&i.TenantID, &i.NotificationsLastDigestAt); err != nil {
+		if err := rows.Scan(&i.TenantID, &i.NotifyHighImpact, &i.NotificationsLastDigestAt); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

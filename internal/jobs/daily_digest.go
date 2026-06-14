@@ -154,7 +154,14 @@ func (w *DailyDigestWorker) digestOne(
 		return false, w.advanceWatermark(ctx, w.Store, t.TenantID, until)
 	}
 
-	highImpact, err := w.highImpact(ctx, t.TenantID, since, until)
+	// The high-impact section is opt-out per tenant. When off, suppress both the
+	// itemized list and the summary count so the subject and body never mention it.
+	var highImpact []notify.HighImpactItem
+	if t.NotifyHighImpact {
+		highImpact, err = w.highImpact(ctx, t.TenantID, since, until)
+	} else {
+		summary.HighImpact = 0
+	}
 	if err != nil {
 		return false, err
 	}

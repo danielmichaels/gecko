@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -252,5 +253,58 @@ func TestDailyDigestWorker_EnqueueDueDigests(t *testing.T) {
 	}
 	if len(enq2.msgs) != 0 {
 		t.Errorf("rerun emails = %d, want 0", len(enq2.msgs))
+	}
+}
+
+// TestDailyDigestWorker_HighImpactToggleOff verifies that a tenant with the
+// high-impact toggle off still gets the digest, but the critical/high section is
+// suppressed from both the subject and the body.
+func TestDailyDigestWorker_HighImpactToggleOff(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create postgres container: %v", err)
+	}
+	defer pc.Close(ctx)
+	q := pc.Queries
+
+	past := time.Now().Add(-1 * time.Hour)
+
+	tenant := seedStatsTenant(t, ctx, q, "owner@hi.digest.test")
+	// Digest on, high-impact OFF.
+	if _, err := q.NotificationSettingsUpsert(ctx, store.NotificationSettingsUpsertParams{
+		TenantID:          tenant,
+		NotifyDailyDigest: true,
+		NotifyHighImpact:  false,
+	}); err != nil {
+		t.Fatalf("upsert settings: %v", err)
+	}
+	if err := q.NotificationDigestAdvanceWatermark(ctx, store.NotificationDigestAdvanceWatermarkParams{
+		SentAt:   pgtype.Timestamptz{Time: past, Valid: true},
+		TenantID: tenant,
+	}); err != nil {
+		t.Fatalf("set watermark: %v", err)
+	}
+	dom := seedStatsDomain(t, ctx, q, tenant, "hi.digest.test")
+	seedRecipient(t, ctx, q, tenant, "owner@hi.digest.test", store.UserRoleOwner)
+	seedObservation(t, ctx, pc, tenant, dom, "hi.digest.test",
+		"dangling_cname_finding", "created", `{"severity":"critical","status":"open"}`)
+
+	enq := &fakeEmailEnqueuer{}
+	w := digestTestWorker(q, pc, enq)
+
+	if _, err := w.EnqueueDueDigests(ctx); err != nil {
+		t.Fatalf("EnqueueDueDigests: %v", err)
+	}
+	if len(enq.msgs) != 1 {
+		t.Fatalf("emails = %d, want 1 (digest still sent)", len(enq.msgs))
+	}
+	m := enq.msgs[0]
+	if strings.Contains(m.Subject, "high-impact") {
+		t.Errorf("subject mentions high-impact with toggle off: %q", m.Subject)
+	}
+	if strings.Contains(m.HTML, "high-impact") || strings.Contains(m.Text, "high-impact") {
+		t.Errorf("body includes high-impact section with toggle off:\nHTML=%s", m.HTML)
 	}
 }

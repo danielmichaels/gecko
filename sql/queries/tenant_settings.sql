@@ -42,8 +42,9 @@ RETURNING tenant_id, notify_daily_digest, notify_high_impact, notifications_last
 -- name: TenantsListDigestDue :many
 -- Tenants eligible for the daily digest (the master toggle is on). The periodic
 -- worker filters out empty windows via the observation aggregate; this query just
--- bounds the fan-out to opted-in tenants and carries each one's watermark.
-SELECT tenant_id, notifications_last_digest_at
+-- bounds the fan-out to opted-in tenants and carries each one's watermark and
+-- high-impact preference.
+SELECT tenant_id, notify_high_impact, notifications_last_digest_at
 FROM tenant_settings
 WHERE notify_daily_digest = true
 ORDER BY tenant_id;
