@@ -567,6 +567,15 @@ body{
 .set-secret-key{flex:1;font-size:12.5px;color:var(--txt);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:9px 11px;word-break:break-all}
 .set-secret-row .btn{margin:0;white-space:nowrap}
 .set-pw-btn{width:auto;margin-top:20px}
+.set-toggle{display:flex;align-items:flex-start;gap:11px;padding:10px 0;cursor:pointer;font-size:13px;color:var(--txt);line-height:1.5}
+.set-toggle + .set-toggle{border-top:1px solid var(--line-soft)}
+.set-toggle span{flex:1}
+.set-toggle input[type=checkbox]{appearance:none;-webkit-appearance:none;flex:none;width:17px;height:17px;margin-top:1px;border:1px solid var(--line);border-radius:5px;background:var(--bg-elev);cursor:pointer;display:grid;place-content:center;transition:border-color .12s ease,background .12s ease}
+.set-toggle input[type=checkbox]:hover{border-color:var(--brand-dim)}
+.set-toggle input[type=checkbox]:checked{background:var(--brand);border-color:var(--brand)}
+.set-toggle input[type=checkbox]:checked::after{content:"";width:4px;height:8px;border:solid var(--on-brand);border-width:0 2px 2px 0;transform:translateY(-1px) rotate(45deg)}
+.set-toggle input[type=checkbox]:focus-visible{outline:2px solid var(--brand-dim);outline-offset:2px}
+.set-sep{border:0;border-top:1px solid var(--line);margin:20px 0 4px}
 
 /* ---------- Team ---------- */
 .team-member{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line-soft);flex-wrap:wrap}
