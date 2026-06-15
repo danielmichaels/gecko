@@ -264,6 +264,83 @@ func TestAssessEmailSecurity_SPFIssues(t *testing.T) {
 	}
 }
 
+func TestAssessEmailSecurity_SPFHardening(t *testing.T) {
+	ctx := context.Background()
+	pgContainer, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("Failed to create postgres container: %v", err)
+	}
+	defer pgContainer.Close(ctx)
+
+	assessor := NewAssessor(Config{Store: pgContainer.Queries, Logger: testhelpers.TestLogger})
+
+	spfFinding := func(t *testing.T, spf, issueType string) (store.SpfFindings, bool) {
+		t.Helper()
+		d, err := pgContainer.Queries.DomainsCreate(ctx, store.DomainsCreateParams{
+			TenantID:   pgtype.Int4{Int32: 1, Valid: true},
+			Name:       issueType + ".spf-test",
+			DomainType: store.DomainTypeTld,
+			Source:     store.DomainSourceUserSupplied,
+			Status:     store.DomainStatusActive,
+		})
+		if err != nil {
+			t.Fatalf("create domain: %v", err)
+		}
+		rec, err := pgContainer.Queries.RecordsCreateTXT(ctx, store.RecordsCreateTXTParams{
+			DomainID: pgtype.Int4{Int32: d.ID, Valid: true}, Value: spf,
+		})
+		if err != nil {
+			t.Fatalf("seed TXT: %v", err)
+		}
+		data := assessData{
+			handlesEmail: true,
+			domainID:     int(d.ID),
+			txtRecords:   []store.TxtRecords{{ID: rec.ID, Value: rec.Value}},
+		}
+		if err := assessor.assessSPF(ctx, data); err != nil {
+			t.Fatalf("assessSPF: %v", err)
+		}
+		findings, err := pgContainer.Queries.AssessGetSPFFindings(
+			ctx, pgtype.Int4{Int32: d.ID, Valid: true},
+		)
+		if err != nil {
+			t.Fatalf("get SPF findings: %v", err)
+		}
+		for _, f := range findings {
+			if f.IssueType == issueType {
+				return f, true
+			}
+		}
+		return store.SpfFindings{}, false
+	}
+
+	t.Run("explicit +all is a critical permit-all finding", func(t *testing.T) {
+		f, ok := spfFinding(t, "v=spf1 include:_spf.google.com +all", SPFPermitAll)
+		if !ok {
+			t.Fatalf("expected permit-all finding")
+		}
+		if f.Severity != store.FindingSeverityCritical || f.Status != store.FindingStatusOpen {
+			t.Errorf("expected critical/open, got %s/%s", f.Severity, f.Status)
+		}
+	})
+
+	t.Run("bare all mechanism is treated as permit-all", func(t *testing.T) {
+		if _, ok := spfFinding(t, "v=spf1 include:_spf.google.com all", SPFPermitAll); !ok {
+			t.Fatal("expected bare 'all' to be detected as permit-all")
+		}
+	})
+
+	t.Run("counts non-include lookup mechanisms toward the limit", func(t *testing.T) {
+		// a + mx + ptr + 8 includes = 11 lookups; the old include-only count (8)
+		// would not trip the limit.
+		spf := "v=spf1 a mx ptr include:a.com include:b.com include:c.com include:d.com " +
+			"include:e.com include:f.com include:g.com include:h.com -all"
+		if _, ok := spfFinding(t, spf, SPFExcessiveLookups); !ok {
+			t.Fatal("expected excessive-lookups finding from mixed mechanisms")
+		}
+	})
+}
+
 func TestAssessEmailSecurity_DKIM(t *testing.T) {
 	ctx := context.Background()
 	pgContainer, err := testhelpers.CreatePostgresContainer(ctx)
@@ -360,6 +437,20 @@ func TestAssessEmailSecurity_DKIM(t *testing.T) {
 			wantSeverity:  store.FindingSeverityMedium,
 			wantStatus:    store.FindingStatusOpen,
 			wantIssueType: DKIMTestModeEnabled,
+			wantSelector:  "selector1",
+		},
+		{
+			name:         "missing recommended k tag",
+			handlesEmail: true,
+			dkimRecords: map[string][]string{
+				"selector1": {
+					"v=DKIM1; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu5oIUrFDn1OuSWCmZ8Ac8IgLaoFR64YP+zRERlH7XiANVAJQGgwIexnbZ1xNDt+1DgXWfSALZnTcXLwX7tJP8wZBzpwrKXJjxPMXIAXCNXNzo/fe8CnWKjnPSxUVLW/QYa4AlNzL/DS8QEJKfqSxZTN5kT7VWvuXsj+8wPnGdFKrwOxkgDqzFASIyjON3JOCWPfhEYzGdnQl3z0Njx7cVpzQzSaQkySVBJZUkGYbpT0UQbPQni7TFbtsWNgZ9nA2ZUJe0D/xhAsepHhRi6KCaNFmh/FgA0jV/xuxsBY/RQUbrHUfV/nDr8aLI+Sh2IaXaIh+FFAPGY6TJJbRkwIDAQAB",
+				},
+			},
+			selectors:     []string{"selector1"},
+			wantSeverity:  store.FindingSeverityInfo,
+			wantStatus:    store.FindingStatusOpen,
+			wantIssueType: DKIMMissingTags,
 			wantSelector:  "selector1",
 		},
 		{
@@ -587,6 +678,36 @@ func TestAssessEmailSecurity_DMARC(t *testing.T) {
 			wantPolicy:    "v=DMARC1; p=none",
 		},
 		{
+			name:         "quarantine policy is partial enforcement",
+			handlesEmail: true,
+			dmarcRecords: []string{
+				"v=DMARC1; p=quarantine; rua=mailto:r@example.com; ruf=mailto:f@example.com",
+			},
+			wantSeverity:  store.FindingSeverityMedium,
+			wantStatus:    store.FindingStatusOpen,
+			wantIssueType: DMARCQuarantinePolicy,
+		},
+		{
+			name:         "reduced pct under enforcement",
+			handlesEmail: true,
+			dmarcRecords: []string{
+				"v=DMARC1; p=reject; rua=mailto:r@example.com; ruf=mailto:f@example.com; pct=50",
+			},
+			wantSeverity:  store.FindingSeverityMedium,
+			wantStatus:    store.FindingStatusOpen,
+			wantIssueType: DMARCReducedPct,
+		},
+		{
+			name:         "weaker subdomain policy",
+			handlesEmail: true,
+			dmarcRecords: []string{
+				"v=DMARC1; p=reject; sp=none; rua=mailto:r@example.com; ruf=mailto:f@example.com",
+			},
+			wantSeverity:  store.FindingSeverityMedium,
+			wantStatus:    store.FindingStatusOpen,
+			wantIssueType: DMARCWeakSubdomainPolicy,
+		},
+		{
 			name:          "missing DMARC record",
 			handlesEmail:  true,
 			dmarcRecords:  []string{},
@@ -703,5 +824,76 @@ func TestAssessEmailSecurity_DMARC(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestAssessEmailSecurity_NullMX verifies that a domain publishing only an
+// explicit null-MX (RFC 7505) is treated as not handling email, so SPF/DKIM/DMARC
+// are reported not-applicable rather than missing.
+func TestAssessEmailSecurity_NullMX(t *testing.T) {
+	ctx := context.Background()
+	pgContainer, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("Failed to create postgres container: %v", err)
+	}
+	defer pgContainer.Close(ctx)
+
+	mockServer, err := testhelpers.NewMockDNSServer()
+	if err != nil {
+		t.Fatalf("Failed to create mock DNS server: %v", err)
+	}
+	if err := mockServer.Start(); err != nil {
+		t.Fatalf("Failed to start mock DNS server: %v", err)
+	}
+	defer func() { _ = mockServer.Stop() }()
+
+	dnsClient := dnsclient.New(
+		dnsclient.WithServers([]string{mockServer.ListenAddr}),
+		dnsclient.WithLogger(testhelpers.TestLogger),
+	)
+
+	domain, err := pgContainer.Queries.DomainsCreate(ctx, store.DomainsCreateParams{
+		TenantID:   pgtype.Int4{Int32: 1, Valid: true},
+		Name:       "null-mx.test",
+		DomainType: store.DomainTypeTld,
+		Source:     store.DomainSourceUserSupplied,
+		Status:     store.DomainStatusActive,
+	})
+	if err != nil {
+		t.Fatalf("create domain: %v", err)
+	}
+	if _, err := pgContainer.Queries.RecordsCreateMX(ctx, store.RecordsCreateMXParams{
+		DomainID: pgtype.Int4{Int32: domain.ID, Valid: true}, Preference: 0, Target: ".",
+	}); err != nil {
+		t.Fatalf("seed null MX: %v", err)
+	}
+
+	a := NewAssessor(Config{
+		Store:     pgContainer.Queries,
+		Logger:    testhelpers.TestLogger,
+		DNSClient: dnsClient,
+		Identity:  observer.DomainIdentity{TenantID: 1, DomainID: domain.ID},
+	})
+	if err := a.AssessEmailSecurity(ctx, int(domain.ID)); err != nil {
+		t.Fatalf("AssessEmailSecurity: %v", err)
+	}
+
+	findings, err := pgContainer.Queries.AssessGetSPFFindings(
+		ctx, pgtype.Int4{Int32: domain.ID, Valid: true},
+	)
+	if err != nil {
+		t.Fatalf("get SPF findings: %v", err)
+	}
+	var sawNotApplicable bool
+	for _, f := range findings {
+		if f.IssueType == SPFMissing {
+			t.Error("null-MX domain should not get a missing-SPF finding")
+		}
+		if f.Status == store.FindingStatusNotApplicable {
+			sawNotApplicable = true
+		}
+	}
+	if !sawNotApplicable {
+		t.Error("expected SPF to be not-applicable for a null-MX domain")
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/danielmichaels/gecko/internal/store"
@@ -27,6 +28,7 @@ const (
 	FindingSPF   = "SPF"
 
 	SPFCompliant           = "spf_compliant"
+	SPFPermitAll           = "permit_all_spf_policy"
 	SPFWeakPolicy          = "weak_spf_policy"
 	SPFSoftFailPolicy      = "soft_fail_spf_policy"
 	SPFMissingMechanisms   = "missing_mechanisms"
@@ -40,10 +42,13 @@ const (
 	DKIMTestModeEnabled = "test_mode_enabled"
 	DKIMMissing         = "missing_dkim"
 
-	DMARCCompliant   = "dmarc_compliant"
-	DMARCMissing     = "missing_dmarc"
-	DMARCWeakPolicy  = "weak_dmarc_policy"
-	DMARCMissingTags = "dmarc_missing_tags"
+	DMARCCompliant           = "dmarc_compliant"
+	DMARCMissing             = "missing_dmarc"
+	DMARCWeakPolicy          = "weak_dmarc_policy"
+	DMARCQuarantinePolicy    = "quarantine_dmarc_policy"
+	DMARCReducedPct          = "dmarc_reduced_pct"
+	DMARCWeakSubdomainPolicy = "dmarc_weak_subdomain_policy"
+	DMARCMissingTags         = "dmarc_missing_tags"
 )
 
 var (
@@ -84,6 +89,16 @@ func (a *Assessor) assessSPF(ctx context.Context, d assessData) error {
 			recordValue := record.Value
 
 			switch {
+			case spfPermitsAll(recordValue):
+				// Permit-all: '+all' (or a bare 'all', which RFC 7208 treats as
+				// '+all') authorises any sender and fully defeats SPF.
+				if err := a.createEmailFinding(ctx, FindingSPF, d.domainID, pgtype.Int4{Int32: record.ID, Valid: true},
+					store.FindingSeverityCritical, store.FindingStatusOpen,
+					SPFPermitAll, recordValue,
+					"SPF policy permits all senders ('+all'/'all'), allowing anyone to spoof the domain"); err != nil {
+					return err
+				}
+
 			case strings.Contains(recordValue, " ?all"):
 				// Weak policy
 				if err := a.createEmailFinding(ctx, FindingSPF, d.domainID, pgtype.Int4{Int32: record.ID, Valid: true},
@@ -121,12 +136,12 @@ func (a *Assessor) assessSPF(ctx context.Context, d assessData) error {
 					return err
 				}
 
-			case strings.Count(recordValue, "include:") > MaxSPFLookups:
+			case countSPFDNSLookups(recordValue) > MaxSPFLookups:
 				// Excessive lookups
 				if err := a.createEmailFinding(ctx, FindingSPF, d.domainID, pgtype.Int4{Int32: record.ID, Valid: true},
 					store.FindingSeverityMedium, store.FindingStatusOpen,
 					SPFExcessiveLookups, recordValue,
-					fmt.Sprintf("SPF record contains %d include mechanisms", strings.Count(recordValue, "include:"))); err != nil {
+					fmt.Sprintf("SPF record requires %d DNS lookups, exceeding the RFC 7208 limit of %d", countSPFDNSLookups(recordValue), MaxSPFLookups)); err != nil {
 					return err
 				}
 
@@ -154,6 +169,40 @@ func (a *Assessor) assessSPF(ctx context.Context, d assessData) error {
 	}
 
 	return nil
+}
+
+// spfPermitsAll reports whether an SPF record ends in a permit-all mechanism:
+// an explicit '+all' or a bare 'all' (which RFC 7208 §4.6.2 treats as '+all').
+// The qualified forms '-all', '~all' and '?all' are excluded.
+func spfPermitsAll(record string) bool {
+	for _, tok := range strings.Fields(record) {
+		if strings.EqualFold(tok, "all") || strings.EqualFold(tok, "+all") {
+			return true
+		}
+	}
+	return false
+}
+
+// countSPFDNSLookups counts the DNS-lookup-causing mechanisms in an SPF record
+// per RFC 7208 §4.6.4 (include, a, mx, ptr, exists, redirect). It does not
+// recurse into included records — nested counting is tracked as a follow-up — so
+// it under-counts deeply nested policies but no longer ignores everything but
+// 'include:'.
+func countSPFDNSLookups(record string) int {
+	count := 0
+	for _, tok := range strings.Fields(record) {
+		t := strings.ToLower(strings.TrimLeft(tok, "+-~?"))
+		switch {
+		case strings.HasPrefix(t, "include:"),
+			strings.HasPrefix(t, "exists:"),
+			strings.HasPrefix(t, "redirect="),
+			t == "a", strings.HasPrefix(t, "a:"), strings.HasPrefix(t, "a/"),
+			t == "mx", strings.HasPrefix(t, "mx:"), strings.HasPrefix(t, "mx/"),
+			t == "ptr", strings.HasPrefix(t, "ptr:"):
+			count++
+		}
+	}
+	return count
 }
 
 func (a *Assessor) assessDKIM(ctx context.Context, d assessData, selectors []string) error {
@@ -210,6 +259,19 @@ func (a *Assessor) assessDKIM(ctx context.Context, d assessData, selectors []str
 							store.FindingSeverityMedium, store.FindingStatusOpen,
 							DKIMTestModeEnabled, recordValue,
 							"DKIM record has testing mode enabled",
+							WithSelector(selector)); err != nil {
+							return err
+						}
+					}
+
+					// recommended key-type tag absent (defaults to rsa, but k= is
+					// recommended for clarity per RFC 6376)
+					if !strings.Contains(recordValue, "k=") {
+						hasIssues = true
+						if err := a.createEmailFinding(ctx, FindingDKIM, d.domainID, pgtype.Int4{},
+							store.FindingSeverityInfo, store.FindingStatusOpen,
+							DKIMMissingTags, recordValue,
+							"DKIM record omits the recommended 'k=' key-type tag",
 							WithSelector(selector)); err != nil {
 							return err
 						}
@@ -295,59 +357,11 @@ func (a *Assessor) assessDMARC(ctx context.Context, d assessData) error {
 
 	if dmarcFound && len(dmarcRecords) > 0 {
 		for _, recordValue := range dmarcRecords {
-			if DMARCPrefix.MatchString(recordValue) {
-				status := DMARCCompliant // Use the defined constant
-				policy := recordValue
-
-				if strings.Contains(recordValue, "p=none") {
-					status = DMARCWeakPolicy // Use the defined constant
-				}
-
-				if !strings.Contains(recordValue, "rua=") ||
-					!strings.Contains(recordValue, "ruf=") {
-					if status == DMARCCompliant {
-						status = DMARCMissingTags // Use the defined constant
-					}
-				}
-
-				switch status {
-				case DMARCWeakPolicy:
-					if err := a.createEmailFinding(ctx, FindingDMARC, d.domainID, pgtype.Int4{},
-						store.FindingSeverityHigh, store.FindingStatusOpen,
-						DMARCWeakPolicy, recordValue,
-						"DMARC policy is set to 'none'",
-						WithPolicy(policy)); err != nil {
-						return err
-					}
-					if !strings.Contains(recordValue, "rua=") ||
-						!strings.Contains(recordValue, "ruf=") {
-						if err := a.createEmailFinding(ctx, FindingDMARC, d.domainID, pgtype.Int4{},
-							store.FindingSeverityMedium, store.FindingStatusOpen,
-							DMARCMissingTags, recordValue,
-							"DMARC record is missing recommended tags (rua, ruf)",
-							WithPolicy(policy)); err != nil {
-							return err
-						}
-					}
-
-				case DMARCMissingTags:
-					if err := a.createEmailFinding(ctx, FindingDMARC, d.domainID, pgtype.Int4{},
-						store.FindingSeverityInfo, store.FindingStatusOpen,
-						DMARCMissingTags, recordValue,
-						"DMARC record is missing recommended tags (rua, ruf)",
-						WithPolicy(policy)); err != nil {
-						return err
-					}
-
-				default:
-					if err := a.createEmailFinding(ctx, FindingDMARC, d.domainID, pgtype.Int4{},
-						store.FindingSeverityInfo, store.FindingStatusClosed,
-						DMARCCompliant, recordValue,
-						"DMARC record uses a strong policy and includes all recommended tags",
-						WithPolicy(policy)); err != nil {
-						return err
-					}
-				}
+			if !DMARCPrefix.MatchString(recordValue) {
+				continue
+			}
+			if err := a.assessDMARCRecord(ctx, d, recordValue); err != nil {
+				return err
 			}
 		}
 	} else if !dmarcFound && d.handlesEmail {
@@ -368,6 +382,125 @@ func (a *Assessor) assessDMARC(ctx context.Context, d assessData) error {
 	return nil
 }
 
+// assessDMARCRecord grades a single DMARC record: it distinguishes enforcement
+// strength (reject > quarantine > none), flags partial coverage (pct<100) and a
+// weaker subdomain policy (sp=), and reports missing reporting tags. A clean
+// 'p=reject' with full coverage and reporting tags is the only compliant verdict.
+func (a *Assessor) assessDMARCRecord(ctx context.Context, d assessData, record string) error {
+	emit := func(sev store.FindingSeverity, status store.FindingStatus, issueType, details string) error {
+		return a.createEmailFinding(ctx, FindingDMARC, d.domainID, pgtype.Int4{},
+			sev, status, issueType, record, details, WithPolicy(record))
+	}
+
+	tags := parseDMARCTags(record)
+	policy := tags["p"]
+	subPolicy := tags["sp"]
+	missingTags := tags["rua"] == "" || tags["ruf"] == ""
+	pct := dmarcPct(tags)
+	enforcing := policy == "quarantine" || policy == "reject"
+
+	switch policy {
+	case "reject":
+		// strongest policy; the compliant verdict is decided below.
+	case "quarantine":
+		if err := emit(store.FindingSeverityMedium, store.FindingStatusOpen, DMARCQuarantinePolicy,
+			"DMARC policy is 'quarantine'; 'reject' is recommended for full enforcement"); err != nil {
+			return err
+		}
+	default:
+		if err := emit(store.FindingSeverityHigh, store.FindingStatusOpen, DMARCWeakPolicy,
+			"DMARC policy is 'none' (monitoring only) and does not enforce"); err != nil {
+			return err
+		}
+	}
+
+	spWeaker := subPolicy != "" && dmarcPolicyRank(subPolicy) < dmarcPolicyRank(policy)
+	if enforcing {
+		if pct < 100 {
+			if err := emit(store.FindingSeverityMedium, store.FindingStatusOpen, DMARCReducedPct,
+				fmt.Sprintf("DMARC pct=%d applies the policy to only part of the mail stream", pct)); err != nil {
+				return err
+			}
+		}
+		if spWeaker {
+			if err := emit(store.FindingSeverityMedium, store.FindingStatusOpen, DMARCWeakSubdomainPolicy,
+				fmt.Sprintf("DMARC subdomain policy 'sp=%s' is weaker than the domain policy 'p=%s'", subPolicy, policy)); err != nil {
+				return err
+			}
+		}
+	}
+
+	if missingTags {
+		if err := emit(store.FindingSeverityInfo, store.FindingStatusOpen, DMARCMissingTags,
+			"DMARC record is missing recommended reporting tags (rua, ruf)"); err != nil {
+			return err
+		}
+	}
+
+	if policy == "reject" && !missingTags && pct >= 100 && !spWeaker {
+		if err := emit(store.FindingSeverityInfo, store.FindingStatusClosed, DMARCCompliant,
+			"DMARC uses 'p=reject' with full coverage and reporting tags"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// parseDMARCTags splits a DMARC record into its tag=value pairs (lower-cased keys).
+func parseDMARCTags(record string) map[string]string {
+	tags := map[string]string{}
+	for _, part := range strings.Split(record, ";") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		kv := strings.SplitN(part, "=", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		tags[strings.ToLower(strings.TrimSpace(kv[0]))] = strings.TrimSpace(kv[1])
+	}
+	return tags
+}
+
+// dmarcPct returns the effective DMARC pct (defaulting to 100 when absent or
+// unparseable).
+func dmarcPct(tags map[string]string) int {
+	v, ok := tags["pct"]
+	if !ok || v == "" {
+		return 100
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return 100
+	}
+	return n
+}
+
+// dmarcPolicyRank orders DMARC policies by enforcement strength.
+func dmarcPolicyRank(p string) int {
+	switch p {
+	case "reject":
+		return 2
+	case "quarantine":
+		return 1
+	default:
+		return 0
+	}
+}
+
+// hasDeliverableMX reports whether the domain has at least one real MX target.
+// A null-MX (RFC 7505: target ".") is an explicit "no mail" declaration and does
+// not count.
+func hasDeliverableMX(mxRecords []store.MxRecords) bool {
+	for _, mx := range mxRecords {
+		if strings.TrimSuffix(strings.TrimSpace(mx.Target), ".") != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *Assessor) AssessEmailSecurity(ctx context.Context, domainID int) error {
 	mxRecords, err := a.store.RecordsGetMXByDomainID(
 		ctx,
@@ -377,7 +510,9 @@ func (a *Assessor) AssessEmailSecurity(ctx context.Context, domainID int) error 
 		return fmt.Errorf("get MX records: %w", err)
 	}
 
-	handlesEmail := len(mxRecords) > 0
+	// An explicit null-MX (RFC 7505: a single "0 .") declares that the domain
+	// neither sends nor receives mail, so email-auth records are not applicable.
+	handlesEmail := hasDeliverableMX(mxRecords)
 	txtRecords, err := a.store.RecordsGetTXTByDomainID(
 		ctx,
 		pgtype.Int4{Int32: int32(domainID), Valid: true},
@@ -400,6 +535,9 @@ func (a *Assessor) AssessEmailSecurity(ctx context.Context, domainID int) error 
 	})
 	g.Go(func() error {
 		return a.assessDMARC(ctx, as)
+	})
+	g.Go(func() error {
+		return a.assessBIMI(ctx, as)
 	})
 	if err := g.Wait(); err != nil {
 		return fmt.Errorf("assess email security: %w", err)
