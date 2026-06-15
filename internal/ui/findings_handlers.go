@@ -99,18 +99,20 @@ var findingKindOrder = []string{
 	"CAA_CONFIG",
 	"CAA_COMPLIANCE",
 	"MIN_RECORDS",
+	"EMAIL_COMPLIANCE",
 }
 
 var findingKindLabels = map[string]string{
-	"SPF":            "SPF",
-	"DKIM":           "DKIM",
-	"DMARC":          "DMARC",
-	"ZONE":           "Zone transfer",
-	"CERT":           "Certificate",
-	"DNSSEC":         "DNSSEC",
-	"CAA_CONFIG":     "CAA configuration",
-	"CAA_COMPLIANCE": "CAA compliance",
-	"MIN_RECORDS":    "Minimum records",
+	"SPF":              "SPF",
+	"DKIM":             "DKIM",
+	"DMARC":            "DMARC",
+	"ZONE":             "Zone transfer",
+	"CERT":             "Certificate",
+	"DNSSEC":           "DNSSEC",
+	"CAA_CONFIG":       "CAA configuration",
+	"CAA_COMPLIANCE":   "CAA compliance",
+	"MIN_RECORDS":      "Minimum records",
+	"EMAIL_COMPLIANCE": "Email compliance",
 }
 
 // kindOptions builds the data-driven type dropdown from the faceted KindCounts.

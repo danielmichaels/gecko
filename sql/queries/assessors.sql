@@ -134,6 +134,32 @@ WHERE d.uid = $1
   AND d.tenant_id = $2
 ORDER BY mrf.severity ASC, mrf.created_at DESC;
 
+-- name: AssessCreateEmailAuthComplianceFinding :one
+INSERT INTO email_auth_compliance_findings (domain_id,
+                                            txt_record_id,
+                                            severity,
+                                            status,
+                                            auth_type,
+                                            issue_type,
+                                            standard_name,
+                                            details)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (domain_id, auth_type, issue_type)
+    DO UPDATE SET txt_record_id = $2,
+                  severity      = $3,
+                  status        = $4,
+                  standard_name = $7,
+                  details       = $8
+RETURNING (xmax = 0)::boolean AS inserted;
+
+-- name: AssessGetEmailAuthComplianceFindingsByDomainUID :many
+SELECT eacf.*
+FROM email_auth_compliance_findings eacf
+         JOIN domains d ON eacf.domain_id = d.id
+WHERE d.uid = $1
+  AND d.tenant_id = $2
+ORDER BY eacf.severity ASC, eacf.created_at DESC;
+
 -- name: StoreDanglingCnameFinding :one
 INSERT INTO dangling_cname_findings (domain_id,
                                      severity,
@@ -355,6 +381,9 @@ open_findings AS (
     UNION ALL
     SELECT domain_id, severity::text FROM minimum_record_set_findings
         WHERE status = 'open' AND domain_id = ANY(@domain_ids::int[])
+    UNION ALL
+    SELECT domain_id, severity::text FROM email_auth_compliance_findings
+        WHERE status = 'open' AND domain_id = ANY(@domain_ids::int[])
 )
 SELECT
     ids.domain_id::int AS domain_id,
@@ -497,7 +526,16 @@ FROM (SELECT sf.uid                AS finding_uid,
       FROM minimum_record_set_findings mrf
                JOIN domains d ON mrf.domain_id = d.id
       WHERE d.tenant_id = @tenant_id
-        AND (@include_compliant::bool OR mrf.status = 'open')) f
+        AND (@include_compliant::bool OR mrf.status = 'open')
+
+      UNION ALL
+
+      SELECT eacf.uid, d.uid, d.name, 'EMAIL_COMPLIANCE'::text, eacf.severity, eacf.status,
+             eacf.issue_type, eacf.auth_type, eacf.details, NULL::text, eacf.created_at
+      FROM email_auth_compliance_findings eacf
+               JOIN domains d ON eacf.domain_id = d.id
+      WHERE d.tenant_id = @tenant_id
+        AND (@include_compliant::bool OR eacf.status = 'open')) f
 ORDER BY f.domain_name ASC,
          CASE f.severity
              WHEN 'critical' THEN 1
@@ -551,6 +589,8 @@ FROM (
         SELECT domain_id, severity::text FROM caa_compliance_findings WHERE status = 'open'
         UNION ALL
         SELECT domain_id, severity::text FROM minimum_record_set_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM email_auth_compliance_findings WHERE status = 'open'
     ) f ON f.domain_id = d.id
     GROUP BY d.tenant_id, d.id
 ) agg

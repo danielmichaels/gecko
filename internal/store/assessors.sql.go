@@ -306,6 +306,52 @@ func (q *Queries) AssessCreateDNSSECFinding(ctx context.Context, arg AssessCreat
 	return inserted, err
 }
 
+const assessCreateEmailAuthComplianceFinding = `-- name: AssessCreateEmailAuthComplianceFinding :one
+INSERT INTO email_auth_compliance_findings (domain_id,
+                                            txt_record_id,
+                                            severity,
+                                            status,
+                                            auth_type,
+                                            issue_type,
+                                            standard_name,
+                                            details)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (domain_id, auth_type, issue_type)
+    DO UPDATE SET txt_record_id = $2,
+                  severity      = $3,
+                  status        = $4,
+                  standard_name = $7,
+                  details       = $8
+RETURNING (xmax = 0)::boolean AS inserted
+`
+
+type AssessCreateEmailAuthComplianceFindingParams struct {
+	DomainID     pgtype.Int4     `json:"domain_id"`
+	TxtRecordID  pgtype.Int4     `json:"txt_record_id"`
+	Severity     FindingSeverity `json:"severity"`
+	Status       FindingStatus   `json:"status"`
+	AuthType     string          `json:"auth_type"`
+	IssueType    string          `json:"issue_type"`
+	StandardName pgtype.Text     `json:"standard_name"`
+	Details      pgtype.Text     `json:"details"`
+}
+
+func (q *Queries) AssessCreateEmailAuthComplianceFinding(ctx context.Context, arg AssessCreateEmailAuthComplianceFindingParams) (bool, error) {
+	row := q.db.QueryRow(ctx, assessCreateEmailAuthComplianceFinding,
+		arg.DomainID,
+		arg.TxtRecordID,
+		arg.Severity,
+		arg.Status,
+		arg.AuthType,
+		arg.IssueType,
+		arg.StandardName,
+		arg.Details,
+	)
+	var inserted bool
+	err := row.Scan(&inserted)
+	return inserted, err
+}
+
 const assessCreateMinimumRecordSetFinding = `-- name: AssessCreateMinimumRecordSetFinding :one
 INSERT INTO minimum_record_set_findings (domain_id,
                                          severity,
@@ -836,6 +882,53 @@ func (q *Queries) AssessGetDanglingCnameFindingsByDomainUID(ctx context.Context,
 	return items, nil
 }
 
+const assessGetEmailAuthComplianceFindingsByDomainUID = `-- name: AssessGetEmailAuthComplianceFindingsByDomainUID :many
+SELECT eacf.id, eacf.uid, eacf.domain_id, eacf.txt_record_id, eacf.severity, eacf.status, eacf.auth_type, eacf.issue_type, eacf.standard_name, eacf.details, eacf.created_at, eacf.updated_at
+FROM email_auth_compliance_findings eacf
+         JOIN domains d ON eacf.domain_id = d.id
+WHERE d.uid = $1
+  AND d.tenant_id = $2
+ORDER BY eacf.severity ASC, eacf.created_at DESC
+`
+
+type AssessGetEmailAuthComplianceFindingsByDomainUIDParams struct {
+	Uid      string      `json:"uid"`
+	TenantID pgtype.Int4 `json:"tenant_id"`
+}
+
+func (q *Queries) AssessGetEmailAuthComplianceFindingsByDomainUID(ctx context.Context, arg AssessGetEmailAuthComplianceFindingsByDomainUIDParams) ([]EmailAuthComplianceFindings, error) {
+	rows, err := q.db.Query(ctx, assessGetEmailAuthComplianceFindingsByDomainUID, arg.Uid, arg.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EmailAuthComplianceFindings{}
+	for rows.Next() {
+		var i EmailAuthComplianceFindings
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.TxtRecordID,
+			&i.Severity,
+			&i.Status,
+			&i.AuthType,
+			&i.IssueType,
+			&i.StandardName,
+			&i.Details,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const assessGetMinimumRecordSetFindingsByDomainUID = `-- name: AssessGetMinimumRecordSetFindingsByDomainUID :many
 SELECT mrf.id, mrf.uid, mrf.domain_id, mrf.severity, mrf.status, mrf.issue_type, mrf.missing_record_type, mrf.details, mrf.created_at, mrf.updated_at
 FROM minimum_record_set_findings mrf
@@ -1093,6 +1186,9 @@ open_findings AS (
     UNION ALL
     SELECT domain_id, severity::text FROM minimum_record_set_findings
         WHERE status = 'open' AND domain_id = ANY($1::int[])
+    UNION ALL
+    SELECT domain_id, severity::text FROM email_auth_compliance_findings
+        WHERE status = 'open' AND domain_id = ANY($1::int[])
 )
 SELECT
     ids.domain_id::int AS domain_id,
@@ -1260,7 +1356,16 @@ FROM (SELECT sf.uid                AS finding_uid,
       FROM minimum_record_set_findings mrf
                JOIN domains d ON mrf.domain_id = d.id
       WHERE d.tenant_id = $1
-        AND ($2::bool OR mrf.status = 'open')) f
+        AND ($2::bool OR mrf.status = 'open')
+
+      UNION ALL
+
+      SELECT eacf.uid, d.uid, d.name, 'EMAIL_COMPLIANCE'::text, eacf.severity, eacf.status,
+             eacf.issue_type, eacf.auth_type, eacf.details, NULL::text, eacf.created_at
+      FROM email_auth_compliance_findings eacf
+               JOIN domains d ON eacf.domain_id = d.id
+      WHERE d.tenant_id = $1
+        AND ($2::bool OR eacf.status = 'open')) f
 ORDER BY f.domain_name ASC,
          CASE f.severity
              WHEN 'critical' THEN 1
@@ -1505,6 +1610,8 @@ FROM (
         SELECT domain_id, severity::text FROM caa_compliance_findings WHERE status = 'open'
         UNION ALL
         SELECT domain_id, severity::text FROM minimum_record_set_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM email_auth_compliance_findings WHERE status = 'open'
     ) f ON f.domain_id = d.id
     GROUP BY d.tenant_id, d.id
 ) agg
