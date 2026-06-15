@@ -11,6 +11,88 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const assessCreateCAAComplianceFinding = `-- name: AssessCreateCAAComplianceFinding :one
+INSERT INTO caa_compliance_findings (domain_id,
+                                     caa_record_id,
+                                     severity,
+                                     status,
+                                     issue_type,
+                                     standard_name,
+                                     details)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (domain_id, issue_type)
+    DO UPDATE SET caa_record_id = $2,
+                  severity      = $3,
+                  status        = $4,
+                  standard_name = $6,
+                  details       = $7
+RETURNING (xmax = 0)::boolean AS inserted
+`
+
+type AssessCreateCAAComplianceFindingParams struct {
+	DomainID     pgtype.Int4     `json:"domain_id"`
+	CaaRecordID  pgtype.Int4     `json:"caa_record_id"`
+	Severity     FindingSeverity `json:"severity"`
+	Status       FindingStatus   `json:"status"`
+	IssueType    string          `json:"issue_type"`
+	StandardName pgtype.Text     `json:"standard_name"`
+	Details      pgtype.Text     `json:"details"`
+}
+
+func (q *Queries) AssessCreateCAAComplianceFinding(ctx context.Context, arg AssessCreateCAAComplianceFindingParams) (bool, error) {
+	row := q.db.QueryRow(ctx, assessCreateCAAComplianceFinding,
+		arg.DomainID,
+		arg.CaaRecordID,
+		arg.Severity,
+		arg.Status,
+		arg.IssueType,
+		arg.StandardName,
+		arg.Details,
+	)
+	var inserted bool
+	err := row.Scan(&inserted)
+	return inserted, err
+}
+
+const assessCreateCAAConfigurationFinding = `-- name: AssessCreateCAAConfigurationFinding :one
+INSERT INTO caa_configuration_findings (domain_id,
+                                        caa_record_id,
+                                        severity,
+                                        status,
+                                        issue_type,
+                                        details)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (domain_id, issue_type)
+    DO UPDATE SET caa_record_id = $2,
+                  severity      = $3,
+                  status        = $4,
+                  details       = $6
+RETURNING (xmax = 0)::boolean AS inserted
+`
+
+type AssessCreateCAAConfigurationFindingParams struct {
+	DomainID    pgtype.Int4     `json:"domain_id"`
+	CaaRecordID pgtype.Int4     `json:"caa_record_id"`
+	Severity    FindingSeverity `json:"severity"`
+	Status      FindingStatus   `json:"status"`
+	IssueType   string          `json:"issue_type"`
+	Details     pgtype.Text     `json:"details"`
+}
+
+func (q *Queries) AssessCreateCAAConfigurationFinding(ctx context.Context, arg AssessCreateCAAConfigurationFindingParams) (bool, error) {
+	row := q.db.QueryRow(ctx, assessCreateCAAConfigurationFinding,
+		arg.DomainID,
+		arg.CaaRecordID,
+		arg.Severity,
+		arg.Status,
+		arg.IssueType,
+		arg.Details,
+	)
+	var inserted bool
+	err := row.Scan(&inserted)
+	return inserted, err
+}
+
 const assessCreateCertificateFinding = `-- name: AssessCreateCertificateFinding :one
 INSERT INTO certificate_findings (domain_id,
                                   certificate_id,
@@ -301,6 +383,97 @@ func (q *Queries) AssessDKIMFindingsByDomainID(ctx context.Context, arg AssessDK
 			&i.IssueType,
 			&i.Details,
 			&i.DkimValue,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const assessGetCAAComplianceFindingsByDomainUID = `-- name: AssessGetCAAComplianceFindingsByDomainUID :many
+SELECT ccf.id, ccf.uid, ccf.domain_id, ccf.caa_record_id, ccf.severity, ccf.status, ccf.issue_type, ccf.standard_name, ccf.details, ccf.created_at, ccf.updated_at
+FROM caa_compliance_findings ccf
+         JOIN domains d ON ccf.domain_id = d.id
+WHERE d.uid = $1
+  AND d.tenant_id = $2
+ORDER BY ccf.severity ASC, ccf.created_at DESC
+`
+
+type AssessGetCAAComplianceFindingsByDomainUIDParams struct {
+	Uid      string      `json:"uid"`
+	TenantID pgtype.Int4 `json:"tenant_id"`
+}
+
+func (q *Queries) AssessGetCAAComplianceFindingsByDomainUID(ctx context.Context, arg AssessGetCAAComplianceFindingsByDomainUIDParams) ([]CaaComplianceFindings, error) {
+	rows, err := q.db.Query(ctx, assessGetCAAComplianceFindingsByDomainUID, arg.Uid, arg.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CaaComplianceFindings{}
+	for rows.Next() {
+		var i CaaComplianceFindings
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.CaaRecordID,
+			&i.Severity,
+			&i.Status,
+			&i.IssueType,
+			&i.StandardName,
+			&i.Details,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const assessGetCAAConfigurationFindingsByDomainUID = `-- name: AssessGetCAAConfigurationFindingsByDomainUID :many
+SELECT ccf.id, ccf.uid, ccf.domain_id, ccf.caa_record_id, ccf.severity, ccf.status, ccf.issue_type, ccf.details, ccf.created_at, ccf.updated_at
+FROM caa_configuration_findings ccf
+         JOIN domains d ON ccf.domain_id = d.id
+WHERE d.uid = $1
+  AND d.tenant_id = $2
+ORDER BY ccf.severity ASC, ccf.created_at DESC
+`
+
+type AssessGetCAAConfigurationFindingsByDomainUIDParams struct {
+	Uid      string      `json:"uid"`
+	TenantID pgtype.Int4 `json:"tenant_id"`
+}
+
+func (q *Queries) AssessGetCAAConfigurationFindingsByDomainUID(ctx context.Context, arg AssessGetCAAConfigurationFindingsByDomainUIDParams) ([]CaaConfigurationFindings, error) {
+	rows, err := q.db.Query(ctx, assessGetCAAConfigurationFindingsByDomainUID, arg.Uid, arg.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CaaConfigurationFindings{}
+	for rows.Next() {
+		var i CaaConfigurationFindings
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.CaaRecordID,
+			&i.Severity,
+			&i.Status,
+			&i.IssueType,
+			&i.Details,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -827,6 +1000,12 @@ open_findings AS (
     UNION ALL
     SELECT domain_id, severity::text FROM cname_redirection_findings
         WHERE status = 'open' AND domain_id = ANY($1::int[])
+    UNION ALL
+    SELECT domain_id, severity::text FROM caa_configuration_findings
+        WHERE status = 'open' AND domain_id = ANY($1::int[])
+    UNION ALL
+    SELECT domain_id, severity::text FROM caa_compliance_findings
+        WHERE status = 'open' AND domain_id = ANY($1::int[])
 )
 SELECT
     ids.domain_id::int AS domain_id,
@@ -967,7 +1146,25 @@ FROM (SELECT sf.uid                AS finding_uid,
       FROM cname_redirection_findings crf
                JOIN domains d ON crf.domain_id = d.id
       WHERE d.tenant_id = $1
-        AND ($2::bool OR crf.status = 'open')) f
+        AND ($2::bool OR crf.status = 'open')
+
+      UNION ALL
+
+      SELECT ccf.uid, d.uid, d.name, 'CAA_CONFIG'::text, ccf.severity, ccf.status,
+             ccf.issue_type, NULL::text, ccf.details, NULL::text, ccf.created_at
+      FROM caa_configuration_findings ccf
+               JOIN domains d ON ccf.domain_id = d.id
+      WHERE d.tenant_id = $1
+        AND ($2::bool OR ccf.status = 'open')
+
+      UNION ALL
+
+      SELECT cpf.uid, d.uid, d.name, 'CAA_COMPLIANCE'::text, cpf.severity, cpf.status,
+             cpf.issue_type, NULL::text, cpf.details, NULL::text, cpf.created_at
+      FROM caa_compliance_findings cpf
+               JOIN domains d ON cpf.domain_id = d.id
+      WHERE d.tenant_id = $1
+        AND ($2::bool OR cpf.status = 'open')) f
 ORDER BY f.domain_name ASC,
          CASE f.severity
              WHEN 'critical' THEN 1
@@ -1206,6 +1403,10 @@ FROM (
         SELECT domain_id, severity::text FROM dangling_cname_findings WHERE status = 'open'
         UNION ALL
         SELECT domain_id, severity::text FROM cname_redirection_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM caa_configuration_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM caa_compliance_findings WHERE status = 'open'
     ) f ON f.domain_id = d.id
     GROUP BY d.tenant_id, d.id
 ) agg
