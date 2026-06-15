@@ -211,6 +211,26 @@ func (s *FindingsService) ListByDomain(
 			))
 		}
 	}
+	if nsConfig, err := s.DB.AssessGetNSConfigurationFindingsByDomainUID(ctx, store.AssessGetNSConfigurationFindingsByDomainUIDParams{
+		Uid:      domainUID,
+		TenantID: tenantID,
+	}); err == nil {
+		for _, f := range nsConfig {
+			findings = append(findings, mapStandardFinding(
+				"NS_CONFIG", f.Severity, f.Status, f.IssueType, f.Details,
+			))
+		}
+	}
+	if nsRedundancy, err := s.DB.AssessGetNameserverRedundancyFindingsByDomainUID(ctx, store.AssessGetNameserverRedundancyFindingsByDomainUIDParams{
+		Uid:      domainUID,
+		TenantID: tenantID,
+	}); err == nil {
+		for _, f := range nsRedundancy {
+			findings = append(findings, mapStandardFinding(
+				"NS_REDUNDANCY", f.Severity, f.Status, f.IssueType, f.Details,
+			))
+		}
+	}
 
 	sort.SliceStable(findings, func(i, j int) bool {
 		return severityRank(findings[i].Severity) < severityRank(findings[j].Severity)
@@ -612,6 +632,10 @@ var findingTitles = map[string]string{
 	"caa_required_for_cert":        "Cert-bearing domain has no CAA",
 	"missing_iodef":                "CAA has no iodef reporting endpoint",
 	"insufficient_nameservers":     "Fewer than two nameservers",
+	"same_provider":                "All nameservers use one provider",
+	"no_ipv6":                      "No nameserver reachable over IPv6",
+	"ns_not_resolvable":            "Nameserver does not resolve",
+	"ns_is_cname":                  "Nameserver is a CNAME (illegal)",
 	"missing_apex_address":         "Apex has no A/AAAA record",
 	"missing_ipv6":                 "No IPv6 (AAAA) at apex",
 	"missing_soa":                  "No SOA record at apex",
@@ -663,6 +687,10 @@ var findingFixes = map[string]string{
 	"caa_conflicting_records":      "Remove the no-issuance directive or the conflicting permissive issue entry.",
 	"missing_iodef":                "Add an iodef property, e.g. 0 iodef \"mailto:security@example.com\".",
 	"insufficient_nameservers":     "Publish at least two nameservers on separate networks (RFC 2182).",
+	"same_provider":                "Add nameservers from a second DNS provider so one outage can't take the zone offline.",
+	"no_ipv6":                      "Add AAAA glue for at least one nameserver so IPv6-only resolvers can reach the zone.",
+	"ns_not_resolvable":            "Publish A/AAAA glue for the nameserver, or remove the stale delegation.",
+	"ns_is_cname":                  "Point the NS record at a host with A/AAAA records, not a CNAME (RFC 2181).",
 	"missing_apex_address":         "Publish an A and/or AAAA record at the apex.",
 	"missing_ipv6":                 "Add an AAAA record to make the apex reachable over IPv6.",
 	"missing_soa":                  "Ensure the zone publishes a SOA record at its apex.",

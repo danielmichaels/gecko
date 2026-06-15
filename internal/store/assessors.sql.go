@@ -391,6 +391,91 @@ func (q *Queries) AssessCreateMinimumRecordSetFinding(ctx context.Context, arg A
 	return inserted, err
 }
 
+const assessCreateNSConfigurationFinding = `-- name: AssessCreateNSConfigurationFinding :one
+INSERT INTO ns_configuration_findings (domain_id,
+                                       ns_record_id,
+                                       severity,
+                                       status,
+                                       issue_type,
+                                       nameserver,
+                                       details)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (domain_id, nameserver, issue_type)
+    DO UPDATE SET ns_record_id = $2,
+                  severity     = $3,
+                  status       = $4,
+                  details      = $7
+RETURNING (xmax = 0)::boolean AS inserted
+`
+
+type AssessCreateNSConfigurationFindingParams struct {
+	DomainID   pgtype.Int4     `json:"domain_id"`
+	NsRecordID pgtype.Int4     `json:"ns_record_id"`
+	Severity   FindingSeverity `json:"severity"`
+	Status     FindingStatus   `json:"status"`
+	IssueType  string          `json:"issue_type"`
+	Nameserver string          `json:"nameserver"`
+	Details    pgtype.Text     `json:"details"`
+}
+
+func (q *Queries) AssessCreateNSConfigurationFinding(ctx context.Context, arg AssessCreateNSConfigurationFindingParams) (bool, error) {
+	row := q.db.QueryRow(ctx, assessCreateNSConfigurationFinding,
+		arg.DomainID,
+		arg.NsRecordID,
+		arg.Severity,
+		arg.Status,
+		arg.IssueType,
+		arg.Nameserver,
+		arg.Details,
+	)
+	var inserted bool
+	err := row.Scan(&inserted)
+	return inserted, err
+}
+
+const assessCreateNameserverRedundancyFinding = `-- name: AssessCreateNameserverRedundancyFinding :one
+INSERT INTO nameserver_redundancy_findings (domain_id,
+                                            severity,
+                                            status,
+                                            issue_type,
+                                            nameserver_count,
+                                            recommended_count,
+                                            details)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (domain_id, issue_type)
+    DO UPDATE SET severity          = $2,
+                  status            = $3,
+                  nameserver_count  = $5,
+                  recommended_count = $6,
+                  details           = $7
+RETURNING (xmax = 0)::boolean AS inserted
+`
+
+type AssessCreateNameserverRedundancyFindingParams struct {
+	DomainID         pgtype.Int4     `json:"domain_id"`
+	Severity         FindingSeverity `json:"severity"`
+	Status           FindingStatus   `json:"status"`
+	IssueType        string          `json:"issue_type"`
+	NameserverCount  int32           `json:"nameserver_count"`
+	RecommendedCount int32           `json:"recommended_count"`
+	Details          pgtype.Text     `json:"details"`
+}
+
+func (q *Queries) AssessCreateNameserverRedundancyFinding(ctx context.Context, arg AssessCreateNameserverRedundancyFindingParams) (bool, error) {
+	row := q.db.QueryRow(ctx, assessCreateNameserverRedundancyFinding,
+		arg.DomainID,
+		arg.Severity,
+		arg.Status,
+		arg.IssueType,
+		arg.NameserverCount,
+		arg.RecommendedCount,
+		arg.Details,
+	)
+	var inserted bool
+	err := row.Scan(&inserted)
+	return inserted, err
+}
+
 const assessCreateSPFFinding = `-- name: AssessCreateSPFFinding :one
 INSERT INTO spf_findings (domain_id,
                           txt_record_id,
@@ -974,6 +1059,98 @@ func (q *Queries) AssessGetMinimumRecordSetFindingsByDomainUID(ctx context.Conte
 	return items, nil
 }
 
+const assessGetNSConfigurationFindingsByDomainUID = `-- name: AssessGetNSConfigurationFindingsByDomainUID :many
+SELECT ncf.id, ncf.uid, ncf.domain_id, ncf.ns_record_id, ncf.severity, ncf.status, ncf.issue_type, ncf.nameserver, ncf.details, ncf.created_at, ncf.updated_at
+FROM ns_configuration_findings ncf
+         JOIN domains d ON ncf.domain_id = d.id
+WHERE d.uid = $1
+  AND d.tenant_id = $2
+ORDER BY ncf.severity ASC, ncf.created_at DESC
+`
+
+type AssessGetNSConfigurationFindingsByDomainUIDParams struct {
+	Uid      string      `json:"uid"`
+	TenantID pgtype.Int4 `json:"tenant_id"`
+}
+
+func (q *Queries) AssessGetNSConfigurationFindingsByDomainUID(ctx context.Context, arg AssessGetNSConfigurationFindingsByDomainUIDParams) ([]NsConfigurationFindings, error) {
+	rows, err := q.db.Query(ctx, assessGetNSConfigurationFindingsByDomainUID, arg.Uid, arg.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []NsConfigurationFindings{}
+	for rows.Next() {
+		var i NsConfigurationFindings
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.NsRecordID,
+			&i.Severity,
+			&i.Status,
+			&i.IssueType,
+			&i.Nameserver,
+			&i.Details,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const assessGetNameserverRedundancyFindingsByDomainUID = `-- name: AssessGetNameserverRedundancyFindingsByDomainUID :many
+SELECT nrf.id, nrf.uid, nrf.domain_id, nrf.severity, nrf.status, nrf.issue_type, nrf.nameserver_count, nrf.recommended_count, nrf.details, nrf.created_at, nrf.updated_at
+FROM nameserver_redundancy_findings nrf
+         JOIN domains d ON nrf.domain_id = d.id
+WHERE d.uid = $1
+  AND d.tenant_id = $2
+ORDER BY nrf.severity ASC, nrf.created_at DESC
+`
+
+type AssessGetNameserverRedundancyFindingsByDomainUIDParams struct {
+	Uid      string      `json:"uid"`
+	TenantID pgtype.Int4 `json:"tenant_id"`
+}
+
+func (q *Queries) AssessGetNameserverRedundancyFindingsByDomainUID(ctx context.Context, arg AssessGetNameserverRedundancyFindingsByDomainUIDParams) ([]NameserverRedundancyFindings, error) {
+	rows, err := q.db.Query(ctx, assessGetNameserverRedundancyFindingsByDomainUID, arg.Uid, arg.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []NameserverRedundancyFindings{}
+	for rows.Next() {
+		var i NameserverRedundancyFindings
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.Severity,
+			&i.Status,
+			&i.IssueType,
+			&i.NameserverCount,
+			&i.RecommendedCount,
+			&i.Details,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const assessGetSPFFindingByDomainID = `-- name: AssessGetSPFFindingByDomainID :many
 SELECT sf.id, sf.uid, sf.domain_id, sf.txt_record_id, sf.severity, sf.status, sf.issue_type, sf.spf_value, sf.details, sf.created_at, sf.updated_at
 FROM spf_findings sf
@@ -1189,6 +1366,12 @@ open_findings AS (
     UNION ALL
     SELECT domain_id, severity::text FROM email_auth_compliance_findings
         WHERE status = 'open' AND domain_id = ANY($1::int[])
+    UNION ALL
+    SELECT domain_id, severity::text FROM ns_configuration_findings
+        WHERE status = 'open' AND domain_id = ANY($1::int[])
+    UNION ALL
+    SELECT domain_id, severity::text FROM nameserver_redundancy_findings
+        WHERE status = 'open' AND domain_id = ANY($1::int[])
 )
 SELECT
     ids.domain_id::int AS domain_id,
@@ -1365,7 +1548,25 @@ FROM (SELECT sf.uid                AS finding_uid,
       FROM email_auth_compliance_findings eacf
                JOIN domains d ON eacf.domain_id = d.id
       WHERE d.tenant_id = $1
-        AND ($2::bool OR eacf.status = 'open')) f
+        AND ($2::bool OR eacf.status = 'open')
+
+      UNION ALL
+
+      SELECT ncf.uid, d.uid, d.name, 'NS_CONFIG'::text, ncf.severity, ncf.status,
+             ncf.issue_type, ncf.nameserver, ncf.details, NULL::text, ncf.created_at
+      FROM ns_configuration_findings ncf
+               JOIN domains d ON ncf.domain_id = d.id
+      WHERE d.tenant_id = $1
+        AND ($2::bool OR ncf.status = 'open')
+
+      UNION ALL
+
+      SELECT nrf.uid, d.uid, d.name, 'NS_REDUNDANCY'::text, nrf.severity, nrf.status,
+             nrf.issue_type, nrf.nameserver_count::text, nrf.details, NULL::text, nrf.created_at
+      FROM nameserver_redundancy_findings nrf
+               JOIN domains d ON nrf.domain_id = d.id
+      WHERE d.tenant_id = $1
+        AND ($2::bool OR nrf.status = 'open')) f
 ORDER BY f.domain_name ASC,
          CASE f.severity
              WHEN 'critical' THEN 1
@@ -1612,6 +1813,10 @@ FROM (
         SELECT domain_id, severity::text FROM minimum_record_set_findings WHERE status = 'open'
         UNION ALL
         SELECT domain_id, severity::text FROM email_auth_compliance_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM ns_configuration_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM nameserver_redundancy_findings WHERE status = 'open'
     ) f ON f.domain_id = d.id
     GROUP BY d.tenant_id, d.id
 ) agg
