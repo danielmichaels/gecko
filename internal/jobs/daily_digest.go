@@ -103,7 +103,7 @@ func (w *DailyDigestWorker) EnqueueDueDigests(ctx context.Context) (int, error) 
 			noRecipients++
 		}
 	}
-	w.Logger.InfoContext(
+	w.Logger.DebugContext(
 		ctx,
 		"daily digest sweep complete",
 		"tenants", len(due),
