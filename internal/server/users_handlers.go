@@ -39,12 +39,12 @@ func (app *Server) handleUserList(ctx context.Context, _ *struct{}) (*ListUsersO
 	out.Body.Users = make([]userView, 0, len(rows))
 	for _, u := range rows {
 		out.Body.Users = append(out.Body.Users, userView{
-			UID:       u.Uid,
+			UID:       u.UID,
 			Email:     u.Email,
-			Name:      u.Name.String,
-			Role:      string(u.Role),
-			Status:    string(u.Status),
-			CreatedAt: tsPtr(u.CreatedAt),
+			Name:      u.Name,
+			Role:      u.Role,
+			Status:    u.Status,
+			CreatedAt: tsPtr(u.JoinedAt),
 		})
 	}
 	return out, nil
@@ -53,9 +53,7 @@ func (app *Server) handleUserList(ctx context.Context, _ *struct{}) (*ListUsersO
 type UpdateUserInput struct {
 	UID  string `path:"uid" example:"user_00000001"`
 	Body struct {
-		Email string `json:"email" required:"true" format:"email"`
-		Name  string `json:"name,omitempty"`
-		Role  string `json:"role"  required:"true" enum:"owner,manager,viewer" doc:"Role within the tenant; superadmin cannot be assigned via the API."`
+		Role string `json:"role"  required:"true" enum:"owner,manager,viewer" doc:"Role within the tenant; superadmin cannot be assigned via the API. Email and name are global identity fields and are not editable here."`
 	}
 }
 
@@ -71,9 +69,7 @@ func (app *Server) handleUserUpdate(ctx context.Context, i *UpdateUserInput) (*U
 		return nil, err
 	}
 	u, err := app.Svc.UsersService().Update(ctx, p, i.UID, service.UsersUpdateParams{
-		Email: i.Body.Email,
-		Name:  i.Body.Name,
-		Role:  i.Body.Role,
+		Role: i.Body.Role,
 	})
 	if err != nil {
 		switch {
@@ -88,12 +84,12 @@ func (app *Server) handleUserUpdate(ctx context.Context, i *UpdateUserInput) (*U
 		}
 	}
 	return &UserOutput{Body: userView{
-		UID:       u.Uid,
+		UID:       u.UID,
 		Email:     u.Email,
-		Name:      u.Name.String,
-		Role:      string(u.Role),
-		Status:    string(u.Status),
-		CreatedAt: tsPtr(u.CreatedAt),
+		Name:      u.Name,
+		Role:      u.Role,
+		Status:    u.Status,
+		CreatedAt: tsPtr(u.JoinedAt),
 	}}, nil
 }
 

@@ -9,7 +9,6 @@ import (
 	"github.com/danielmichaels/gecko/internal/auth"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -58,14 +57,15 @@ func bootstrapOwner(
 	switch {
 	case gerr == nil:
 		if !resetPassword {
+			if merr := ensureOwnerMembership(ctx, q, existing.ID, tenantID); merr != nil {
+				return 0, false, merr
+			}
 			return tenantID, false, nil
 		}
 		userID = existing.ID
 	case errors.Is(gerr, pgx.ErrNoRows):
-		u, perr := q.UserProvision(ctx, store.UserProvisionParams{
-			TenantID: pgtype.Int4{Int32: tenantID, Valid: true},
-			Email:    email,
-			Role:     store.UserRoleOwner,
+		u, perr := q.UserProvisionIdentity(ctx, store.UserProvisionIdentityParams{
+			Email: email,
 		})
 		if perr != nil {
 			return 0, false, fmt.Errorf("provision owner: %w", perr)
@@ -74,6 +74,10 @@ func bootstrapOwner(
 		created = true
 	default:
 		return 0, false, fmt.Errorf("look up user: %w", gerr)
+	}
+
+	if merr := ensureOwnerMembership(ctx, q, userID, tenantID); merr != nil {
+		return 0, false, merr
 	}
 
 	hash, herr := auth.HashPassword(p.Password, bcryptCost)
@@ -87,4 +91,30 @@ func bootstrapOwner(
 		return 0, false, fmt.Errorf("set credentials: %w", err)
 	}
 	return tenantID, created, nil
+}
+
+// ensureOwnerMembership idempotently attaches userID to tenantID as owner. Role
+// and tenant live on memberships now, so the bootstrap owner needs one to be able
+// to authenticate; a pre-existing membership is left untouched.
+func ensureOwnerMembership(
+	ctx context.Context,
+	q *store.Queries,
+	userID, tenantID int32,
+) error {
+	if _, err := q.MembershipGetRole(ctx, store.MembershipGetRoleParams{
+		UserID:   userID,
+		TenantID: tenantID,
+	}); err == nil {
+		return nil
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("check membership: %w", err)
+	}
+	if _, err := q.MembershipCreate(ctx, store.MembershipCreateParams{
+		UserID:   userID,
+		TenantID: tenantID,
+		Role:     store.UserRoleOwner,
+	}); err != nil {
+		return fmt.Errorf("create membership: %w", err)
+	}
+	return nil
 }

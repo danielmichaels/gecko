@@ -795,6 +795,16 @@ type Invitations struct {
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 }
 
+type Memberships struct {
+	ID        int32              `json:"id"`
+	Uid       string             `json:"uid"`
+	UserID    int32              `json:"user_id"`
+	TenantID  int32              `json:"tenant_id"`
+	Role      UserRole           `json:"role"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
 type MinimumRecordSetFindings struct {
 	ID                int32              `json:"id"`
 	Uid               string             `json:"uid"`
@@ -1037,10 +1047,8 @@ type UserCredentials struct {
 type Users struct {
 	ID           int32              `json:"id"`
 	Uid          string             `json:"uid"`
-	TenantID     pgtype.Int4        `json:"tenant_id"`
 	Email        string             `json:"email"`
 	Name         pgtype.Text        `json:"name"`
-	Role         UserRole           `json:"role"`
 	Status       UserStatus         `json:"status"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`

@@ -42,8 +42,16 @@ func TestBootstrapOwner_IdempotentNoClobber(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lookup owner: %v", err)
 	}
-	if owner.Role != store.UserRoleOwner {
-		t.Errorf("owner role = %q, want %q", owner.Role, store.UserRoleOwner)
+	// Role lives on the membership now, not the user row.
+	ownerRole, err := pc.Queries.MembershipGetRole(ctx, store.MembershipGetRoleParams{
+		UserID:   owner.ID,
+		TenantID: tenantID,
+	})
+	if err != nil {
+		t.Fatalf("owner membership: %v", err)
+	}
+	if ownerRole != store.UserRoleOwner {
+		t.Errorf("owner role = %q, want %q", ownerRole, store.UserRoleOwner)
 	}
 	cred1, err := pc.Queries.UserCredentialGetByUserID(ctx, owner.ID)
 	if err != nil {

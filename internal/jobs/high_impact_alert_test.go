@@ -75,7 +75,7 @@ func TestHighImpactAlertWorker_EnqueueDueAlerts(t *testing.T) {
 	domA := seedStatsDomain(t, ctx, q, tenantA, "a.alert.test")
 	seedRecipient(t, ctx, q, tenantA, "owner@a.alert.test", store.UserRoleOwner)
 	seedRecipient(t, ctx, q, tenantA, "mgr@a.alert.test", store.UserRoleManager)
-	optOut(t, ctx, pc, tenantA, "mgr@a.alert.test")
+	optOut(t, ctx, pc, "mgr@a.alert.test")
 	seedObservation(t, ctx, pc, tenantA, domA, "a.alert.test",
 		"dangling_cname_finding", "created", `{"severity":"critical","status":"open"}`)
 
@@ -152,14 +152,13 @@ func optOut(
 	t *testing.T,
 	ctx context.Context,
 	pc *testhelpers.PostgresContainer,
-	tenantID int32,
 	email string,
 ) {
 	t.Helper()
 	if _, err := pc.Pool.Exec(
 		ctx,
-		`UPDATE users SET notify_opt_out = true WHERE tenant_id = $1 AND email = $2`,
-		tenantID, email,
+		`UPDATE users SET notify_opt_out = true WHERE email = $1`,
+		email,
 	); err != nil {
 		t.Fatalf("opt out %s: %v", email, err)
 	}

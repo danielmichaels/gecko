@@ -52,12 +52,16 @@ func seedRecipient(
 	role store.UserRole,
 ) {
 	t.Helper()
-	if _, err := q.UserProvision(ctx, store.UserProvisionParams{
-		TenantID: pgtype.Int4{Int32: tenantID, Valid: true},
-		Email:    email,
+	u, err := q.UserProvisionIdentity(ctx, store.UserProvisionIdentityParams{Email: email})
+	if err != nil {
+		t.Fatalf("provision user %s: %v", email, err)
+	}
+	if _, err := q.MembershipCreate(ctx, store.MembershipCreateParams{
+		UserID:   u.ID,
+		TenantID: tenantID,
 		Role:     role,
 	}); err != nil {
-		t.Fatalf("provision user %s: %v", email, err)
+		t.Fatalf("create membership %s: %v", email, err)
 	}
 }
 

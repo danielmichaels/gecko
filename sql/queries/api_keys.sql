@@ -4,8 +4,11 @@ VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 
 -- name: ApiKeyGetByPrefix :one
--- Returns the key plus the owner's role/status so verification can reject keys
--- belonging to non-active users in a single round-trip.
+-- Returns the key plus the owner's status and per-tenant role so verification can
+-- reject keys belonging to non-active users in a single round-trip. The INNER JOIN
+-- on memberships sources the role for the key's tenant and is load-bearing: if the
+-- user's membership in that tenant was revoked, the row vanishes and the key is
+-- rejected, so a key cannot outlive the membership it was scoped to.
 SELECT k.id,
        k.uid,
        k.tenant_id,
@@ -18,10 +21,11 @@ SELECT k.id,
        k.revoked_at,
        k.created_at,
        u.email  AS user_email,
-       u.role   AS user_role,
+       m.role   AS user_role,
        u.status AS user_status
 FROM api_keys k
          JOIN users u ON u.id = k.user_id
+         JOIN memberships m ON m.user_id = k.user_id AND m.tenant_id = k.tenant_id
 WHERE k.prefix = $1;
 
 -- name: ApiKeyTouchLastUsed :exec

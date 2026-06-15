@@ -68,19 +68,19 @@ func TestAuth_RoleEscalation(t *testing.T) {
 
 	// Update path: a manager cannot promote another user to owner.
 	if code := doJSON(t, http.MethodPut, base+"/api/users/"+viewerUser.Uid, mgr.APIKey,
-		map[string]string{"email": "viewer@a.com", "role": "owner"}, nil); code != http.StatusForbidden {
+		map[string]string{"role": "owner"}, nil); code != http.StatusForbidden {
 		t.Errorf("manager promote viewer->owner status = %d, want 403", code)
 	}
 
 	// Self path: a manager cannot promote themselves to owner.
 	if code := doJSON(t, http.MethodPut, base+"/api/users/"+mgrUser.Uid, mgr.APIKey,
-		map[string]string{"email": "mgr@a.com", "role": "owner"}, nil); code != http.StatusForbidden {
+		map[string]string{"role": "owner"}, nil); code != http.StatusForbidden {
 		t.Errorf("manager self-promote->owner status = %d, want 403", code)
 	}
 
 	// Owner is unaffected: an owner may grant owner.
 	if code := doJSON(t, http.MethodPut, base+"/api/users/"+viewerUser.Uid, owner.APIKey,
-		map[string]string{"email": "viewer@a.com", "role": "owner"}, nil); code != http.StatusOK {
+		map[string]string{"role": "owner"}, nil); code != http.StatusOK {
 		t.Errorf("owner promote viewer->owner status = %d, want 200", code)
 	}
 }
@@ -119,7 +119,7 @@ func TestAuth_RoleProtection(t *testing.T) {
 
 	// A manager cannot demote/rewrite an owner (account-takeover vector).
 	if code := doJSON(t, http.MethodPut, base+"/api/users/"+ownerUser.Uid, mgr.APIKey,
-		map[string]string{"email": "owner@a.com", "role": "viewer"}, nil); code != http.StatusForbidden {
+		map[string]string{"role": "viewer"}, nil); code != http.StatusForbidden {
 		t.Errorf("manager edit owner status = %d, want 403", code)
 	}
 	// A manager cannot delete an owner.
@@ -129,7 +129,7 @@ func TestAuth_RoleProtection(t *testing.T) {
 	}
 	// Control: a manager may still manage a viewer (at or below their rank).
 	if code := doJSON(t, http.MethodPut, base+"/api/users/"+v1.Uid, mgr.APIKey,
-		map[string]string{"email": "v1@a.com", "role": "viewer", "name": "Vee"}, nil); code != http.StatusOK {
+		map[string]string{"role": "viewer"}, nil); code != http.StatusOK {
 		t.Errorf("manager edit viewer status = %d, want 200", code)
 	}
 	if code := doJSON(t, http.MethodDelete, base+"/api/users/"+v2.Uid, mgr.APIKey,
@@ -158,7 +158,7 @@ func TestAuth_LastOwnerProtected(t *testing.T) {
 
 	// Sole owner cannot demote themselves.
 	if code := doJSON(t, http.MethodPut, base+"/api/users/"+ownerUser.Uid, owner.APIKey,
-		map[string]string{"email": "owner@a.com", "role": "manager"}, nil); code != http.StatusConflict {
+		map[string]string{"role": "manager"}, nil); code != http.StatusConflict {
 		t.Errorf("sole owner self-demote status = %d, want 409", code)
 	}
 	// Sole owner cannot delete themselves.
@@ -192,6 +192,10 @@ func TestAuth_LastOwnerConcurrentDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("o2 lookup: %v", err)
 	}
+
+	// Capture the tenant before the concurrent deletes: owner@a.com may be the
+	// account that gets removed, after which its membership no longer resolves.
+	tenantID := testhelpers.TenantIDForEmail(t, ctx, pc, "owner@a.com")
 
 	uids := []string{o1.Uid, o2.Uid}
 	codes := make([]int, len(uids))
@@ -230,7 +234,7 @@ func TestAuth_LastOwnerConcurrentDelete(t *testing.T) {
 	if succeeded != 1 {
 		t.Errorf("status codes = %v, want exactly one 204", codes)
 	}
-	remaining, err := pc.Queries.UsersCountOwnersInTenant(ctx, o1.TenantID)
+	remaining, err := pc.Queries.MembershipsCountOwnersInTenant(ctx, tenantID)
 	if err != nil {
 		t.Fatalf("count owners: %v", err)
 	}

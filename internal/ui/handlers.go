@@ -87,6 +87,9 @@ func (h *Handlers) Routes() http.Handler {
 		r.Use(h.app.CSRFValidate)
 
 		r.Post("/logout", h.handleLogoutPost)
+		r.Post("/invite/accept", h.handleInviteAttach)
+		r.Post("/switch-tenant", h.handleSwitchTenant)
+		r.Post("/workspaces", h.handleWorkspaceCreate)
 
 		r.Get("/findings", h.handleFindingsPage)
 		r.Get("/scans", h.handleScansPage)
@@ -145,6 +148,21 @@ func (h *Handlers) shell(ctx context.Context, active string) (templates.AppShell
 	if tenantName == "" {
 		tenantName = p.Email
 	}
+	var tenants []templates.TenantOption
+	memberships, err := h.svc.AuthService().ListMemberships(ctx, p)
+	if err != nil {
+		h.log.Error("shell: list memberships", "error", err)
+	} else {
+		tenants = make([]templates.TenantOption, len(memberships))
+		for i, m := range memberships {
+			tenants[i] = templates.TenantOption{
+				UID:    m.TenantUID,
+				Name:   m.TenantName,
+				Role:   m.Role,
+				Active: m.Active,
+			}
+		}
+	}
 	return templates.AppShellProps{
 		TenantName:       tenantName,
 		UserEmail:        p.Email,
@@ -154,6 +172,7 @@ func (h *Handlers) shell(ctx context.Context, active string) (templates.AppShell
 		ResolverOK:       true,
 		CSRFToken:        CSRFTokenFrom(ctx),
 		CanManageDomains: service.OwnerOrManager(p),
+		Tenants:          tenants,
 	}, nil
 }
 
@@ -385,6 +404,27 @@ func (h *Handlers) handleInviteGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Choose the acceptance flow. A brand-new email sets a password ("new"). An
+	// already-registered email must accept while signed in as that identity: when
+	// the current session matches it we show one-click accept ("attach"), otherwise
+	// we direct them to log in ("login") — a link alone never attaches a tenant to
+	// someone else's account.
+	mode := "new"
+	csrf := ""
+	if ic.ExistingUser {
+		mode = "login"
+		// The attach POST is CSRF-protected and this page is rendered by a public
+		// handler, so when the logged-in identity matches we compute the per-session
+		// CSRF token here from the session cookie.
+		if cookie, cErr := r.Cookie(h.cookieCfg.Name); cErr == nil {
+			if p, sErr := h.svc.AuthService().ResolveSession(r.Context(), cookie.Value); sErr == nil &&
+				strings.EqualFold(p.Email, ic.InviteeEmail) {
+				mode = "attach"
+				csrf = csrfToken(h.app.csrfKey, cookie.Value)
+			}
+		}
+	}
+
 	renderPage(w, r, templates.AcceptInvitePage(templates.AcceptInvitePageProps{
 		Token:        token,
 		TenantName:   ic.TenantName,
@@ -392,6 +432,8 @@ func (h *Handlers) handleInviteGet(w http.ResponseWriter, r *http.Request) {
 		Role:         ic.Role,
 		InviteeEmail: ic.InviteeEmail,
 		Expiry:       ic.Expiry,
+		Mode:         mode,
+		CSRFToken:    csrf,
 	}))
 }
 
@@ -421,9 +463,9 @@ func (h *Handlers) handleInvitePost(w http.ResponseWriter, r *http.Request) {
 				`<div id="invite-error" style="color:var(--crit);font-family:var(--mono);font-size:12.5px;background:var(--crit-bg);border:1px solid var(--crit);border-radius:8px;padding:10px 14px;margin-bottom:12px;">invalid or expired invitation</div>`,
 			)
 		case errors.Is(err, service.ErrConflict):
-			_ = sse.PatchElements(
-				`<div id="invite-error" style="color:var(--crit);font-family:var(--mono);font-size:12.5px;background:var(--crit-bg);border:1px solid var(--crit);border-radius:8px;padding:10px 14px;margin-bottom:12px;">email already registered</div>`,
-			)
+			_ = sse.PatchElements(authErrorPatch("invite-error", err.Error()))
+		case errors.Is(err, service.ErrInvalidInput):
+			_ = sse.PatchElements(authErrorPatch("invite-error", err.Error()))
 		default:
 			h.log.Error("invite: accept", "error", err)
 			_ = sse.PatchElements(
@@ -444,6 +486,129 @@ func (h *Handlers) handleInvitePost(w http.ResponseWriter, r *http.Request) {
 	// Cookie must be written before NewSSE flushes headers.
 	SetSessionCookie(w, rawToken, expiresAt, h.cookieCfg)
 	sse := datastar.NewSSE(w, r)
+	_ = sse.Redirect("/app/domains")
+}
+
+// handleInviteAttach attaches an already-signed-in user to the tenant named by an
+// invitation token and switches their active session to it. Used by the "attach"
+// accept flow for an existing account whose email matches the invite.
+func (h *Handlers) handleInviteAttach(w http.ResponseWriter, r *http.Request) {
+	p, ok := PrincipalFrom(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var form struct {
+		Token string `json:"token"`
+	}
+	if err := datastar.ReadSignals(r, &form); err != nil {
+		h.log.Error("invite attach: read signals", "error", err)
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	tenantID, err := h.svc.AuthService().AttachInviteWeb(r.Context(), p, form.Token)
+	if err != nil {
+		sse := datastar.NewSSE(w, r)
+		switch {
+		case errors.Is(err, service.ErrNotFound):
+			_ = sse.PatchElements(authErrorPatch("invite-error", "invalid or expired invitation"))
+		case errors.Is(err, service.ErrForbidden):
+			_ = sse.PatchElements(
+				authErrorPatch("invite-error", "this invitation was sent to a different account"),
+			)
+		case errors.Is(err, service.ErrConflict):
+			_ = sse.PatchElements(authErrorPatch("invite-error", err.Error()))
+		default:
+			h.log.Error("invite attach", "error", err)
+			_ = sse.PatchElements(
+				authErrorPatch("invite-error", "something went wrong, please try again"),
+			)
+		}
+		return
+	}
+
+	// Land the user in the tenant they just joined. Best-effort: a failure here
+	// leaves them in their previous active tenant, which they can switch from.
+	if cookie, cErr := r.Cookie(h.cookieCfg.Name); cErr == nil {
+		if sErr := h.svc.AuthService().SetSessionTenant(r.Context(), cookie.Value, tenantID); sErr != nil {
+			h.log.Warn("invite attach: switch tenant", "error", sErr)
+		}
+	}
+	sse := datastar.NewSSE(w, r)
+	_ = sse.Redirect("/app/domains")
+}
+
+// handleSwitchTenant points the caller's session at another tenant they belong to.
+func (h *Handlers) handleSwitchTenant(w http.ResponseWriter, r *http.Request) {
+	p, ok := PrincipalFrom(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	tenantUID := strings.TrimSpace(r.URL.Query().Get("tenant"))
+	sse := datastar.NewSSE(w, r)
+	cookie, err := r.Cookie(h.cookieCfg.Name)
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if err := h.svc.AuthService().SwitchTenant(r.Context(), p, tenantUID, cookie.Value); err != nil {
+		switch {
+		case errors.Is(err, service.ErrForbidden), errors.Is(err, service.ErrNotFound):
+			pushToast(
+				sse,
+				newToast(
+					"warn",
+					"NOTICE",
+					"Cannot switch",
+					"you are not a member of that workspace",
+				),
+			)
+		default:
+			h.log.Error("switch tenant", "error", err)
+			pushToast(sse, newToast("crit", "ERROR", "Failed to switch workspace", tenantUID))
+		}
+		return
+	}
+	_ = sse.Redirect("/app/domains")
+}
+
+// handleWorkspaceCreate creates a new workspace owned by the caller and switches
+// the session to it. The name arrives in the wsName signal.
+func (h *Handlers) handleWorkspaceCreate(w http.ResponseWriter, r *http.Request) {
+	p, ok := PrincipalFrom(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var form struct {
+		WsName string `json:"wsName"`
+	}
+	if err := datastar.ReadSignals(r, &form); err != nil {
+		h.log.Error("workspace create: read signals", "error", err)
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	sse := datastar.NewSSE(w, r)
+
+	ws, err := h.svc.AuthService().CreateWorkspace(r.Context(), p, form.WsName)
+	if err != nil {
+		if errors.Is(err, service.ErrInvalidInput) {
+			pushToast(sse, newToast("warn", "NOTICE", "Name required", err.Error()))
+			return
+		}
+		h.log.Error("workspace create", "error", err)
+		pushToast(sse, newToast("crit", "ERROR", "Failed to create workspace", form.WsName))
+		return
+	}
+
+	if cookie, cErr := r.Cookie(h.cookieCfg.Name); cErr == nil {
+		if sErr := h.svc.AuthService().SetSessionTenant(r.Context(), cookie.Value, ws.TenantID); sErr != nil {
+			h.log.Warn("workspace create: switch tenant", "error", sErr)
+		}
+	}
 	_ = sse.Redirect("/app/domains")
 }
 

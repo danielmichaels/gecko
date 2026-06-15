@@ -100,6 +100,33 @@ func (q *Queries) InvitationGetByTokenHash(ctx context.Context, tokenHash string
 	return i, err
 }
 
+const invitationGetByTokenHashIncludingUsed = `-- name: InvitationGetByTokenHashIncludingUsed :one
+SELECT id, uid, tenant_id, email, role, token_hash, invited_by, expires_at, accepted_at, created_at
+FROM invitations
+WHERE token_hash = $1
+`
+
+// Resolves an invite by token ignoring accepted_at/expiry. Used only by attach to
+// tell an already-claimed invite (caller is now a member → conflict) apart from a
+// genuinely unknown token (→ not found); never use it to grant access.
+func (q *Queries) InvitationGetByTokenHashIncludingUsed(ctx context.Context, tokenHash string) (Invitations, error) {
+	row := q.db.QueryRow(ctx, invitationGetByTokenHashIncludingUsed, tokenHash)
+	var i Invitations
+	err := row.Scan(
+		&i.ID,
+		&i.Uid,
+		&i.TenantID,
+		&i.Email,
+		&i.Role,
+		&i.TokenHash,
+		&i.InvitedBy,
+		&i.ExpiresAt,
+		&i.AcceptedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const invitationMarkAccepted = `-- name: InvitationMarkAccepted :exec
 UPDATE invitations
 SET accepted_at = NOW()

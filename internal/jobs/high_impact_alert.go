@@ -91,7 +91,7 @@ func (w *HighImpactAlertWorker) EnqueueDueAlerts(ctx context.Context) (int, erro
 			noRecipients++
 		}
 	}
-	w.Logger.InfoContext(
+	w.Logger.DebugContext(
 		ctx,
 		"high-impact alert sweep complete",
 		"tenants", len(due),

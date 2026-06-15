@@ -254,6 +254,18 @@ func (app *Server) registerEndpoints(api huma.API) {
 	}, app.handleAcceptInvite)
 
 	huma.Register(api, huma.Operation{
+		OperationID:   "attach_invitation",
+		Method:        http.MethodPost,
+		Path:          "/api/invitations/attach",
+		Summary:       "Join a tenant from an invitation",
+		Description:   "For an existing account: attach the authenticated caller to the tenant named by an invitation token (addressed to their own email) and return an API key scoped to that tenant.",
+		Tags:          []string{"Auth"},
+		DefaultStatus: http.StatusCreated,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
+	}, app.handleAttachInvite)
+
+	huma.Register(api, huma.Operation{
 		OperationID:   "logout",
 		Method:        http.MethodPost,
 		Path:          "/api/auth/logout",

@@ -47,16 +47,7 @@ func principalForEmail(
 	email string,
 ) *auth.Principal {
 	t.Helper()
-	u, err := pc.Queries.UserGetByEmail(ctx, email)
-	if err != nil {
-		t.Fatalf("principal for %s: %v", email, err)
-	}
-	return &auth.Principal{
-		UserID:   u.ID,
-		TenantID: u.TenantID.Int32,
-		Email:    u.Email,
-		Role:     string(u.Role),
-	}
+	return testhelpers.PrincipalForEmail(t, ctx, pc, email)
 }
 
 // inviteMember invites email at role via authSvc invitation flow + accept.
@@ -136,15 +127,17 @@ func TestUsersService_Update_HappyPath(t *testing.T) {
 	}
 
 	updated, err := usersSvc.Update(ctx, pOwner, vUser.Uid, service.UsersUpdateParams{
-		Email: "viewer@a.com",
-		Name:  "Vee",
-		Role:  "viewer",
+		Role: "manager",
 	})
 	if err != nil {
 		t.Fatalf("update: %v", err)
 	}
-	if updated.Name.String != "Vee" {
-		t.Errorf("name = %q, want %q", updated.Name.String, "Vee")
+	if updated.Role != "manager" {
+		t.Errorf("role = %q, want %q", updated.Role, "manager")
+	}
+	// Identity is global and not editable via tenant-admin update; email is unchanged.
+	if updated.Email != "viewer@a.com" {
+		t.Errorf("email = %q, want unchanged %q", updated.Email, "viewer@a.com")
 	}
 }
 
@@ -171,8 +164,7 @@ func TestUsersService_Update_ViewerForbidden(t *testing.T) {
 	}
 
 	_, err = usersSvc.Update(ctx, pViewer, oUser.Uid, service.UsersUpdateParams{
-		Email: "owner@a.com",
-		Role:  "viewer",
+		Role: "viewer",
 	})
 	if !errors.Is(err, service.ErrForbidden) {
 		t.Errorf("viewer update: want ErrForbidden, got %v", err)
@@ -205,8 +197,7 @@ func TestUsersService_Update_ManagerCannotGrantOwner(t *testing.T) {
 	}
 
 	_, err = usersSvc.Update(ctx, pMgr, vUser.Uid, service.UsersUpdateParams{
-		Email: "viewer@a.com",
-		Role:  "owner",
+		Role: "owner",
 	})
 	if !errors.Is(err, service.ErrForbidden) {
 		t.Errorf("manager grant owner: want ErrForbidden, got %v", err)
@@ -238,8 +229,7 @@ func TestUsersService_Update_ManagerCannotModifyOwner(t *testing.T) {
 	}
 
 	_, err = usersSvc.Update(ctx, pMgr, oUser.Uid, service.UsersUpdateParams{
-		Email: "owner@a.com",
-		Role:  "viewer",
+		Role: "viewer",
 	})
 	if !errors.Is(err, service.ErrForbidden) {
 		t.Errorf("manager modify owner: want ErrForbidden, got %v", err)
@@ -269,47 +259,13 @@ func TestUsersService_Update_CrossTenant(t *testing.T) {
 	}
 
 	_, err = usersSvc.Update(ctx, pA, bUser.Uid, service.UsersUpdateParams{
-		Email: "owner@b.com",
-		Role:  "viewer",
+		Role: "viewer",
 	})
 	if !errors.Is(err, service.ErrNotFound) {
 		t.Errorf("cross-tenant update: want ErrNotFound, got %v", err)
 	}
 	if err.Error() != "user not found" {
 		t.Errorf("message = %q, want %q", err.Error(), "user not found")
-	}
-}
-
-// TestUsersService_Update_EmailConflict verifies email uniqueness is enforced.
-func TestUsersService_Update_EmailConflict(t *testing.T) {
-	testhelpers.ParallelDBTest(t)
-	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
-	if err != nil {
-		t.Fatalf("create container: %v", err)
-	}
-	defer pc.Close(ctx)
-
-	authSvc, usersSvc := setupTenantWithUsers(t, pc)
-	signupUser(t, authSvc, "owner@a.com", "supersecret")
-	pOwner := principalForEmail(t, ctx, pc, "owner@a.com")
-
-	inviteMember(t, ctx, pc, authSvc, pOwner, "viewer@a.com", "viewer")
-	vUser, err := pc.Queries.UserGetByEmail(ctx, "viewer@a.com")
-	if err != nil {
-		t.Fatalf("viewer lookup: %v", err)
-	}
-
-	// Try to update viewer's email to the owner's existing email.
-	_, err = usersSvc.Update(ctx, pOwner, vUser.Uid, service.UsersUpdateParams{
-		Email: "owner@a.com",
-		Role:  "viewer",
-	})
-	if !errors.Is(err, service.ErrConflict) {
-		t.Errorf("email conflict: want ErrConflict, got %v", err)
-	}
-	if err.Error() != "email already in use" {
-		t.Errorf("message = %q, want %q", err.Error(), "email already in use")
 	}
 }
 
@@ -333,8 +289,7 @@ func TestUsersService_Update_LastOwnerDemote(t *testing.T) {
 
 	// Sole owner cannot demote themselves.
 	_, err = usersSvc.Update(ctx, pOwner, oUser.Uid, service.UsersUpdateParams{
-		Email: "owner@a.com",
-		Role:  "manager",
+		Role: "manager",
 	})
 	if !errors.Is(err, service.ErrConflict) {
 		t.Errorf("last-owner demote: want ErrConflict, got %v", err)
@@ -506,8 +461,7 @@ func TestUsersService_ManagerSelfPromote(t *testing.T) {
 	}
 
 	_, err = usersSvc.Update(ctx, pMgr, mgrUser.Uid, service.UsersUpdateParams{
-		Email: "mgr@a.com",
-		Role:  "owner",
+		Role: "owner",
 	})
 	if !errors.Is(err, service.ErrForbidden) {
 		t.Errorf("manager self-promote: want ErrForbidden, got %v", err)

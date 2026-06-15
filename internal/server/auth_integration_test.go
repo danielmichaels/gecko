@@ -139,11 +139,8 @@ func tenantIDByEmail(
 	email string,
 ) int32 {
 	t.Helper()
-	u, err := pc.Queries.UserGetByEmail(ctx, email)
-	if err != nil {
-		t.Fatalf("lookup tenant for %s: %v", email, err)
-	}
-	return u.TenantID.Int32
+	// Tenant lives on the membership now, not the user row.
+	return testhelpers.TenantIDForEmail(t, ctx, pc, email)
 }
 
 func seedDomain(

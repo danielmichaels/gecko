@@ -140,13 +140,18 @@ func createTenant(
 	if err != nil {
 		t.Fatalf("create tenant for %s: %v", email, err)
 	}
-	_, err = pc.Queries.UserProvision(ctx, store.UserProvisionParams{
-		TenantID: pgtype.Int4{Int32: tenant.ID, Valid: true},
-		Email:    email,
-		Role:     store.UserRoleOwner,
+	user, err := pc.Queries.UserProvisionIdentity(ctx, store.UserProvisionIdentityParams{
+		Email: email,
 	})
 	if err != nil {
 		t.Fatalf("create user for %s: %v", email, err)
+	}
+	if _, err := pc.Queries.MembershipCreate(ctx, store.MembershipCreateParams{
+		UserID:   user.ID,
+		TenantID: tenant.ID,
+		Role:     store.UserRoleOwner,
+	}); err != nil {
+		t.Fatalf("create membership for %s: %v", email, err)
 	}
 	return tenant.ID
 }

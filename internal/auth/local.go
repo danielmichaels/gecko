@@ -45,12 +45,48 @@ func (p *localProvider) Authenticate(ctx context.Context, c Credentials) (*Princ
 	if user.Status != store.UserStatusActive {
 		return nil, ErrUserNotActive
 	}
+	// Role and tenant live on memberships now, not the user row. Pick the user's
+	// default active tenant; a user with no membership cannot establish a session.
+	memberships, err := p.db.MembershipsListForUser(ctx, user.ID)
+	if err != nil {
+		return nil, err
+	}
+	def, ok := DefaultMembership(memberships)
+	if !ok {
+		return nil, ErrInvalidCredentials
+	}
 	return &Principal{
 		UserID:   user.ID,
-		TenantID: user.TenantID.Int32,
-		Role:     string(user.Role),
+		TenantID: def.TenantID,
+		Role:     string(def.Role),
 		Email:    user.Email,
 	}, nil
+}
+
+// DefaultMembership picks the active tenant for a freshly authenticated user from
+// their memberships: an owner role wins, otherwise the earliest-joined tenant. It
+// reports false when the user belongs to no tenant. The caller can switch tenants
+// afterwards; this only chooses where they land first.
+func DefaultMembership(
+	memberships []store.MembershipsListForUserRow,
+) (store.MembershipsListForUserRow, bool) {
+	var best store.MembershipsListForUserRow
+	found := false
+	for _, m := range memberships {
+		if !found {
+			best, found = m, true
+			continue
+		}
+		bestOwner := best.Role == store.UserRoleOwner
+		mOwner := m.Role == store.UserRoleOwner
+		switch {
+		case mOwner && !bestOwner:
+			best = m
+		case mOwner == bestOwner && m.CreatedAt.Time.Before(best.CreatedAt.Time):
+			best = m
+		}
+	}
+	return best, found
 }
 
 // HashPassword hashes a plaintext password for storage in user_credentials. Exposed

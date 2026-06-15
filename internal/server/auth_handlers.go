@@ -181,10 +181,48 @@ func (app *Server) handleAcceptInvite(
 		if errors.Is(err, service.ErrNotFound) {
 			return nil, huma.Error400BadRequest("invalid or expired invitation")
 		}
+		if errors.Is(err, service.ErrInvalidInput) {
+			return nil, huma.Error400BadRequest(err.Error())
+		}
 		if errors.Is(err, service.ErrConflict) {
-			return nil, huma.Error409Conflict("email already registered")
+			return nil, huma.Error409Conflict(err.Error())
 		}
 		return nil, huma.Error500InternalServerError("accept failed", err)
+	}
+	return authOutputFromResult(result.RawKey, result.ExpiresAt, result.Email, result.Role, ""), nil
+}
+
+// AttachInviteInput is the body for an authenticated existing account joining the
+// tenant named by an invitation token.
+type AttachInviteInput struct {
+	Body struct {
+		Token string `json:"token" required:"true" doc:"Invitation token addressed to the caller's own email."`
+	}
+}
+
+// handleAttachInvite attaches the authenticated caller to the invited tenant and
+// returns a fresh API key scoped to that tenant. The invite must be addressed to
+// the caller's own email; otherwise it is refused.
+func (app *Server) handleAttachInvite(
+	ctx context.Context,
+	i *AttachInviteInput,
+) (*authOutput, error) {
+	p, err := principalOrErr(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result, err := app.Svc.AuthService().AttachInvite(ctx, p, i.Body.Token)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrNotFound):
+			return nil, huma.Error400BadRequest("invalid or expired invitation")
+		case errors.Is(err, service.ErrForbidden):
+			return nil, huma.Error403Forbidden(err.Error())
+		case errors.Is(err, service.ErrConflict):
+			return nil, huma.Error409Conflict(err.Error())
+		default:
+			return nil, huma.Error500InternalServerError("attach failed", err)
+		}
 	}
 	return authOutputFromResult(result.RawKey, result.ExpiresAt, result.Email, result.Role, ""), nil
 }

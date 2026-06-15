@@ -59,9 +59,10 @@ SELECT s.user_id,
        s.expires_at,
        s.last_used_at,
        u.email    AS user_email,
-       u.role     AS user_role
+       m.role     AS user_role
 FROM sessions s
          JOIN users u ON u.id = s.user_id
+         JOIN memberships m ON m.user_id = s.user_id AND m.tenant_id = s.tenant_id
 WHERE s.token_hash = $1
   AND s.expires_at > NOW()
 `
@@ -77,7 +78,10 @@ type SessionResolveRow struct {
 }
 
 // Returns only live sessions (expires_at > NOW()); expired sessions are treated
-// as not-found by callers.
+// as not-found by callers. The INNER JOIN on memberships sources the role for the
+// session's active tenant and is load-bearing: if the user's membership in that
+// tenant was revoked, the row vanishes and the session is rejected (treated as
+// not-found), so a stale session cannot retain access to a tenant the user left.
 func (q *Queries) SessionResolve(ctx context.Context, tokenHash string) (SessionResolveRow, error) {
 	row := q.db.QueryRow(ctx, sessionResolve, tokenHash)
 	var i SessionResolveRow
@@ -125,5 +129,23 @@ WHERE token_hash = $1
 
 func (q *Queries) SessionTouch(ctx context.Context, tokenHash string) error {
 	_, err := q.db.Exec(ctx, sessionTouch, tokenHash)
+	return err
+}
+
+const sessionUpdateTenant = `-- name: SessionUpdateTenant :exec
+UPDATE sessions
+SET tenant_id = $2
+WHERE token_hash = $1
+`
+
+type SessionUpdateTenantParams struct {
+	TokenHash string `json:"token_hash"`
+	TenantID  int32  `json:"tenant_id"`
+}
+
+// Switches the active tenant of the current session. Callers MUST validate that
+// the user is a member of the target tenant before calling.
+func (q *Queries) SessionUpdateTenant(ctx context.Context, arg SessionUpdateTenantParams) error {
+	_, err := q.db.Exec(ctx, sessionUpdateTenant, arg.TokenHash, arg.TenantID)
 	return err
 }

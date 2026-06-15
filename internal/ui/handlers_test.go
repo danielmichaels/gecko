@@ -257,11 +257,7 @@ func tenantIDFor(
 	email string,
 ) int32 {
 	t.Helper()
-	u, err := pc.Queries.UserGetByEmail(ctx, email)
-	if err != nil {
-		t.Fatalf("tenantIDFor %s: %v", email, err)
-	}
-	return u.TenantID.Int32
+	return testhelpers.TenantIDForEmail(t, ctx, pc, email)
 }
 
 // loginBody encodes datastar signals JSON for a POST /app/login request.
@@ -930,7 +926,7 @@ func TestHandlerInvite_Get_ValidToken(t *testing.T) {
 		t.Fatalf("generate token: %v", genErr)
 	}
 	_, err = pc.Queries.InvitationCreate(ctx, store.InvitationCreateParams{
-		TenantID:  ownerUser.TenantID.Int32,
+		TenantID:  testhelpers.TenantIDForEmail(t, ctx, pc, ownerUser.Email),
 		Email:     "invitee@example.com",
 		Role:      store.UserRoleViewer,
 		TokenHash: auth.HashToken(rawToken),
@@ -1010,7 +1006,7 @@ func TestHandlerInvite_Post_Valid(t *testing.T) {
 		t.Fatalf("generate token: %v", genErr)
 	}
 	_, err = pc.Queries.InvitationCreate(ctx, store.InvitationCreateParams{
-		TenantID:  ownerUser.TenantID.Int32,
+		TenantID:  testhelpers.TenantIDForEmail(t, ctx, pc, ownerUser.Email),
 		Email:     "newinvitee@example.com",
 		Role:      store.UserRoleViewer,
 		TokenHash: auth.HashToken(rawToken),
@@ -1626,8 +1622,8 @@ func TestAppShell_UserMenu_LogoutAffordance(t *testing.T) {
 }
 
 // demoteToViewer flips a registered user's role to viewer. Role is resolved live
-// per request (ResolveSession joins users), so an existing session cookie becomes
-// a viewer principal immediately — no re-mint needed.
+// per request (ResolveSession joins memberships), so an existing session cookie
+// becomes a viewer principal immediately — no re-mint needed.
 func demoteToViewer(
 	t *testing.T,
 	ctx context.Context,
@@ -1635,7 +1631,11 @@ func demoteToViewer(
 	email string,
 ) {
 	t.Helper()
-	if _, err := pc.Pool.Exec(ctx, `UPDATE users SET role = 'viewer' WHERE email = $1`, email); err != nil {
+	if _, err := pc.Pool.Exec(
+		ctx,
+		`UPDATE memberships SET role = 'viewer' WHERE user_id = (SELECT id FROM users WHERE email = $1)`,
+		email,
+	); err != nil {
 		t.Fatalf("demote %s to viewer: %v", email, err)
 	}
 }

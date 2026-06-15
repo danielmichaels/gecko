@@ -130,8 +130,10 @@ func TestInvitationsService_Create_ManagerCannotGrantOwner(t *testing.T) {
 	}
 }
 
-// TestInvitationsService_Create_ExistingUserConflict verifies already-registered email is rejected.
-func TestInvitationsService_Create_ExistingUserConflict(t *testing.T) {
+// TestInvitationsService_Create_ExistingUserOtherTenant verifies that an email
+// which already has an account in ANOTHER tenant is invitable (multi-tenant
+// membership), while an email already a member of THIS tenant is rejected.
+func TestInvitationsService_Create_ExistingUserOtherTenant(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
 	pc, err := testhelpers.CreatePostgresContainer(ctx)
@@ -141,19 +143,28 @@ func TestInvitationsService_Create_ExistingUserConflict(t *testing.T) {
 	defer pc.Close(ctx)
 
 	authSvc, invSvc := setupInvitationsService(t, pc)
-	signupUser(t, authSvc, "owner@a.com", "supersecret")
-	signupUser(t, authSvc, "existing@a.com", "supersecret")
+	signupUser(t, authSvc, "owner@a.com", "supersecret")    // tenant A
+	signupUser(t, authSvc, "existing@b.com", "supersecret") // their own tenant B
 	pOwner := principalForEmail(t, ctx, pc, "owner@a.com")
 
+	// Inviting an existing account from another tenant is allowed.
+	if _, err := invSvc.Create(ctx, pOwner, service.InvitationsCreateParams{
+		Email: "existing@b.com",
+		Role:  "viewer",
+	}); err != nil {
+		t.Fatalf("invite existing other-tenant user: %v", err)
+	}
+
+	// Inviting an email already a member of THIS tenant is rejected.
 	_, err = invSvc.Create(ctx, pOwner, service.InvitationsCreateParams{
-		Email: "existing@a.com",
+		Email: "owner@a.com",
 		Role:  "viewer",
 	})
 	if !errors.Is(err, service.ErrConflict) {
-		t.Errorf("existing user: want ErrConflict, got %v", err)
+		t.Errorf("existing member: want ErrConflict, got %v", err)
 	}
-	if err.Error() != "email already registered" {
-		t.Errorf("message = %q, want %q", err.Error(), "email already registered")
+	if err.Error() != "already a member of this tenant" {
+		t.Errorf("message = %q, want %q", err.Error(), "already a member of this tenant")
 	}
 }
 
