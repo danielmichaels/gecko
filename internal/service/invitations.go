@@ -108,7 +108,10 @@ func (s *InvitationsService) Create(
 		tenantName, _ := s.AuthService().TenantName(ctx, p.TenantID)
 		msg := invitationEmail(email, tenantName, p.Email, s.Conf.AppConf.PublicBaseURL, token)
 		if err := s.emailer.EnqueueEmail(ctx, tx, msg); err != nil {
-			return InvitationsCreateResult{}, fmt.Errorf("create invitation: enqueue email: %w", err)
+			return InvitationsCreateResult{}, fmt.Errorf(
+				"create invitation: enqueue email: %w",
+				err,
+			)
 		}
 	}
 

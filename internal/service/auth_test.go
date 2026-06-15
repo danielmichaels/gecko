@@ -379,8 +379,15 @@ func TestAuthService_InviteContextFromToken_InviterEmail(t *testing.T) {
 	})
 
 	t.Run("empty when inviter unset", func(t *testing.T) {
-		token := seedInvitation(t, ctx, pc, tenantOf(t, ctx, pc, ownerUser), "noinviter@company.com",
-			store.UserRoleViewer, pgtype.Int4{})
+		token := seedInvitation(
+			t,
+			ctx,
+			pc,
+			tenantOf(t, ctx, pc, ownerUser),
+			"noinviter@company.com",
+			store.UserRoleViewer,
+			pgtype.Int4{},
+		)
 		ic, err := svc.InviteContextFromToken(ctx, token)
 		if err != nil {
 			t.Fatalf("invite context: %v", err)
@@ -1358,7 +1365,10 @@ func TestAuthService_SwitchTenant_NonMemberForbidden(t *testing.T) {
 		t.Fatalf("tenant B memberships: %v", err)
 	}
 
-	if err := svc.SwitchTenant(ctx, pA, tenantB[0].TenantUid, "no-session"); !isErr(err, service.ErrForbidden) {
+	if err := svc.SwitchTenant(ctx, pA, tenantB[0].TenantUid, "no-session"); !isErr(
+		err,
+		service.ErrForbidden,
+	) {
 		t.Errorf("non-member switch: got %v, want ErrForbidden", err)
 	}
 }

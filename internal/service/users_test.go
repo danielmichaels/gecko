@@ -164,7 +164,7 @@ func TestUsersService_Update_ViewerForbidden(t *testing.T) {
 	}
 
 	_, err = usersSvc.Update(ctx, pViewer, oUser.Uid, service.UsersUpdateParams{
-		Role:  "viewer",
+		Role: "viewer",
 	})
 	if !errors.Is(err, service.ErrForbidden) {
 		t.Errorf("viewer update: want ErrForbidden, got %v", err)
@@ -197,7 +197,7 @@ func TestUsersService_Update_ManagerCannotGrantOwner(t *testing.T) {
 	}
 
 	_, err = usersSvc.Update(ctx, pMgr, vUser.Uid, service.UsersUpdateParams{
-		Role:  "owner",
+		Role: "owner",
 	})
 	if !errors.Is(err, service.ErrForbidden) {
 		t.Errorf("manager grant owner: want ErrForbidden, got %v", err)
@@ -229,7 +229,7 @@ func TestUsersService_Update_ManagerCannotModifyOwner(t *testing.T) {
 	}
 
 	_, err = usersSvc.Update(ctx, pMgr, oUser.Uid, service.UsersUpdateParams{
-		Role:  "viewer",
+		Role: "viewer",
 	})
 	if !errors.Is(err, service.ErrForbidden) {
 		t.Errorf("manager modify owner: want ErrForbidden, got %v", err)
@@ -259,7 +259,7 @@ func TestUsersService_Update_CrossTenant(t *testing.T) {
 	}
 
 	_, err = usersSvc.Update(ctx, pA, bUser.Uid, service.UsersUpdateParams{
-		Role:  "viewer",
+		Role: "viewer",
 	})
 	if !errors.Is(err, service.ErrNotFound) {
 		t.Errorf("cross-tenant update: want ErrNotFound, got %v", err)
@@ -289,7 +289,7 @@ func TestUsersService_Update_LastOwnerDemote(t *testing.T) {
 
 	// Sole owner cannot demote themselves.
 	_, err = usersSvc.Update(ctx, pOwner, oUser.Uid, service.UsersUpdateParams{
-		Role:  "manager",
+		Role: "manager",
 	})
 	if !errors.Is(err, service.ErrConflict) {
 		t.Errorf("last-owner demote: want ErrConflict, got %v", err)
@@ -461,7 +461,7 @@ func TestUsersService_ManagerSelfPromote(t *testing.T) {
 	}
 
 	_, err = usersSvc.Update(ctx, pMgr, mgrUser.Uid, service.UsersUpdateParams{
-		Role:  "owner",
+		Role: "owner",
 	})
 	if !errors.Is(err, service.ErrForbidden) {
 		t.Errorf("manager self-promote: want ErrForbidden, got %v", err)

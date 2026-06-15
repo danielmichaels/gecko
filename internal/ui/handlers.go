@@ -557,7 +557,15 @@ func (h *Handlers) handleSwitchTenant(w http.ResponseWriter, r *http.Request) {
 	if err := h.svc.AuthService().SwitchTenant(r.Context(), p, tenantUID, cookie.Value); err != nil {
 		switch {
 		case errors.Is(err, service.ErrForbidden), errors.Is(err, service.ErrNotFound):
-			pushToast(sse, newToast("warn", "NOTICE", "Cannot switch", "you are not a member of that workspace"))
+			pushToast(
+				sse,
+				newToast(
+					"warn",
+					"NOTICE",
+					"Cannot switch",
+					"you are not a member of that workspace",
+				),
+			)
 		default:
 			h.log.Error("switch tenant", "error", err)
 			pushToast(sse, newToast("crit", "ERROR", "Failed to switch workspace", tenantUID))

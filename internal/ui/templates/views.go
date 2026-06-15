@@ -168,14 +168,14 @@ type AppShellProps struct {
 	ActiveNav    string
 	AppVersion   string
 	CSRFToken    string
-	ResolverOK   bool
+	// Tenants lists every workspace the caller belongs to, driving the topbar tenant
+	// switcher. When the caller belongs to a single tenant the chip renders static.
+	Tenants    []TenantOption
+	ResolverOK bool
 	// CanManageDomains gates the owner/manager-only domain controls (add, rescan,
 	// delete). It mirrors the service-layer guard so the UI hides what the API would
 	// reject; the 403 remains the authoritative backstop.
 	CanManageDomains bool
-	// Tenants lists every workspace the caller belongs to, driving the topbar tenant
-	// switcher. When the caller belongs to a single tenant the chip renders static.
-	Tenants []TenantOption
 }
 
 // TenantOption is one workspace in the topbar tenant switcher. Active marks the
@@ -239,12 +239,12 @@ type DomainsStats struct {
 
 // DomainsPageProps holds data for the domains list page.
 type DomainsPageProps struct {
-	Shell      AppShellProps
 	Stats      DomainsStats
-	Domains    []DomainRowView
 	Layout     string
+	Domains    []DomainRowView
 	Groups     []DomainGroupView
 	TLDOptions []string
+	Shell      AppShellProps
 }
 
 // DomainGroupView is the presentation model for one apex group in nested layout:
@@ -648,8 +648,8 @@ type SettingsPageProps struct {
 	DefaultScanFrequency   string
 	LastDigestSent         string
 	LastAlertSent          string
-	Shell                  AppShellProps
 	APIKeys                []APIKeyRowView
+	Shell                  AppShellProps
 	CanManage              bool
 	NotifyDailyDigest      bool
 	NotifyHighImpact       bool
@@ -683,9 +683,9 @@ type APIKeySecretView struct {
 // is the caller's role, used to cap the grantable-role options.
 type TeamPageProps struct {
 	ActorRole string
-	Shell     AppShellProps
 	Members   []MemberRowView
 	Invites   []InviteRowView
+	Shell     AppShellProps
 	Stats     TeamStats
 	CanManage bool
 }
