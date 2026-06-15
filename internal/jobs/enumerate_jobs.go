@@ -247,6 +247,14 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 			"domain", job.Args.DomainUID, "error", err)
 	}
 
+	// Minimum record set assessment runs unconditionally; missing essential
+	// records are findings, and the assessor itself gates on apex domains.
+	if err := enqueueAssessment(ctx, w.PgxPool, &w.Logger, job.Args.DomainUID,
+		AssessMinimumRecordSetArgs{DomainJobArgs: job.Args.DomainJobArgs}); err != nil {
+		w.Logger.WarnContext(ctx, "failed to queue minimum record set assessment",
+			"domain", job.Args.DomainUID, "error", err)
+	}
+
 	// Email security assessment is data-dependent: enqueue only when TXT records
 	// were discovered (SPF/DKIM/DMARC live in TXT).
 	if len(resolved.TXT.Entries) > 0 {

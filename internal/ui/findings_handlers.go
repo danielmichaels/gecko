@@ -98,6 +98,7 @@ var findingKindOrder = []string{
 	"DNSSEC",
 	"CAA_CONFIG",
 	"CAA_COMPLIANCE",
+	"MIN_RECORDS",
 }
 
 var findingKindLabels = map[string]string{
@@ -109,6 +110,7 @@ var findingKindLabels = map[string]string{
 	"DNSSEC":         "DNSSEC",
 	"CAA_CONFIG":     "CAA configuration",
 	"CAA_COMPLIANCE": "CAA compliance",
+	"MIN_RECORDS":    "Minimum records",
 }
 
 // kindOptions builds the data-driven type dropdown from the faceted KindCounts.

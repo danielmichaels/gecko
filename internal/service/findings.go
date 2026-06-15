@@ -191,6 +191,16 @@ func (s *FindingsService) ListByDomain(
 			))
 		}
 	}
+	if minRecords, err := s.DB.AssessGetMinimumRecordSetFindingsByDomainUID(ctx, store.AssessGetMinimumRecordSetFindingsByDomainUIDParams{
+		Uid:      domainUID,
+		TenantID: tenantID,
+	}); err == nil {
+		for _, f := range minRecords {
+			findings = append(findings, mapStandardFinding(
+				"MIN_RECORDS", f.Severity, f.Status, f.IssueType, f.Details,
+			))
+		}
+	}
 
 	sort.SliceStable(findings, func(i, j int) bool {
 		return severityRank(findings[i].Severity) < severityRank(findings[j].Severity)
@@ -591,6 +601,15 @@ var findingTitles = map[string]string{
 	"caa_conflicting_records":   "CAA issuance policy conflicts",
 	"caa_required_for_cert":     "Cert-bearing domain has no CAA",
 	"missing_iodef":             "CAA has no iodef reporting endpoint",
+	"insufficient_nameservers":  "Fewer than two nameservers",
+	"missing_apex_address":      "Apex has no A/AAAA record",
+	"missing_ipv6":              "No IPv6 (AAAA) at apex",
+	"missing_soa":               "No SOA record at apex",
+	"missing_mx":                "No MX record for a mail-intended domain",
+	"soa_timers_out_of_range":   "SOA timers outside recommended ranges",
+	"soa_serial_format":         "SOA serial not in YYYYMMDDnn format",
+	"soa_mname_unresolvable":    "SOA primary master does not resolve",
+	"soa_rname_malformed":       "SOA responsible-party address malformed",
 }
 
 // findingDescriptions holds static descriptions for findings whose body text is
@@ -623,4 +642,12 @@ var findingFixes = map[string]string{
 	"caa_unknown_critical_flag": "Review the critical CAA property; conformant CAs will refuse issuance.",
 	"caa_conflicting_records":   "Remove the no-issuance directive or the conflicting permissive issue entry.",
 	"missing_iodef":             "Add an iodef property, e.g. 0 iodef \"mailto:security@example.com\".",
+	"insufficient_nameservers":  "Publish at least two nameservers on separate networks (RFC 2182).",
+	"missing_apex_address":      "Publish an A and/or AAAA record at the apex.",
+	"missing_ipv6":              "Add an AAAA record to make the apex reachable over IPv6.",
+	"missing_soa":               "Ensure the zone publishes a SOA record at its apex.",
+	"missing_mx":                "Publish an MX record, or an explicit null-MX (0 .) if the domain sends no mail.",
+	"soa_timers_out_of_range":   "Adjust SOA refresh/retry/expire/minimum to RFC 1912 ranges.",
+	"soa_mname_unresolvable":    "Ensure the SOA MNAME (primary master) resolves to an address.",
+	"soa_rname_malformed":       "Set a valid SOA RNAME, e.g. hostmaster.example.com.",
 }

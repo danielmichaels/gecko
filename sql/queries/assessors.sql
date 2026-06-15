@@ -111,6 +111,29 @@ WHERE d.uid = $1
   AND d.tenant_id = $2
 ORDER BY ccf.severity ASC, ccf.created_at DESC;
 
+-- name: AssessCreateMinimumRecordSetFinding :one
+INSERT INTO minimum_record_set_findings (domain_id,
+                                         severity,
+                                         status,
+                                         issue_type,
+                                         missing_record_type,
+                                         details)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (domain_id, issue_type)
+    DO UPDATE SET severity            = $2,
+                  status              = $3,
+                  missing_record_type = $5,
+                  details             = $6
+RETURNING (xmax = 0)::boolean AS inserted;
+
+-- name: AssessGetMinimumRecordSetFindingsByDomainUID :many
+SELECT mrf.*
+FROM minimum_record_set_findings mrf
+         JOIN domains d ON mrf.domain_id = d.id
+WHERE d.uid = $1
+  AND d.tenant_id = $2
+ORDER BY mrf.severity ASC, mrf.created_at DESC;
+
 -- name: StoreDanglingCnameFinding :one
 INSERT INTO dangling_cname_findings (domain_id,
                                      severity,
@@ -329,6 +352,9 @@ open_findings AS (
     UNION ALL
     SELECT domain_id, severity::text FROM caa_compliance_findings
         WHERE status = 'open' AND domain_id = ANY(@domain_ids::int[])
+    UNION ALL
+    SELECT domain_id, severity::text FROM minimum_record_set_findings
+        WHERE status = 'open' AND domain_id = ANY(@domain_ids::int[])
 )
 SELECT
     ids.domain_id::int AS domain_id,
@@ -462,7 +488,16 @@ FROM (SELECT sf.uid                AS finding_uid,
       FROM caa_compliance_findings cpf
                JOIN domains d ON cpf.domain_id = d.id
       WHERE d.tenant_id = @tenant_id
-        AND (@include_compliant::bool OR cpf.status = 'open')) f
+        AND (@include_compliant::bool OR cpf.status = 'open')
+
+      UNION ALL
+
+      SELECT mrf.uid, d.uid, d.name, 'MIN_RECORDS'::text, mrf.severity, mrf.status,
+             mrf.issue_type, mrf.missing_record_type, mrf.details, NULL::text, mrf.created_at
+      FROM minimum_record_set_findings mrf
+               JOIN domains d ON mrf.domain_id = d.id
+      WHERE d.tenant_id = @tenant_id
+        AND (@include_compliant::bool OR mrf.status = 'open')) f
 ORDER BY f.domain_name ASC,
          CASE f.severity
              WHEN 'critical' THEN 1
@@ -514,6 +549,8 @@ FROM (
         SELECT domain_id, severity::text FROM caa_configuration_findings WHERE status = 'open'
         UNION ALL
         SELECT domain_id, severity::text FROM caa_compliance_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM minimum_record_set_findings WHERE status = 'open'
     ) f ON f.domain_id = d.id
     GROUP BY d.tenant_id, d.id
 ) agg
