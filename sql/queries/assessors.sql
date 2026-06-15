@@ -160,6 +160,55 @@ WHERE d.uid = $1
   AND d.tenant_id = $2
 ORDER BY eacf.severity ASC, eacf.created_at DESC;
 
+-- name: AssessCreateNSConfigurationFinding :one
+INSERT INTO ns_configuration_findings (domain_id,
+                                       ns_record_id,
+                                       severity,
+                                       status,
+                                       issue_type,
+                                       nameserver,
+                                       details)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (domain_id, nameserver, issue_type)
+    DO UPDATE SET ns_record_id = $2,
+                  severity     = $3,
+                  status       = $4,
+                  details      = $7
+RETURNING (xmax = 0)::boolean AS inserted;
+
+-- name: AssessGetNSConfigurationFindingsByDomainUID :many
+SELECT ncf.*
+FROM ns_configuration_findings ncf
+         JOIN domains d ON ncf.domain_id = d.id
+WHERE d.uid = $1
+  AND d.tenant_id = $2
+ORDER BY ncf.severity ASC, ncf.created_at DESC;
+
+-- name: AssessCreateNameserverRedundancyFinding :one
+INSERT INTO nameserver_redundancy_findings (domain_id,
+                                            severity,
+                                            status,
+                                            issue_type,
+                                            nameserver_count,
+                                            recommended_count,
+                                            details)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (domain_id, issue_type)
+    DO UPDATE SET severity          = $2,
+                  status            = $3,
+                  nameserver_count  = $5,
+                  recommended_count = $6,
+                  details           = $7
+RETURNING (xmax = 0)::boolean AS inserted;
+
+-- name: AssessGetNameserverRedundancyFindingsByDomainUID :many
+SELECT nrf.*
+FROM nameserver_redundancy_findings nrf
+         JOIN domains d ON nrf.domain_id = d.id
+WHERE d.uid = $1
+  AND d.tenant_id = $2
+ORDER BY nrf.severity ASC, nrf.created_at DESC;
+
 -- name: StoreDanglingCnameFinding :one
 INSERT INTO dangling_cname_findings (domain_id,
                                      severity,
@@ -384,6 +433,12 @@ open_findings AS (
     UNION ALL
     SELECT domain_id, severity::text FROM email_auth_compliance_findings
         WHERE status = 'open' AND domain_id = ANY(@domain_ids::int[])
+    UNION ALL
+    SELECT domain_id, severity::text FROM ns_configuration_findings
+        WHERE status = 'open' AND domain_id = ANY(@domain_ids::int[])
+    UNION ALL
+    SELECT domain_id, severity::text FROM nameserver_redundancy_findings
+        WHERE status = 'open' AND domain_id = ANY(@domain_ids::int[])
 )
 SELECT
     ids.domain_id::int AS domain_id,
@@ -535,7 +590,25 @@ FROM (SELECT sf.uid                AS finding_uid,
       FROM email_auth_compliance_findings eacf
                JOIN domains d ON eacf.domain_id = d.id
       WHERE d.tenant_id = @tenant_id
-        AND (@include_compliant::bool OR eacf.status = 'open')) f
+        AND (@include_compliant::bool OR eacf.status = 'open')
+
+      UNION ALL
+
+      SELECT ncf.uid, d.uid, d.name, 'NS_CONFIG'::text, ncf.severity, ncf.status,
+             ncf.issue_type, ncf.nameserver, ncf.details, NULL::text, ncf.created_at
+      FROM ns_configuration_findings ncf
+               JOIN domains d ON ncf.domain_id = d.id
+      WHERE d.tenant_id = @tenant_id
+        AND (@include_compliant::bool OR ncf.status = 'open')
+
+      UNION ALL
+
+      SELECT nrf.uid, d.uid, d.name, 'NS_REDUNDANCY'::text, nrf.severity, nrf.status,
+             nrf.issue_type, nrf.nameserver_count::text, nrf.details, NULL::text, nrf.created_at
+      FROM nameserver_redundancy_findings nrf
+               JOIN domains d ON nrf.domain_id = d.id
+      WHERE d.tenant_id = @tenant_id
+        AND (@include_compliant::bool OR nrf.status = 'open')) f
 ORDER BY f.domain_name ASC,
          CASE f.severity
              WHEN 'critical' THEN 1
@@ -591,6 +664,10 @@ FROM (
         SELECT domain_id, severity::text FROM minimum_record_set_findings WHERE status = 'open'
         UNION ALL
         SELECT domain_id, severity::text FROM email_auth_compliance_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM ns_configuration_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM nameserver_redundancy_findings WHERE status = 'open'
     ) f ON f.domain_id = d.id
     GROUP BY d.tenant_id, d.id
 ) agg

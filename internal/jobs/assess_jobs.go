@@ -345,3 +345,50 @@ func (w *AssessMinimumRecordSetWorker) Work(
 	)
 	return nil
 }
+
+type AssessNameserverConfigArgs struct {
+	DomainJobArgs
+}
+
+func (AssessNameserverConfigArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		Queue: queueAssessor,
+	}
+}
+func (AssessNameserverConfigArgs) Kind() string { return "assess_nameserver_config" }
+
+type AssessNameserverConfigWorker struct {
+	river.WorkerDefaults[AssessNameserverConfigArgs]
+	Logger   slog.Logger
+	Store    *store.Queries
+	PgxPool  *pgxpool.Pool
+	Resolver dnsclient.Resolver
+}
+
+func (w *AssessNameserverConfigWorker) Work(
+	ctx context.Context,
+	job *river.Job[AssessNameserverConfigArgs],
+) error {
+	ctx = tracing.WithNewTraceID(ctx, false)
+	start := time.Now()
+	w.Logger.InfoContext(ctx, "assess nameserver config started", "domain", job.Args.DomainUID)
+	a := assessor.NewAssessor(assessor.Config{
+		Logger:    &w.Logger,
+		Store:     w.Store,
+		DNSClient: w.Resolver,
+		Identity:  job.Args.Identity(),
+	})
+	if err := a.AssessNameserverConfig(ctx, job.Args.DomainUID); err != nil {
+		return err
+	}
+
+	w.Logger.InfoContext(
+		ctx,
+		"assess nameserver config complete",
+		"domain",
+		job.Args.DomainUID,
+		"duration",
+		time.Since(start),
+	)
+	return nil
+}

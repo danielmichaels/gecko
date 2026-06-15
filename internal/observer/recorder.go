@@ -60,6 +60,9 @@ const (
 
 	EntityEmailAuthComplianceFinding = "email_auth_compliance_finding"
 
+	EntityNSConfigurationFinding      = "ns_configuration_finding"
+	EntityNameserverRedundancyFinding = "nameserver_redundancy_finding"
+
 	// EntityDomain is used only on lifecycle NOTIFY signals (create/delete/status),
 	// never stored as an observation — a domain's existence is the projection
 	// itself. It lets the UI refresh on changes that write no observation row.
