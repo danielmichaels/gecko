@@ -26,6 +26,13 @@ func (f fakeProber) Probe(_ context.Context, target string) ProbeResult {
 	return ProbeResult{Reached: false}
 }
 
+func (f fakeProber) Get(_ context.Context, url string) ProbeResult {
+	if r, ok := f.results[url]; ok {
+		return r
+	}
+	return ProbeResult{Reached: false}
+}
+
 func danglingByTarget(
 	findings []store.DanglingCnameFindings,
 	target string,

@@ -44,7 +44,7 @@ func (a *Assessor) assessBIMI(ctx context.Context, d assessData) error {
 
 	bimiRecord := a.lookupBIMIRecord(domain.Name)
 	if bimiRecord == "" {
-		return a.createComplianceFinding(ctx, d.domainID, BIMIAuthType,
+		return a.createComplianceFinding(ctx, d.domainID, BIMIAuthType, bimiStandardName,
 			store.FindingSeverityInfo, store.FindingStatusNotApplicable, BIMINotConfigured,
 			"BIMI is not configured (optional brand-indicator feature)")
 	}
@@ -54,7 +54,7 @@ func (a *Assessor) assessBIMI(ctx context.Context, d assessData) error {
 
 	if !a.dmarcEnforced(domain.Name) {
 		issues = true
-		if err := a.createComplianceFinding(ctx, d.domainID, BIMIAuthType,
+		if err := a.createComplianceFinding(ctx, d.domainID, BIMIAuthType, bimiStandardName,
 			store.FindingSeverityMedium, store.FindingStatusOpen, BIMIRequiresEnforcedDMARC,
 			"BIMI is published but DMARC is not enforced; BIMI requires p=quarantine or p=reject"); err != nil {
 			return err
@@ -64,7 +64,7 @@ func (a *Assessor) assessBIMI(ctx context.Context, d assessData) error {
 	logo := tags["l"]
 	if logo == "" || !isHTTPSURL(logo) || !isSVGURL(logo) {
 		issues = true
-		if err := a.createComplianceFinding(ctx, d.domainID, BIMIAuthType,
+		if err := a.createComplianceFinding(ctx, d.domainID, BIMIAuthType, bimiStandardName,
 			store.FindingSeverityLow, store.FindingStatusOpen, BIMIInvalidLogo,
 			"BIMI l= must reference an HTTPS URL to an SVG logo"); err != nil {
 			return err
@@ -73,7 +73,7 @@ func (a *Assessor) assessBIMI(ctx context.Context, d assessData) error {
 
 	if vmc := tags["a"]; vmc != "" && !isHTTPSURL(vmc) {
 		issues = true
-		if err := a.createComplianceFinding(ctx, d.domainID, BIMIAuthType,
+		if err := a.createComplianceFinding(ctx, d.domainID, BIMIAuthType, bimiStandardName,
 			store.FindingSeverityLow, store.FindingStatusOpen, BIMIInvalidVMC,
 			"BIMI a= (VMC certificate) must reference an HTTPS URL"); err != nil {
 			return err
@@ -81,7 +81,7 @@ func (a *Assessor) assessBIMI(ctx context.Context, d assessData) error {
 	}
 
 	if !issues {
-		return a.createComplianceFinding(ctx, d.domainID, BIMIAuthType,
+		return a.createComplianceFinding(ctx, d.domainID, BIMIAuthType, bimiStandardName,
 			store.FindingSeverityInfo, store.FindingStatusClosed, BIMICompliant,
 			"BIMI is configured with a valid logo and enforced DMARC")
 	}
@@ -148,7 +148,7 @@ func isSVGURL(u string) bool {
 func (a *Assessor) createComplianceFinding(
 	ctx context.Context,
 	domainID int,
-	authType string,
+	authType, standardName string,
 	severity store.FindingSeverity,
 	status store.FindingStatus,
 	issueType, details string,
@@ -159,7 +159,7 @@ func (a *Assessor) createComplianceFinding(
 		Status:       status,
 		AuthType:     authType,
 		IssueType:    issueType,
-		StandardName: pgtype.Text{String: bimiStandardName, Valid: true},
+		StandardName: pgtype.Text{String: standardName, Valid: standardName != ""},
 		Details:      pgtype.Text{String: details, Valid: details != ""},
 	}); err != nil {
 		a.logger.WarnContext(ctx, "failed to create email auth compliance finding",

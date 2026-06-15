@@ -689,6 +689,15 @@ var findingTitles = map[string]string{
 	"bimi_requires_enforced_dmarc": "BIMI requires enforced DMARC",
 	"bimi_invalid_logo":            "BIMI logo URL invalid",
 	"bimi_invalid_vmc":             "BIMI VMC certificate URL invalid",
+	"mta_sts_not_configured":       "MTA-STS not configured (optional)",
+	"mta_sts_policy_unreachable":   "MTA-STS policy file unreachable",
+	"mta_sts_mode_not_enforcing":   "MTA-STS not in enforce mode",
+	"mta_sts_mx_mismatch":          "MTA-STS policy MX doesn't match",
+	"mta_sts_short_max_age":        "MTA-STS max_age too short",
+	"mta_sts_compliant":            "MTA-STS correctly enforced",
+	"tls_rpt_not_configured":       "TLS-RPT not configured (optional)",
+	"tls_rpt_invalid_rua":          "TLS-RPT has no valid rua endpoint",
+	"tls_rpt_compliant":            "TLS-RPT correctly configured",
 }
 
 // findingDescriptions holds static descriptions for findings whose body text is
@@ -746,4 +755,9 @@ var findingFixes = map[string]string{
 	"bimi_requires_enforced_dmarc": "Enforce DMARC (p=quarantine or p=reject) before publishing BIMI.",
 	"bimi_invalid_logo":            "Point BIMI l= at an HTTPS URL serving an SVG Tiny PS logo.",
 	"bimi_invalid_vmc":             "Point BIMI a= at an HTTPS URL serving the VMC certificate.",
+	"mta_sts_policy_unreachable":   "Serve the policy at https://mta-sts.<domain>/.well-known/mta-sts.txt over HTTPS.",
+	"mta_sts_mode_not_enforcing":   "Set mode: enforce in the MTA-STS policy once testing confirms delivery.",
+	"mta_sts_mx_mismatch":          "List every published MX host in the MTA-STS policy mx: lines.",
+	"mta_sts_short_max_age":        "Raise the MTA-STS policy max_age to at least 604800 (one week).",
+	"tls_rpt_invalid_rua":          "Set a valid TLS-RPT rua endpoint, e.g. rua=mailto:tls-reports@example.com.",
 }
