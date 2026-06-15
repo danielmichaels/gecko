@@ -19,6 +19,10 @@ type Config struct {
 	// HTTPProber probes CNAME targets for the dangling/takeover assessor. Left nil
 	// outside tests; NewAssessor supplies the default outbound prober.
 	HTTPProber HTTPProber
+	// NSProber probes authoritative nameservers directly for the nameserver-health
+	// assessor. Left nil outside tests; NewAssessor defaults it to the DNSClient
+	// when that client supports direct probing.
+	NSProber NameserverProber
 	// Identity is the scan identity used to stamp observations. Left zero in unit
 	// tests (which exercise finding logic without a scan); emission is skipped then.
 	Identity observer.DomainIdentity
@@ -29,6 +33,7 @@ type Assessor struct {
 	store     *store.Queries
 	dnsClient dnsclient.Resolver
 	prober    HTTPProber
+	nsProber  NameserverProber
 	identity  observer.DomainIdentity
 }
 
@@ -48,11 +53,19 @@ func NewAssessor(cfg Config) *Assessor {
 		prober = newHTTPProber()
 	}
 
+	nsProber := cfg.NSProber
+	if nsProber == nil {
+		if p, ok := dnsClient.(NameserverProber); ok {
+			nsProber = p
+		}
+	}
+
 	return &Assessor{
 		store:     cfg.Store,
 		logger:    logger,
 		dnsClient: dnsClient,
 		prober:    prober,
+		nsProber:  nsProber,
 		identity:  cfg.Identity,
 	}
 }

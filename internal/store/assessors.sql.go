@@ -271,6 +271,103 @@ func (q *Queries) AssessCreateDMARCFinding(ctx context.Context, arg AssessCreate
 	return inserted, err
 }
 
+const assessCreateDNSResolutionConsistencyFinding = `-- name: AssessCreateDNSResolutionConsistencyFinding :one
+INSERT INTO dns_resolution_consistency_findings (domain_id,
+                                                 severity,
+                                                 status,
+                                                 record_type,
+                                                 resolver1,
+                                                 resolver1_result,
+                                                 resolver2,
+                                                 resolver2_result,
+                                                 details)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+ON CONFLICT (domain_id, record_type)
+    DO UPDATE SET severity         = $2,
+                  status           = $3,
+                  resolver1        = $5,
+                  resolver1_result = $6,
+                  resolver2        = $7,
+                  resolver2_result = $8,
+                  details          = $9
+RETURNING (xmax = 0)::boolean AS inserted
+`
+
+type AssessCreateDNSResolutionConsistencyFindingParams struct {
+	DomainID        pgtype.Int4     `json:"domain_id"`
+	Severity        FindingSeverity `json:"severity"`
+	Status          FindingStatus   `json:"status"`
+	RecordType      string          `json:"record_type"`
+	Resolver1       string          `json:"resolver1"`
+	Resolver1Result pgtype.Text     `json:"resolver1_result"`
+	Resolver2       string          `json:"resolver2"`
+	Resolver2Result pgtype.Text     `json:"resolver2_result"`
+	Details         pgtype.Text     `json:"details"`
+}
+
+func (q *Queries) AssessCreateDNSResolutionConsistencyFinding(ctx context.Context, arg AssessCreateDNSResolutionConsistencyFindingParams) (bool, error) {
+	row := q.db.QueryRow(ctx, assessCreateDNSResolutionConsistencyFinding,
+		arg.DomainID,
+		arg.Severity,
+		arg.Status,
+		arg.RecordType,
+		arg.Resolver1,
+		arg.Resolver1Result,
+		arg.Resolver2,
+		arg.Resolver2Result,
+		arg.Details,
+	)
+	var inserted bool
+	err := row.Scan(&inserted)
+	return inserted, err
+}
+
+const assessCreateDNSResolutionLatencyFinding = `-- name: AssessCreateDNSResolutionLatencyFinding :one
+INSERT INTO dns_resolution_latency_findings (domain_id,
+                                             severity,
+                                             status,
+                                             record_type,
+                                             resolver,
+                                             latency_ms,
+                                             threshold_ms,
+                                             details)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (domain_id, resolver, record_type)
+    DO UPDATE SET severity     = $2,
+                  status       = $3,
+                  latency_ms   = $6,
+                  threshold_ms = $7,
+                  details      = $8
+RETURNING (xmax = 0)::boolean AS inserted
+`
+
+type AssessCreateDNSResolutionLatencyFindingParams struct {
+	DomainID    pgtype.Int4     `json:"domain_id"`
+	Severity    FindingSeverity `json:"severity"`
+	Status      FindingStatus   `json:"status"`
+	RecordType  string          `json:"record_type"`
+	Resolver    string          `json:"resolver"`
+	LatencyMs   int32           `json:"latency_ms"`
+	ThresholdMs int32           `json:"threshold_ms"`
+	Details     pgtype.Text     `json:"details"`
+}
+
+func (q *Queries) AssessCreateDNSResolutionLatencyFinding(ctx context.Context, arg AssessCreateDNSResolutionLatencyFindingParams) (bool, error) {
+	row := q.db.QueryRow(ctx, assessCreateDNSResolutionLatencyFinding,
+		arg.DomainID,
+		arg.Severity,
+		arg.Status,
+		arg.RecordType,
+		arg.Resolver,
+		arg.LatencyMs,
+		arg.ThresholdMs,
+		arg.Details,
+	)
+	var inserted bool
+	err := row.Scan(&inserted)
+	return inserted, err
+}
+
 const assessCreateDNSSECFinding = `-- name: AssessCreateDNSSECFinding :one
 INSERT INTO dnssec_findings (domain_id,
                              severity,
@@ -426,6 +523,52 @@ func (q *Queries) AssessCreateNSConfigurationFinding(ctx context.Context, arg As
 		arg.Status,
 		arg.IssueType,
 		arg.Nameserver,
+		arg.Details,
+	)
+	var inserted bool
+	err := row.Scan(&inserted)
+	return inserted, err
+}
+
+const assessCreateNameserverReachabilityFinding = `-- name: AssessCreateNameserverReachabilityFinding :one
+INSERT INTO nameserver_reachability_findings (domain_id,
+                                              ns_record_id,
+                                              severity,
+                                              status,
+                                              nameserver,
+                                              issue_type,
+                                              response_time_ms,
+                                              details)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (domain_id, nameserver, issue_type)
+    DO UPDATE SET ns_record_id     = $2,
+                  severity         = $3,
+                  status           = $4,
+                  response_time_ms = $7,
+                  details          = $8
+RETURNING (xmax = 0)::boolean AS inserted
+`
+
+type AssessCreateNameserverReachabilityFindingParams struct {
+	DomainID       pgtype.Int4     `json:"domain_id"`
+	NsRecordID     pgtype.Int4     `json:"ns_record_id"`
+	Severity       FindingSeverity `json:"severity"`
+	Status         FindingStatus   `json:"status"`
+	Nameserver     string          `json:"nameserver"`
+	IssueType      string          `json:"issue_type"`
+	ResponseTimeMs pgtype.Int4     `json:"response_time_ms"`
+	Details        pgtype.Text     `json:"details"`
+}
+
+func (q *Queries) AssessCreateNameserverReachabilityFinding(ctx context.Context, arg AssessCreateNameserverReachabilityFindingParams) (bool, error) {
+	row := q.db.QueryRow(ctx, assessCreateNameserverReachabilityFinding,
+		arg.DomainID,
+		arg.NsRecordID,
+		arg.Severity,
+		arg.Status,
+		arg.Nameserver,
+		arg.IssueType,
+		arg.ResponseTimeMs,
 		arg.Details,
 	)
 	var inserted bool
@@ -875,6 +1018,101 @@ func (q *Queries) AssessGetDMARCFindingsByDomainID(ctx context.Context, arg Asse
 	return items, nil
 }
 
+const assessGetDNSResolutionConsistencyFindingsByDomainUID = `-- name: AssessGetDNSResolutionConsistencyFindingsByDomainUID :many
+SELECT con.id, con.uid, con.domain_id, con.severity, con.status, con.record_type, con.resolver1, con.resolver1_result, con.resolver2, con.resolver2_result, con.details, con.created_at, con.updated_at
+FROM dns_resolution_consistency_findings con
+         JOIN domains d ON con.domain_id = d.id
+WHERE d.uid = $1
+  AND d.tenant_id = $2
+ORDER BY con.severity ASC, con.created_at DESC
+`
+
+type AssessGetDNSResolutionConsistencyFindingsByDomainUIDParams struct {
+	Uid      string      `json:"uid"`
+	TenantID pgtype.Int4 `json:"tenant_id"`
+}
+
+func (q *Queries) AssessGetDNSResolutionConsistencyFindingsByDomainUID(ctx context.Context, arg AssessGetDNSResolutionConsistencyFindingsByDomainUIDParams) ([]DnsResolutionConsistencyFindings, error) {
+	rows, err := q.db.Query(ctx, assessGetDNSResolutionConsistencyFindingsByDomainUID, arg.Uid, arg.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DnsResolutionConsistencyFindings{}
+	for rows.Next() {
+		var i DnsResolutionConsistencyFindings
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.Severity,
+			&i.Status,
+			&i.RecordType,
+			&i.Resolver1,
+			&i.Resolver1Result,
+			&i.Resolver2,
+			&i.Resolver2Result,
+			&i.Details,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const assessGetDNSResolutionLatencyFindingsByDomainUID = `-- name: AssessGetDNSResolutionLatencyFindingsByDomainUID :many
+SELECT lat.id, lat.uid, lat.domain_id, lat.severity, lat.status, lat.record_type, lat.resolver, lat.latency_ms, lat.threshold_ms, lat.details, lat.created_at, lat.updated_at
+FROM dns_resolution_latency_findings lat
+         JOIN domains d ON lat.domain_id = d.id
+WHERE d.uid = $1
+  AND d.tenant_id = $2
+ORDER BY lat.severity ASC, lat.created_at DESC
+`
+
+type AssessGetDNSResolutionLatencyFindingsByDomainUIDParams struct {
+	Uid      string      `json:"uid"`
+	TenantID pgtype.Int4 `json:"tenant_id"`
+}
+
+func (q *Queries) AssessGetDNSResolutionLatencyFindingsByDomainUID(ctx context.Context, arg AssessGetDNSResolutionLatencyFindingsByDomainUIDParams) ([]DnsResolutionLatencyFindings, error) {
+	rows, err := q.db.Query(ctx, assessGetDNSResolutionLatencyFindingsByDomainUID, arg.Uid, arg.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DnsResolutionLatencyFindings{}
+	for rows.Next() {
+		var i DnsResolutionLatencyFindings
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.Severity,
+			&i.Status,
+			&i.RecordType,
+			&i.Resolver,
+			&i.LatencyMs,
+			&i.ThresholdMs,
+			&i.Details,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const assessGetDNSSECFindingsByDomainUID = `-- name: AssessGetDNSSECFindingsByDomainUID :many
 SELECT df.id, df.uid, df.domain_id, df.dnskey_record_id, df.ds_record_id, df.severity, df.status, df.issue_type, df.details, df.created_at, df.updated_at
 FROM dnssec_findings df
@@ -1091,6 +1329,53 @@ func (q *Queries) AssessGetNSConfigurationFindingsByDomainUID(ctx context.Contex
 			&i.Status,
 			&i.IssueType,
 			&i.Nameserver,
+			&i.Details,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const assessGetNameserverReachabilityFindingsByDomainUID = `-- name: AssessGetNameserverReachabilityFindingsByDomainUID :many
+SELECT rch.id, rch.uid, rch.domain_id, rch.ns_record_id, rch.severity, rch.status, rch.nameserver, rch.issue_type, rch.response_time_ms, rch.details, rch.created_at, rch.updated_at
+FROM nameserver_reachability_findings rch
+         JOIN domains d ON rch.domain_id = d.id
+WHERE d.uid = $1
+  AND d.tenant_id = $2
+ORDER BY rch.severity ASC, rch.created_at DESC
+`
+
+type AssessGetNameserverReachabilityFindingsByDomainUIDParams struct {
+	Uid      string      `json:"uid"`
+	TenantID pgtype.Int4 `json:"tenant_id"`
+}
+
+func (q *Queries) AssessGetNameserverReachabilityFindingsByDomainUID(ctx context.Context, arg AssessGetNameserverReachabilityFindingsByDomainUIDParams) ([]NameserverReachabilityFindings, error) {
+	rows, err := q.db.Query(ctx, assessGetNameserverReachabilityFindingsByDomainUID, arg.Uid, arg.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []NameserverReachabilityFindings{}
+	for rows.Next() {
+		var i NameserverReachabilityFindings
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.NsRecordID,
+			&i.Severity,
+			&i.Status,
+			&i.Nameserver,
+			&i.IssueType,
+			&i.ResponseTimeMs,
 			&i.Details,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -1372,6 +1657,15 @@ open_findings AS (
     UNION ALL
     SELECT domain_id, severity::text FROM nameserver_redundancy_findings
         WHERE status = 'open' AND domain_id = ANY($1::int[])
+    UNION ALL
+    SELECT domain_id, severity::text FROM nameserver_reachability_findings
+        WHERE status = 'open' AND domain_id = ANY($1::int[])
+    UNION ALL
+    SELECT domain_id, severity::text FROM dns_resolution_latency_findings
+        WHERE status = 'open' AND domain_id = ANY($1::int[])
+    UNION ALL
+    SELECT domain_id, severity::text FROM dns_resolution_consistency_findings
+        WHERE status = 'open' AND domain_id = ANY($1::int[])
 )
 SELECT
     ids.domain_id::int AS domain_id,
@@ -1566,7 +1860,34 @@ FROM (SELECT sf.uid                AS finding_uid,
       FROM nameserver_redundancy_findings nrf
                JOIN domains d ON nrf.domain_id = d.id
       WHERE d.tenant_id = $1
-        AND ($2::bool OR nrf.status = 'open')) f
+        AND ($2::bool OR nrf.status = 'open')
+
+      UNION ALL
+
+      SELECT rch.uid, d.uid, d.name, 'NS_REACHABILITY'::text, rch.severity, rch.status,
+             rch.issue_type, rch.nameserver, rch.details, NULL::text, rch.created_at
+      FROM nameserver_reachability_findings rch
+               JOIN domains d ON rch.domain_id = d.id
+      WHERE d.tenant_id = $1
+        AND ($2::bool OR rch.status = 'open')
+
+      UNION ALL
+
+      SELECT lat.uid, d.uid, d.name, 'NS_LATENCY'::text, lat.severity, lat.status,
+             'high_latency'::text, lat.resolver, lat.details, NULL::text, lat.created_at
+      FROM dns_resolution_latency_findings lat
+               JOIN domains d ON lat.domain_id = d.id
+      WHERE d.tenant_id = $1
+        AND ($2::bool OR lat.status = 'open')
+
+      UNION ALL
+
+      SELECT con.uid, d.uid, d.name, 'NS_CONSISTENCY'::text, con.severity, con.status,
+             'resolver_mismatch'::text, con.record_type, con.details, NULL::text, con.created_at
+      FROM dns_resolution_consistency_findings con
+               JOIN domains d ON con.domain_id = d.id
+      WHERE d.tenant_id = $1
+        AND ($2::bool OR con.status = 'open')) f
 ORDER BY f.domain_name ASC,
          CASE f.severity
              WHEN 'critical' THEN 1
@@ -1817,6 +2138,12 @@ FROM (
         SELECT domain_id, severity::text FROM ns_configuration_findings WHERE status = 'open'
         UNION ALL
         SELECT domain_id, severity::text FROM nameserver_redundancy_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM nameserver_reachability_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM dns_resolution_latency_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM dns_resolution_consistency_findings WHERE status = 'open'
     ) f ON f.domain_id = d.id
     GROUP BY d.tenant_id, d.id
 ) agg

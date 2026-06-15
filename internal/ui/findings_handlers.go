@@ -102,6 +102,9 @@ var findingKindOrder = []string{
 	"EMAIL_COMPLIANCE",
 	"NS_CONFIG",
 	"NS_REDUNDANCY",
+	"NS_REACHABILITY",
+	"NS_LATENCY",
+	"NS_CONSISTENCY",
 }
 
 var findingKindLabels = map[string]string{
@@ -117,6 +120,9 @@ var findingKindLabels = map[string]string{
 	"EMAIL_COMPLIANCE": "Email compliance",
 	"NS_CONFIG":        "Nameserver configuration",
 	"NS_REDUNDANCY":    "Nameserver redundancy",
+	"NS_REACHABILITY":  "Nameserver reachability",
+	"NS_LATENCY":       "Nameserver latency",
+	"NS_CONSISTENCY":   "Nameserver consistency",
 }
 
 // kindOptions builds the data-driven type dropdown from the faceted KindCounts.
