@@ -128,6 +128,31 @@ func seedDomain(
 	return d
 }
 
+// seedDomainWith inserts a domain with an explicit type and source, for the
+// list-filter tests that need provenance/structure variety.
+func seedDomainWith(
+	t *testing.T,
+	ctx context.Context,
+	pc *testhelpers.PostgresContainer,
+	tenantID int32,
+	name string,
+	domainType store.DomainType,
+	source store.DomainSource,
+) store.DomainsInsertRow {
+	t.Helper()
+	d, err := pc.Queries.DomainsInsert(ctx, store.DomainsInsertParams{
+		TenantID:   pgtype.Int4{Int32: tenantID, Valid: true},
+		Name:       name,
+		DomainType: domainType,
+		Source:     source,
+		Status:     store.DomainStatusActive,
+	})
+	if err != nil {
+		t.Fatalf("seed domain %s: %v", name, err)
+	}
+	return d
+}
+
 // createTenant inserts a tenant + owner user directly (mirroring signup) and returns the tenant ID.
 func createTenant(
 	t *testing.T,
@@ -221,6 +246,228 @@ func TestDomainsService_List_Search(t *testing.T) {
 	}
 	if result.Domains[0].Name != "alpha.example.com" {
 		t.Errorf("wrong domain: %s", result.Domains[0].Name)
+	}
+}
+
+func TestDomainsService_List_FilterBySource(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc := newTestService(pc, &fakeScheduler{})
+	ds := svc.DomainsService()
+
+	tenantA := createTenant(t, ctx, pc, "a@source-filter.com")
+	tenantB := createTenant(t, ctx, pc, "b@source-filter.com")
+
+	seedDomainWith(
+		t,
+		ctx,
+		pc,
+		tenantA,
+		"apex.example.com",
+		store.DomainTypeTld,
+		store.DomainSourceUserSupplied,
+	)
+	seedDomainWith(
+		t,
+		ctx,
+		pc,
+		tenantA,
+		"sub.example.com",
+		store.DomainTypeSubdomain,
+		store.DomainSourceUserSupplied,
+	)
+	seedDomainWith(
+		t,
+		ctx,
+		pc,
+		tenantA,
+		"found.example.com",
+		store.DomainTypeSubdomain,
+		store.DomainSourceDiscovered,
+	)
+	// Another tenant's discovered domain must not leak into A's discovered filter.
+	seedDomainWith(
+		t,
+		ctx,
+		pc,
+		tenantB,
+		"b-found.example.com",
+		store.DomainTypeSubdomain,
+		store.DomainSourceDiscovered,
+	)
+
+	discovered, err := ds.List(ctx, ownerPrincipal(tenantA), service.DomainsListParams{
+		PageSize: 10,
+		Source:   string(store.DomainSourceDiscovered),
+	})
+	if err != nil {
+		t.Fatalf("List discovered: %v", err)
+	}
+	if discovered.TotalCount != 1 {
+		t.Errorf("discovered total = %d, want 1", discovered.TotalCount)
+	}
+	if len(discovered.Domains) == 1 && discovered.Domains[0].Name != "found.example.com" {
+		t.Errorf("discovered domain = %q, want found.example.com", discovered.Domains[0].Name)
+	}
+
+	userSupplied, err := ds.List(ctx, ownerPrincipal(tenantA), service.DomainsListParams{
+		PageSize: 10,
+		Source:   string(store.DomainSourceUserSupplied),
+	})
+	if err != nil {
+		t.Fatalf("List user_supplied: %v", err)
+	}
+	if userSupplied.TotalCount != 2 {
+		t.Errorf("user_supplied total = %d, want 2", userSupplied.TotalCount)
+	}
+}
+
+func TestDomainsService_List_FilterByType(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc := newTestService(pc, &fakeScheduler{})
+	ds := svc.DomainsService()
+
+	tenantA := createTenant(t, ctx, pc, "a@type-filter.com")
+	seedDomainWith(
+		t,
+		ctx,
+		pc,
+		tenantA,
+		"apex.example.com",
+		store.DomainTypeTld,
+		store.DomainSourceUserSupplied,
+	)
+	seedDomainWith(
+		t,
+		ctx,
+		pc,
+		tenantA,
+		"sub.example.com",
+		store.DomainTypeSubdomain,
+		store.DomainSourceUserSupplied,
+	)
+	seedDomainWith(
+		t,
+		ctx,
+		pc,
+		tenantA,
+		"wild.example.com",
+		store.DomainTypeWildcard,
+		store.DomainSourceDiscovered,
+	)
+
+	tld, err := ds.List(ctx, ownerPrincipal(tenantA), service.DomainsListParams{
+		PageSize:   10,
+		DomainType: string(store.DomainTypeTld),
+	})
+	if err != nil {
+		t.Fatalf("List tld: %v", err)
+	}
+	if tld.TotalCount != 1 {
+		t.Errorf("tld total = %d, want 1", tld.TotalCount)
+	}
+	if len(tld.Domains) == 1 && tld.Domains[0].Name != "apex.example.com" {
+		t.Errorf("tld domain = %q, want apex.example.com", tld.Domains[0].Name)
+	}
+}
+
+func TestDomainsService_List_FilterBySourceAndType(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc := newTestService(pc, &fakeScheduler{})
+	ds := svc.DomainsService()
+
+	tenantA := createTenant(t, ctx, pc, "a@both-filter.com")
+	// Two user_supplied tlds, but only one is the user_supplied+tld intersection
+	// we expect the combined filter to isolate.
+	seedDomainWith(
+		t,
+		ctx,
+		pc,
+		tenantA,
+		"apex.example.com",
+		store.DomainTypeTld,
+		store.DomainSourceUserSupplied,
+	)
+	seedDomainWith(
+		t,
+		ctx,
+		pc,
+		tenantA,
+		"discovered-apex.com",
+		store.DomainTypeTld,
+		store.DomainSourceDiscovered,
+	)
+	seedDomainWith(
+		t,
+		ctx,
+		pc,
+		tenantA,
+		"sub.example.com",
+		store.DomainTypeSubdomain,
+		store.DomainSourceUserSupplied,
+	)
+
+	res, err := ds.List(ctx, ownerPrincipal(tenantA), service.DomainsListParams{
+		PageSize:   10,
+		Source:     string(store.DomainSourceUserSupplied),
+		DomainType: string(store.DomainTypeTld),
+	})
+	if err != nil {
+		t.Fatalf("List both: %v", err)
+	}
+	if res.TotalCount != 1 {
+		t.Errorf("user_supplied+tld total = %d, want 1", res.TotalCount)
+	}
+	if len(res.Domains) == 1 && res.Domains[0].Name != "apex.example.com" {
+		t.Errorf("combined filter domain = %q, want apex.example.com", res.Domains[0].Name)
+	}
+}
+
+func TestDomainsService_List_InvalidEnumReturnsInvalidInput(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	if err != nil {
+		t.Fatalf("create container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	svc := newTestService(pc, &fakeScheduler{})
+	ds := svc.DomainsService()
+	tenantA := createTenant(t, ctx, pc, "a@invalid-enum.com")
+
+	if _, err := ds.List(ctx, ownerPrincipal(tenantA), service.DomainsListParams{
+		PageSize: 10,
+		Source:   "bogus",
+	}); !errors.Is(err, service.ErrInvalidInput) {
+		t.Errorf("invalid source err = %v, want ErrInvalidInput", err)
+	}
+
+	if _, err := ds.List(ctx, ownerPrincipal(tenantA), service.DomainsListParams{
+		PageSize:   10,
+		DomainType: "bogus",
+	}); !errors.Is(err, service.ErrInvalidInput) {
+		t.Errorf("invalid domain_type err = %v, want ErrInvalidInput", err)
 	}
 }
 
