@@ -575,7 +575,7 @@ func (q *Queries) DomainsInsert(ctx context.Context, arg DomainsInsertParams) (D
 	return i, err
 }
 
-const domainsListByTenantID = `-- name: DomainsListByTenantID :many
+const domainsList = `-- name: DomainsList :many
 SELECT id,
        uid,
        tenant_id,
@@ -590,17 +590,23 @@ SELECT id,
        count(*) OVER () AS total_count
 FROM domains
 WHERE tenant_id = $1
+  AND ($2::text IS NULL OR name ILIKE '%' || $2 || '%')
+  AND ($3::domain_source IS NULL OR source = $3)
+  AND ($4::domain_type IS NULL OR domain_type = $4)
 ORDER BY created_at DESC
-LIMIT $2 OFFSET $3
+LIMIT $6 OFFSET $5
 `
 
-type DomainsListByTenantIDParams struct {
-	TenantID pgtype.Int4 `json:"tenant_id"`
-	Limit    int32       `json:"limit"`
-	Offset   int32       `json:"offset"`
+type DomainsListParams struct {
+	TenantID   pgtype.Int4      `json:"tenant_id"`
+	Name       pgtype.Text      `json:"name"`
+	Source     NullDomainSource `json:"source"`
+	DomainType NullDomainType   `json:"domain_type"`
+	PageOffset int32            `json:"page_offset"`
+	PageLimit  int32            `json:"page_limit"`
 }
 
-type DomainsListByTenantIDRow struct {
+type DomainsListRow struct {
 	ID            int32              `json:"id"`
 	Uid           string             `json:"uid"`
 	TenantID      pgtype.Int4        `json:"tenant_id"`
@@ -615,16 +621,29 @@ type DomainsListByTenantIDRow struct {
 	TotalCount    int64              `json:"total_count"`
 }
 
-// List all domains for a tenant with pagination (no auth)
-func (q *Queries) DomainsListByTenantID(ctx context.Context, arg DomainsListByTenantIDParams) ([]DomainsListByTenantIDRow, error) {
-	rows, err := q.db.Query(ctx, domainsListByTenantID, arg.TenantID, arg.Limit, arg.Offset)
+// Tenant-scoped page of domains with optional name/source/domain_type filters.
+// Each filter is independently optional via narg (NULL = "no filter"), collapsing
+// the former DomainsListByTenantID + DomainsSearchByName into one query. tenant_id
+// stays the leading predicate so the multi-tenancy boundary is preserved; the
+// source/type equality filters are sargable (idx_domains_source/idx_domains_type)
+// and strictly cheaper than the non-sargable leading-wildcard name ILIKE.
+// total_count is the window count over the FILTERED set, for pagination.
+func (q *Queries) DomainsList(ctx context.Context, arg DomainsListParams) ([]DomainsListRow, error) {
+	rows, err := q.db.Query(ctx, domainsList,
+		arg.TenantID,
+		arg.Name,
+		arg.Source,
+		arg.DomainType,
+		arg.PageOffset,
+		arg.PageLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []DomainsListByTenantIDRow{}
+	items := []DomainsListRow{}
 	for rows.Next() {
-		var i DomainsListByTenantIDRow
+		var i DomainsListRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Uid,
@@ -762,86 +781,6 @@ type DomainsRecomputeNextScanByTenantDefaultParams struct {
 func (q *Queries) DomainsRecomputeNextScanByTenantDefault(ctx context.Context, arg DomainsRecomputeNextScanByTenantDefaultParams) error {
 	_, err := q.db.Exec(ctx, domainsRecomputeNextScanByTenantDefault, arg.IsOff, arg.BaseSecs, arg.TenantID)
 	return err
-}
-
-const domainsSearchByName = `-- name: DomainsSearchByName :many
-SELECT id,
-       uid,
-       tenant_id,
-       name,
-       domain_type,
-       source,
-       status,
-       last_scanned_at,
-       next_scan_at,
-       created_at,
-       updated_at,
-       count(*) OVER () AS total_count
-FROM domains
-WHERE tenant_id = $1
-  AND name ILIKE $2
-ORDER BY created_at DESC
-LIMIT $3 OFFSET $4
-`
-
-type DomainsSearchByNameParams struct {
-	TenantID pgtype.Int4 `json:"tenant_id"`
-	Name     string      `json:"name"`
-	Limit    int32       `json:"limit"`
-	Offset   int32       `json:"offset"`
-}
-
-type DomainsSearchByNameRow struct {
-	ID            int32              `json:"id"`
-	Uid           string             `json:"uid"`
-	TenantID      pgtype.Int4        `json:"tenant_id"`
-	Name          string             `json:"name"`
-	DomainType    DomainType         `json:"domain_type"`
-	Source        DomainSource       `json:"source"`
-	Status        DomainStatus       `json:"status"`
-	LastScannedAt pgtype.Timestamptz `json:"last_scanned_at"`
-	NextScanAt    pgtype.Timestamptz `json:"next_scan_at"`
-	CreatedAt     pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
-	TotalCount    int64              `json:"total_count"`
-}
-
-func (q *Queries) DomainsSearchByName(ctx context.Context, arg DomainsSearchByNameParams) ([]DomainsSearchByNameRow, error) {
-	rows, err := q.db.Query(ctx, domainsSearchByName,
-		arg.TenantID,
-		arg.Name,
-		arg.Limit,
-		arg.Offset,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []DomainsSearchByNameRow{}
-	for rows.Next() {
-		var i DomainsSearchByNameRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Uid,
-			&i.TenantID,
-			&i.Name,
-			&i.DomainType,
-			&i.Source,
-			&i.Status,
-			&i.LastScannedAt,
-			&i.NextScanAt,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.TotalCount,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const domainsSetScanFrequency = `-- name: DomainsSetScanFrequency :one

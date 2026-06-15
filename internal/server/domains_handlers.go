@@ -34,7 +34,9 @@ type DomainBody struct {
 }
 
 func (app *Server) handleDomainList(ctx context.Context, i *struct {
-	FilterName string `query:"name" example:"example.com" doc:"Filter by domain name. Optional."`
+	FilterName string `query:"name"        example:"example.com"  doc:"Filter by domain name. Optional."`
+	Source     string `query:"source"      enum:"user_supplied,discovered"             example:"user_supplied" doc:"Filter by provenance: user_supplied (explicitly added) or discovered (found by enumeration). Optional."`
+	DomainType string `query:"domain_type" enum:"tld,subdomain,wildcard,old,other"     example:"tld"           doc:"Filter by domain structure. Optional."`
 	PaginationQuery
 },
 ) (*DomainListOutput, error) {
@@ -45,10 +47,15 @@ func (app *Server) handleDomainList(ctx context.Context, i *struct {
 	pageSize, pageNumber, offset := i.GetPaginationParams()
 	result, err := app.Svc.DomainsService().List(ctx, p, service.DomainsListParams{
 		FilterName: i.FilterName,
+		Source:     i.Source,
+		DomainType: i.DomainType,
 		PageSize:   pageSize,
 		Offset:     offset,
 	})
 	if err != nil {
+		if errors.Is(err, service.ErrInvalidInput) {
+			return nil, huma.Error400BadRequest(err.Error())
+		}
 		return nil, huma.Error500InternalServerError("failed to list domains", err)
 	}
 

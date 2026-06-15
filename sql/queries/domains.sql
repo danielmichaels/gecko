@@ -158,8 +158,14 @@ SELECT id
 FROM domains
 WHERE tenant_id = $1;
 
--- name: DomainsListByTenantID :many
--- List all domains for a tenant with pagination (no auth)
+-- name: DomainsList :many
+-- Tenant-scoped page of domains with optional name/source/domain_type filters.
+-- Each filter is independently optional via narg (NULL = "no filter"), collapsing
+-- the former DomainsListByTenantID + DomainsSearchByName into one query. tenant_id
+-- stays the leading predicate so the multi-tenancy boundary is preserved; the
+-- source/type equality filters are sargable (idx_domains_source/idx_domains_type)
+-- and strictly cheaper than the non-sargable leading-wildcard name ILIKE.
+-- total_count is the window count over the FILTERED set, for pagination.
 SELECT id,
        uid,
        tenant_id,
@@ -173,28 +179,12 @@ SELECT id,
        updated_at,
        count(*) OVER () AS total_count
 FROM domains
-WHERE tenant_id = $1
+WHERE tenant_id = sqlc.arg(tenant_id)
+  AND (sqlc.narg(name)::text IS NULL OR name ILIKE '%' || sqlc.narg(name) || '%')
+  AND (sqlc.narg(source)::domain_source IS NULL OR source = sqlc.narg(source))
+  AND (sqlc.narg(domain_type)::domain_type IS NULL OR domain_type = sqlc.narg(domain_type))
 ORDER BY created_at DESC
-LIMIT $2 OFFSET $3;
-
--- name: DomainsSearchByName :many
-SELECT id,
-       uid,
-       tenant_id,
-       name,
-       domain_type,
-       source,
-       status,
-       last_scanned_at,
-       next_scan_at,
-       created_at,
-       updated_at,
-       count(*) OVER () AS total_count
-FROM domains
-WHERE tenant_id = $1
-  AND name ILIKE $2
-ORDER BY created_at DESC
-LIMIT $3 OFFSET $4;
+LIMIT sqlc.arg(page_limit) OFFSET sqlc.arg(page_offset);
 
 -- name: DomainsDeleteCount :one
 WITH RECURSIVE domain_tree AS (
