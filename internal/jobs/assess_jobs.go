@@ -251,3 +251,50 @@ func (w *AssessDNSSECWorker) Work(
 	)
 	return nil
 }
+
+type AssessCAAArgs struct {
+	DomainJobArgs
+}
+
+func (AssessCAAArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		Queue: queueAssessor,
+	}
+}
+func (AssessCAAArgs) Kind() string { return "assess_caa" }
+
+type AssessCAAWorker struct {
+	river.WorkerDefaults[AssessCAAArgs]
+	Logger   slog.Logger
+	Store    *store.Queries
+	PgxPool  *pgxpool.Pool
+	Resolver dnsclient.Resolver
+}
+
+func (w *AssessCAAWorker) Work(
+	ctx context.Context,
+	job *river.Job[AssessCAAArgs],
+) error {
+	ctx = tracing.WithNewTraceID(ctx, false)
+	start := time.Now()
+	w.Logger.InfoContext(ctx, "assess caa started", "domain", job.Args.DomainUID)
+	a := assessor.NewAssessor(assessor.Config{
+		Logger:    &w.Logger,
+		Store:     w.Store,
+		DNSClient: w.Resolver,
+		Identity:  job.Args.Identity(),
+	})
+	if err := a.AssessCAA(ctx, job.Args.DomainUID); err != nil {
+		return err
+	}
+
+	w.Logger.InfoContext(
+		ctx,
+		"assess caa complete",
+		"domain",
+		job.Args.DomainUID,
+		"duration",
+		time.Since(start),
+	)
+	return nil
+}

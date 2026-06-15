@@ -53,6 +53,9 @@ const (
 	EntityCNAMEDanglingFinding    = "dangling_cname_finding"
 	EntityCNAMERedirectionFinding = "cname_redirection_finding"
 
+	EntityCAAConfigurationFinding = "caa_configuration_finding"
+	EntityCAAComplianceFinding    = "caa_compliance_finding"
+
 	// EntityDomain is used only on lifecycle NOTIFY signals (create/delete/status),
 	// never stored as an observation — a domain's existence is the projection
 	// itself. It lets the UI refresh on changes that write no observation row.

@@ -63,6 +63,54 @@ WHERE d.uid = $1
   AND d.tenant_id = $2
 ORDER BY df.severity ASC, df.created_at DESC;
 
+-- name: AssessCreateCAAConfigurationFinding :one
+INSERT INTO caa_configuration_findings (domain_id,
+                                        caa_record_id,
+                                        severity,
+                                        status,
+                                        issue_type,
+                                        details)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (domain_id, issue_type)
+    DO UPDATE SET caa_record_id = $2,
+                  severity      = $3,
+                  status        = $4,
+                  details       = $6
+RETURNING (xmax = 0)::boolean AS inserted;
+
+-- name: AssessGetCAAConfigurationFindingsByDomainUID :many
+SELECT ccf.*
+FROM caa_configuration_findings ccf
+         JOIN domains d ON ccf.domain_id = d.id
+WHERE d.uid = $1
+  AND d.tenant_id = $2
+ORDER BY ccf.severity ASC, ccf.created_at DESC;
+
+-- name: AssessCreateCAAComplianceFinding :one
+INSERT INTO caa_compliance_findings (domain_id,
+                                     caa_record_id,
+                                     severity,
+                                     status,
+                                     issue_type,
+                                     standard_name,
+                                     details)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (domain_id, issue_type)
+    DO UPDATE SET caa_record_id = $2,
+                  severity      = $3,
+                  status        = $4,
+                  standard_name = $6,
+                  details       = $7
+RETURNING (xmax = 0)::boolean AS inserted;
+
+-- name: AssessGetCAAComplianceFindingsByDomainUID :many
+SELECT ccf.*
+FROM caa_compliance_findings ccf
+         JOIN domains d ON ccf.domain_id = d.id
+WHERE d.uid = $1
+  AND d.tenant_id = $2
+ORDER BY ccf.severity ASC, ccf.created_at DESC;
+
 -- name: StoreDanglingCnameFinding :one
 INSERT INTO dangling_cname_findings (domain_id,
                                      severity,
@@ -275,6 +323,12 @@ open_findings AS (
     UNION ALL
     SELECT domain_id, severity::text FROM cname_redirection_findings
         WHERE status = 'open' AND domain_id = ANY(@domain_ids::int[])
+    UNION ALL
+    SELECT domain_id, severity::text FROM caa_configuration_findings
+        WHERE status = 'open' AND domain_id = ANY(@domain_ids::int[])
+    UNION ALL
+    SELECT domain_id, severity::text FROM caa_compliance_findings
+        WHERE status = 'open' AND domain_id = ANY(@domain_ids::int[])
 )
 SELECT
     ids.domain_id::int AS domain_id,
@@ -390,7 +444,25 @@ FROM (SELECT sf.uid                AS finding_uid,
       FROM cname_redirection_findings crf
                JOIN domains d ON crf.domain_id = d.id
       WHERE d.tenant_id = @tenant_id
-        AND (@include_compliant::bool OR crf.status = 'open')) f
+        AND (@include_compliant::bool OR crf.status = 'open')
+
+      UNION ALL
+
+      SELECT ccf.uid, d.uid, d.name, 'CAA_CONFIG'::text, ccf.severity, ccf.status,
+             ccf.issue_type, NULL::text, ccf.details, NULL::text, ccf.created_at
+      FROM caa_configuration_findings ccf
+               JOIN domains d ON ccf.domain_id = d.id
+      WHERE d.tenant_id = @tenant_id
+        AND (@include_compliant::bool OR ccf.status = 'open')
+
+      UNION ALL
+
+      SELECT cpf.uid, d.uid, d.name, 'CAA_COMPLIANCE'::text, cpf.severity, cpf.status,
+             cpf.issue_type, NULL::text, cpf.details, NULL::text, cpf.created_at
+      FROM caa_compliance_findings cpf
+               JOIN domains d ON cpf.domain_id = d.id
+      WHERE d.tenant_id = @tenant_id
+        AND (@include_compliant::bool OR cpf.status = 'open')) f
 ORDER BY f.domain_name ASC,
          CASE f.severity
              WHEN 'critical' THEN 1
@@ -438,6 +510,10 @@ FROM (
         SELECT domain_id, severity::text FROM dangling_cname_findings WHERE status = 'open'
         UNION ALL
         SELECT domain_id, severity::text FROM cname_redirection_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM caa_configuration_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM caa_compliance_findings WHERE status = 'open'
     ) f ON f.domain_id = d.id
     GROUP BY d.tenant_id, d.id
 ) agg

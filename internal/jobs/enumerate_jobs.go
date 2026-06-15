@@ -239,6 +239,14 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 		return err
 	}
 
+	// CAA assessment runs unconditionally: a missing CAA record set is itself a
+	// finding, so it must be enqueued even when no CAA records were resolved.
+	if err := enqueueAssessment(ctx, w.PgxPool, &w.Logger, job.Args.DomainUID,
+		AssessCAAArgs{DomainJobArgs: job.Args.DomainJobArgs}); err != nil {
+		w.Logger.WarnContext(ctx, "failed to queue caa assessment",
+			"domain", job.Args.DomainUID, "error", err)
+	}
+
 	// Email security assessment is data-dependent: enqueue only when TXT records
 	// were discovered (SPF/DKIM/DMARC live in TXT).
 	if len(resolved.TXT.Entries) > 0 {

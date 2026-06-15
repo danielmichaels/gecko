@@ -171,6 +171,26 @@ func (s *FindingsService) ListByDomain(
 			))
 		}
 	}
+	if caaConfig, err := s.DB.AssessGetCAAConfigurationFindingsByDomainUID(ctx, store.AssessGetCAAConfigurationFindingsByDomainUIDParams{
+		Uid:      domainUID,
+		TenantID: tenantID,
+	}); err == nil {
+		for _, f := range caaConfig {
+			findings = append(findings, mapStandardFinding(
+				"CAA_CONFIG", f.Severity, f.Status, f.IssueType, f.Details,
+			))
+		}
+	}
+	if caaCompliance, err := s.DB.AssessGetCAAComplianceFindingsByDomainUID(ctx, store.AssessGetCAAComplianceFindingsByDomainUIDParams{
+		Uid:      domainUID,
+		TenantID: tenantID,
+	}); err == nil {
+		for _, f := range caaCompliance {
+			findings = append(findings, mapStandardFinding(
+				"CAA_COMPLIANCE", f.Severity, f.Status, f.IssueType, f.Details,
+			))
+		}
+	}
 
 	sort.SliceStable(findings, func(i, j int) bool {
 		return severityRank(findings[i].Severity) < severityRank(findings[j].Severity)
@@ -546,24 +566,31 @@ func findingTitle(issueType string) string {
 
 // findingTitles maps assessor issue_type values to human-readable card titles.
 var findingTitles = map[string]string{
-	"missing_spf":           "No SPF record published",
-	"weak_spf_policy":       "SPF policy too permissive (?all)",
-	"soft_fail_spf_policy":  "SPF uses soft-fail (~all)",
-	"missing_mechanisms":    "SPF specifies no senders",
-	"missing_all_mechanism": "SPF missing an 'all' mechanism",
-	"excessive_lookups":     "SPF exceeds the 10-lookup limit",
-	"spf_compliant":         "SPF correctly configured",
-	"missing_dkim":          "No DKIM records found",
-	"weak_key_length":       "DKIM key too weak",
-	"test_mode_enabled":     "DKIM in test mode",
-	"dkim_compliant":        "DKIM correctly configured",
-	"missing_dmarc":         "No DMARC policy published",
-	"weak_dmarc_policy":     "DMARC policy set to p=none",
-	"dmarc_missing_tags":    "DMARC missing rua/ruf tags",
-	"dmarc_compliant":       "DMARC correctly configured",
-	"not_applicable":        "Not applicable — domain doesn't handle email",
-	"zone_transfer_exposed": "Zone transfer (AXFR) exposed",
-	"zone_transfer_refused": "Zone transfer refused",
+	"missing_spf":               "No SPF record published",
+	"weak_spf_policy":           "SPF policy too permissive (?all)",
+	"soft_fail_spf_policy":      "SPF uses soft-fail (~all)",
+	"missing_mechanisms":        "SPF specifies no senders",
+	"missing_all_mechanism":     "SPF missing an 'all' mechanism",
+	"excessive_lookups":         "SPF exceeds the 10-lookup limit",
+	"spf_compliant":             "SPF correctly configured",
+	"missing_dkim":              "No DKIM records found",
+	"weak_key_length":           "DKIM key too weak",
+	"test_mode_enabled":         "DKIM in test mode",
+	"dkim_compliant":            "DKIM correctly configured",
+	"missing_dmarc":             "No DMARC policy published",
+	"weak_dmarc_policy":         "DMARC policy set to p=none",
+	"dmarc_missing_tags":        "DMARC missing rua/ruf tags",
+	"dmarc_compliant":           "DMARC correctly configured",
+	"not_applicable":            "Not applicable — domain doesn't handle email",
+	"zone_transfer_exposed":     "Zone transfer (AXFR) exposed",
+	"zone_transfer_refused":     "Zone transfer refused",
+	"caa_missing":               "No CAA records published",
+	"caa_allows_any_ca":         "CAA permits any CA to issue",
+	"caa_untrusted_issuer":      "CAA authorises an unrecognised CA",
+	"caa_unknown_critical_flag": "CAA has an unknown critical property",
+	"caa_conflicting_records":   "CAA issuance policy conflicts",
+	"caa_required_for_cert":     "Cert-bearing domain has no CAA",
+	"missing_iodef":             "CAA has no iodef reporting endpoint",
 }
 
 // findingDescriptions holds static descriptions for findings whose body text is
@@ -577,16 +604,23 @@ var findingDescriptions = map[string]string{
 // findingFixes maps issue_type values to a short remediation hint. Issue types
 // with no entry render without a fix line.
 var findingFixes = map[string]string{
-	"missing_spf":           "Publish an SPF record, e.g. v=spf1 include:_spf.provider.net -all",
-	"soft_fail_spf_policy":  "Tighten ~all to -all once all senders are enumerated.",
-	"weak_spf_policy":       "Replace ?all with -all (or ~all) to enforce the policy.",
-	"missing_all_mechanism": "End the SPF record with -all (or ~all).",
-	"excessive_lookups":     "Flatten includes to stay within the 10 DNS-lookup limit.",
-	"missing_dmarc":         "Publish v=DMARC1; p=none; rua=… then ramp to quarantine/reject.",
-	"weak_dmarc_policy":     "Move the DMARC policy from p=none to p=quarantine or p=reject.",
-	"dmarc_missing_tags":    "Add an rua= (and optionally ruf=) reporting address.",
-	"missing_dkim":          "Publish a DKIM key for your sending selector(s).",
-	"weak_key_length":       "Re-issue the DKIM key at 2048 bits.",
-	"test_mode_enabled":     "Remove t=y from the DKIM record once verified.",
-	"zone_transfer_exposed": "Restrict AXFR/IXFR to authorised secondary nameservers only.",
+	"missing_spf":               "Publish an SPF record, e.g. v=spf1 include:_spf.provider.net -all",
+	"soft_fail_spf_policy":      "Tighten ~all to -all once all senders are enumerated.",
+	"weak_spf_policy":           "Replace ?all with -all (or ~all) to enforce the policy.",
+	"missing_all_mechanism":     "End the SPF record with -all (or ~all).",
+	"excessive_lookups":         "Flatten includes to stay within the 10 DNS-lookup limit.",
+	"missing_dmarc":             "Publish v=DMARC1; p=none; rua=… then ramp to quarantine/reject.",
+	"weak_dmarc_policy":         "Move the DMARC policy from p=none to p=quarantine or p=reject.",
+	"dmarc_missing_tags":        "Add an rua= (and optionally ruf=) reporting address.",
+	"missing_dkim":              "Publish a DKIM key for your sending selector(s).",
+	"weak_key_length":           "Re-issue the DKIM key at 2048 bits.",
+	"test_mode_enabled":         "Remove t=y from the DKIM record once verified.",
+	"zone_transfer_exposed":     "Restrict AXFR/IXFR to authorised secondary nameservers only.",
+	"caa_missing":               "Publish a CAA record, e.g. example.com. IN CAA 0 issue \"letsencrypt.org\"",
+	"caa_required_for_cert":     "Add a CAA record authorising the CA that issues your certificate.",
+	"caa_allows_any_ca":         "Add an issue property to restrict which CAs may issue certificates.",
+	"caa_untrusted_issuer":      "Confirm the authorised CA is intended; remove unexpected issue entries.",
+	"caa_unknown_critical_flag": "Review the critical CAA property; conformant CAs will refuse issuance.",
+	"caa_conflicting_records":   "Remove the no-issuance directive or the conflicting permissive issue entry.",
+	"missing_iodef":             "Add an iodef property, e.g. 0 iodef \"mailto:security@example.com\".",
 }
