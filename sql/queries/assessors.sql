@@ -209,6 +209,87 @@ WHERE d.uid = $1
   AND d.tenant_id = $2
 ORDER BY nrf.severity ASC, nrf.created_at DESC;
 
+-- name: AssessCreateNameserverReachabilityFinding :one
+INSERT INTO nameserver_reachability_findings (domain_id,
+                                              ns_record_id,
+                                              severity,
+                                              status,
+                                              nameserver,
+                                              issue_type,
+                                              response_time_ms,
+                                              details)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (domain_id, nameserver, issue_type)
+    DO UPDATE SET ns_record_id     = $2,
+                  severity         = $3,
+                  status           = $4,
+                  response_time_ms = $7,
+                  details          = $8
+RETURNING (xmax = 0)::boolean AS inserted;
+
+-- name: AssessGetNameserverReachabilityFindingsByDomainUID :many
+SELECT rch.*
+FROM nameserver_reachability_findings rch
+         JOIN domains d ON rch.domain_id = d.id
+WHERE d.uid = $1
+  AND d.tenant_id = $2
+ORDER BY rch.severity ASC, rch.created_at DESC;
+
+-- name: AssessCreateDNSResolutionLatencyFinding :one
+INSERT INTO dns_resolution_latency_findings (domain_id,
+                                             severity,
+                                             status,
+                                             record_type,
+                                             resolver,
+                                             latency_ms,
+                                             threshold_ms,
+                                             details)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (domain_id, resolver, record_type)
+    DO UPDATE SET severity     = $2,
+                  status       = $3,
+                  latency_ms   = $6,
+                  threshold_ms = $7,
+                  details      = $8
+RETURNING (xmax = 0)::boolean AS inserted;
+
+-- name: AssessGetDNSResolutionLatencyFindingsByDomainUID :many
+SELECT lat.*
+FROM dns_resolution_latency_findings lat
+         JOIN domains d ON lat.domain_id = d.id
+WHERE d.uid = $1
+  AND d.tenant_id = $2
+ORDER BY lat.severity ASC, lat.created_at DESC;
+
+-- name: AssessCreateDNSResolutionConsistencyFinding :one
+INSERT INTO dns_resolution_consistency_findings (domain_id,
+                                                 severity,
+                                                 status,
+                                                 record_type,
+                                                 resolver1,
+                                                 resolver1_result,
+                                                 resolver2,
+                                                 resolver2_result,
+                                                 details)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+ON CONFLICT (domain_id, record_type)
+    DO UPDATE SET severity         = $2,
+                  status           = $3,
+                  resolver1        = $5,
+                  resolver1_result = $6,
+                  resolver2        = $7,
+                  resolver2_result = $8,
+                  details          = $9
+RETURNING (xmax = 0)::boolean AS inserted;
+
+-- name: AssessGetDNSResolutionConsistencyFindingsByDomainUID :many
+SELECT con.*
+FROM dns_resolution_consistency_findings con
+         JOIN domains d ON con.domain_id = d.id
+WHERE d.uid = $1
+  AND d.tenant_id = $2
+ORDER BY con.severity ASC, con.created_at DESC;
+
 -- name: StoreDanglingCnameFinding :one
 INSERT INTO dangling_cname_findings (domain_id,
                                      severity,
@@ -439,6 +520,15 @@ open_findings AS (
     UNION ALL
     SELECT domain_id, severity::text FROM nameserver_redundancy_findings
         WHERE status = 'open' AND domain_id = ANY(@domain_ids::int[])
+    UNION ALL
+    SELECT domain_id, severity::text FROM nameserver_reachability_findings
+        WHERE status = 'open' AND domain_id = ANY(@domain_ids::int[])
+    UNION ALL
+    SELECT domain_id, severity::text FROM dns_resolution_latency_findings
+        WHERE status = 'open' AND domain_id = ANY(@domain_ids::int[])
+    UNION ALL
+    SELECT domain_id, severity::text FROM dns_resolution_consistency_findings
+        WHERE status = 'open' AND domain_id = ANY(@domain_ids::int[])
 )
 SELECT
     ids.domain_id::int AS domain_id,
@@ -608,7 +698,34 @@ FROM (SELECT sf.uid                AS finding_uid,
       FROM nameserver_redundancy_findings nrf
                JOIN domains d ON nrf.domain_id = d.id
       WHERE d.tenant_id = @tenant_id
-        AND (@include_compliant::bool OR nrf.status = 'open')) f
+        AND (@include_compliant::bool OR nrf.status = 'open')
+
+      UNION ALL
+
+      SELECT rch.uid, d.uid, d.name, 'NS_REACHABILITY'::text, rch.severity, rch.status,
+             rch.issue_type, rch.nameserver, rch.details, NULL::text, rch.created_at
+      FROM nameserver_reachability_findings rch
+               JOIN domains d ON rch.domain_id = d.id
+      WHERE d.tenant_id = @tenant_id
+        AND (@include_compliant::bool OR rch.status = 'open')
+
+      UNION ALL
+
+      SELECT lat.uid, d.uid, d.name, 'NS_LATENCY'::text, lat.severity, lat.status,
+             'high_latency'::text, lat.resolver, lat.details, NULL::text, lat.created_at
+      FROM dns_resolution_latency_findings lat
+               JOIN domains d ON lat.domain_id = d.id
+      WHERE d.tenant_id = @tenant_id
+        AND (@include_compliant::bool OR lat.status = 'open')
+
+      UNION ALL
+
+      SELECT con.uid, d.uid, d.name, 'NS_CONSISTENCY'::text, con.severity, con.status,
+             'resolver_mismatch'::text, con.record_type, con.details, NULL::text, con.created_at
+      FROM dns_resolution_consistency_findings con
+               JOIN domains d ON con.domain_id = d.id
+      WHERE d.tenant_id = @tenant_id
+        AND (@include_compliant::bool OR con.status = 'open')) f
 ORDER BY f.domain_name ASC,
          CASE f.severity
              WHEN 'critical' THEN 1
@@ -668,6 +785,12 @@ FROM (
         SELECT domain_id, severity::text FROM ns_configuration_findings WHERE status = 'open'
         UNION ALL
         SELECT domain_id, severity::text FROM nameserver_redundancy_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM nameserver_reachability_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM dns_resolution_latency_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM dns_resolution_consistency_findings WHERE status = 'open'
     ) f ON f.domain_id = d.id
     GROUP BY d.tenant_id, d.id
 ) agg

@@ -392,3 +392,50 @@ func (w *AssessNameserverConfigWorker) Work(
 	)
 	return nil
 }
+
+type AssessNameserverHealthArgs struct {
+	DomainJobArgs
+}
+
+func (AssessNameserverHealthArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		Queue: queueAssessor,
+	}
+}
+func (AssessNameserverHealthArgs) Kind() string { return "assess_nameserver_health" }
+
+type AssessNameserverHealthWorker struct {
+	river.WorkerDefaults[AssessNameserverHealthArgs]
+	Logger   slog.Logger
+	Store    *store.Queries
+	PgxPool  *pgxpool.Pool
+	Resolver dnsclient.Resolver
+}
+
+func (w *AssessNameserverHealthWorker) Work(
+	ctx context.Context,
+	job *river.Job[AssessNameserverHealthArgs],
+) error {
+	ctx = tracing.WithNewTraceID(ctx, false)
+	start := time.Now()
+	w.Logger.InfoContext(ctx, "assess nameserver health started", "domain", job.Args.DomainUID)
+	a := assessor.NewAssessor(assessor.Config{
+		Logger:    &w.Logger,
+		Store:     w.Store,
+		DNSClient: w.Resolver,
+		Identity:  job.Args.Identity(),
+	})
+	if err := a.AssessNameserverHealth(ctx, job.Args.DomainUID); err != nil {
+		return err
+	}
+
+	w.Logger.InfoContext(
+		ctx,
+		"assess nameserver health complete",
+		"domain",
+		job.Args.DomainUID,
+		"duration",
+		time.Since(start),
+	)
+	return nil
+}

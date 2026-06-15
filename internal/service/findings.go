@@ -231,6 +231,36 @@ func (s *FindingsService) ListByDomain(
 			))
 		}
 	}
+	if nsReach, err := s.DB.AssessGetNameserverReachabilityFindingsByDomainUID(ctx, store.AssessGetNameserverReachabilityFindingsByDomainUIDParams{
+		Uid:      domainUID,
+		TenantID: tenantID,
+	}); err == nil {
+		for _, f := range nsReach {
+			findings = append(findings, mapStandardFinding(
+				"NS_REACHABILITY", f.Severity, f.Status, f.IssueType, f.Details,
+			))
+		}
+	}
+	if nsLatency, err := s.DB.AssessGetDNSResolutionLatencyFindingsByDomainUID(ctx, store.AssessGetDNSResolutionLatencyFindingsByDomainUIDParams{
+		Uid:      domainUID,
+		TenantID: tenantID,
+	}); err == nil {
+		for _, f := range nsLatency {
+			findings = append(findings, mapStandardFinding(
+				"NS_LATENCY", f.Severity, f.Status, "high_latency", f.Details,
+			))
+		}
+	}
+	if nsConsistency, err := s.DB.AssessGetDNSResolutionConsistencyFindingsByDomainUID(ctx, store.AssessGetDNSResolutionConsistencyFindingsByDomainUIDParams{
+		Uid:      domainUID,
+		TenantID: tenantID,
+	}); err == nil {
+		for _, f := range nsConsistency {
+			findings = append(findings, mapStandardFinding(
+				"NS_CONSISTENCY", f.Severity, f.Status, "resolver_mismatch", f.Details,
+			))
+		}
+	}
 
 	sort.SliceStable(findings, func(i, j int) bool {
 		return severityRank(findings[i].Severity) < severityRank(findings[j].Severity)
@@ -636,6 +666,11 @@ var findingTitles = map[string]string{
 	"no_ipv6":                      "No nameserver reachable over IPv6",
 	"ns_not_resolvable":            "Nameserver does not resolve",
 	"ns_is_cname":                  "Nameserver is a CNAME (illegal)",
+	"unreachable":                  "Nameserver is unreachable",
+	"no_tcp_support":               "Nameserver doesn't answer over TCP",
+	"no_edns_support":              "Nameserver doesn't support EDNS0",
+	"high_latency":                 "Nameserver response is slow",
+	"resolver_mismatch":            "Nameservers return divergent answers",
 	"missing_apex_address":         "Apex has no A/AAAA record",
 	"missing_ipv6":                 "No IPv6 (AAAA) at apex",
 	"missing_soa":                  "No SOA record at apex",
@@ -691,6 +726,11 @@ var findingFixes = map[string]string{
 	"no_ipv6":                      "Add AAAA glue for at least one nameserver so IPv6-only resolvers can reach the zone.",
 	"ns_not_resolvable":            "Publish A/AAAA glue for the nameserver, or remove the stale delegation.",
 	"ns_is_cname":                  "Point the NS record at a host with A/AAAA records, not a CNAME (RFC 2181).",
+	"unreachable":                  "Ensure the nameserver answers DNS queries on UDP/53 and is correctly delegated.",
+	"no_tcp_support":               "Allow DNS over TCP/53; it is required for large responses and DNSSEC.",
+	"no_edns_support":              "Enable EDNS0 on the nameserver for modern DNS features and larger UDP responses.",
+	"high_latency":                 "Investigate nameserver/network latency; consider anycast or a closer provider.",
+	"resolver_mismatch":            "Reconcile zone data across nameservers; if mid-propagation, re-check after TTLs expire.",
 	"missing_apex_address":         "Publish an A and/or AAAA record at the apex.",
 	"missing_ipv6":                 "Add an AAAA record to make the apex reachable over IPv6.",
 	"missing_soa":                  "Ensure the zone publishes a SOA record at its apex.",
