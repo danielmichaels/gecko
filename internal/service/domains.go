@@ -21,9 +21,13 @@ type DomainsService struct {
 	*Service
 }
 
-// DomainsListParams carries pagination and optional search filter for List.
+// DomainsListParams carries pagination and optional filters for List. Source and
+// DomainType are validated against the domain_source / domain_type enums: an empty
+// string means "no filter" and an unknown value yields ErrInvalidInput.
 type DomainsListParams struct {
 	FilterName string
+	Source     string
+	DomainType string
 	PageSize   int32
 	Offset     int32
 }
@@ -49,39 +53,36 @@ type DomainsUpdateParams struct {
 	Status     string
 }
 
-// List returns a tenant-scoped page of domains, optionally filtered by name.
-// The search branch wraps the filter with a LIKE wildcard.
+// List returns a tenant-scoped page of domains with optional name/source/
+// domain_type filters. Each filter is independently optional (NULL = no filter)
+// and resolved into one DomainsList query. An unknown source/domain_type value is
+// rejected with ErrInvalidInput before the query runs.
 func (s *DomainsService) List(
 	ctx context.Context,
 	p *auth.Principal,
 	params DomainsListParams,
 ) (DomainsListResult, error) {
-	tenantID := pgtype.Int4{Int32: p.TenantID, Valid: true}
-
-	if params.FilterName != "" {
-		rows, err := s.DB.DomainsSearchByName(ctx, store.DomainsSearchByNameParams{
-			TenantID: tenantID,
-			Name:     "%" + params.FilterName + "%",
-			Limit:    params.PageSize,
-			Offset:   params.Offset,
-		})
-		if err != nil {
-			return DomainsListResult{}, fmt.Errorf("domains search: %w", err)
-		}
-		var total int64
-		if len(rows) > 0 {
-			total = rows[0].TotalCount
-		}
-		return DomainsListResult{
-			Domains:    dto.DomainSearchByNameRowToDomains(rows),
-			TotalCount: total,
-		}, nil
+	source, err := toNullDomainSource(params.Source)
+	if err != nil {
+		return DomainsListResult{}, err
+	}
+	domainType, err := toNullDomainType(params.DomainType)
+	if err != nil {
+		return DomainsListResult{}, err
 	}
 
-	rows, err := s.DB.DomainsListByTenantID(ctx, store.DomainsListByTenantIDParams{
-		TenantID: tenantID,
-		Limit:    params.PageSize,
-		Offset:   params.Offset,
+	var name pgtype.Text
+	if params.FilterName != "" {
+		name = pgtype.Text{String: params.FilterName, Valid: true}
+	}
+
+	rows, err := s.DB.DomainsList(ctx, store.DomainsListParams{
+		TenantID:   pgtype.Int4{Int32: p.TenantID, Valid: true},
+		Name:       name,
+		Source:     source,
+		DomainType: domainType,
+		PageLimit:  params.PageSize,
+		PageOffset: params.Offset,
 	})
 	if err != nil {
 		return DomainsListResult{}, fmt.Errorf("domains list: %w", err)
@@ -91,9 +92,39 @@ func (s *DomainsService) List(
 		total = rows[0].TotalCount
 	}
 	return DomainsListResult{
-		Domains:    dto.DomainsListByTenantIDToDomains(rows),
+		Domains:    dto.DomainsListRowToDomains(rows),
 		TotalCount: total,
 	}, nil
+}
+
+// toNullDomainSource validates an optional source filter against the domain_source
+// enum: "" means no filter, a known value is applied, anything else is rejected
+// with ErrInvalidInput so a typo can't silently widen the result set.
+func toNullDomainSource(s string) (store.NullDomainSource, error) {
+	if s == "" {
+		return store.NullDomainSource{}, nil
+	}
+	switch store.DomainSource(s) {
+	case store.DomainSourceUserSupplied, store.DomainSourceDiscovered:
+		return store.NullDomainSource{DomainSource: store.DomainSource(s), Valid: true}, nil
+	default:
+		return store.NullDomainSource{}, fmt.Errorf("%w: source %q", ErrInvalidInput, s)
+	}
+}
+
+// toNullDomainType validates an optional domain_type filter against the domain_type
+// enum, with the same "" = no filter / unknown = ErrInvalidInput contract.
+func toNullDomainType(s string) (store.NullDomainType, error) {
+	if s == "" {
+		return store.NullDomainType{}, nil
+	}
+	switch store.DomainType(s) {
+	case store.DomainTypeTld, store.DomainTypeSubdomain, store.DomainTypeWildcard,
+		store.DomainTypeOld, store.DomainTypeOther:
+		return store.NullDomainType{DomainType: store.DomainType(s), Valid: true}, nil
+	default:
+		return store.NullDomainType{}, fmt.Errorf("%w: domain_type %q", ErrInvalidInput, s)
+	}
 }
 
 // DomainFindingSummary is the per-domain aggregate of open security findings,
