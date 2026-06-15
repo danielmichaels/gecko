@@ -298,3 +298,50 @@ func (w *AssessCAAWorker) Work(
 	)
 	return nil
 }
+
+type AssessMinimumRecordSetArgs struct {
+	DomainJobArgs
+}
+
+func (AssessMinimumRecordSetArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		Queue: queueAssessor,
+	}
+}
+func (AssessMinimumRecordSetArgs) Kind() string { return "assess_minimum_record_set" }
+
+type AssessMinimumRecordSetWorker struct {
+	river.WorkerDefaults[AssessMinimumRecordSetArgs]
+	Logger   slog.Logger
+	Store    *store.Queries
+	PgxPool  *pgxpool.Pool
+	Resolver dnsclient.Resolver
+}
+
+func (w *AssessMinimumRecordSetWorker) Work(
+	ctx context.Context,
+	job *river.Job[AssessMinimumRecordSetArgs],
+) error {
+	ctx = tracing.WithNewTraceID(ctx, false)
+	start := time.Now()
+	w.Logger.InfoContext(ctx, "assess minimum record set started", "domain", job.Args.DomainUID)
+	a := assessor.NewAssessor(assessor.Config{
+		Logger:    &w.Logger,
+		Store:     w.Store,
+		DNSClient: w.Resolver,
+		Identity:  job.Args.Identity(),
+	})
+	if err := a.AssessMinimumRecordSet(ctx, job.Args.DomainUID); err != nil {
+		return err
+	}
+
+	w.Logger.InfoContext(
+		ctx,
+		"assess minimum record set complete",
+		"domain",
+		job.Args.DomainUID,
+		"duration",
+		time.Since(start),
+	)
+	return nil
+}

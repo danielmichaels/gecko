@@ -306,6 +306,45 @@ func (q *Queries) AssessCreateDNSSECFinding(ctx context.Context, arg AssessCreat
 	return inserted, err
 }
 
+const assessCreateMinimumRecordSetFinding = `-- name: AssessCreateMinimumRecordSetFinding :one
+INSERT INTO minimum_record_set_findings (domain_id,
+                                         severity,
+                                         status,
+                                         issue_type,
+                                         missing_record_type,
+                                         details)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (domain_id, issue_type)
+    DO UPDATE SET severity            = $2,
+                  status              = $3,
+                  missing_record_type = $5,
+                  details             = $6
+RETURNING (xmax = 0)::boolean AS inserted
+`
+
+type AssessCreateMinimumRecordSetFindingParams struct {
+	DomainID          pgtype.Int4     `json:"domain_id"`
+	Severity          FindingSeverity `json:"severity"`
+	Status            FindingStatus   `json:"status"`
+	IssueType         string          `json:"issue_type"`
+	MissingRecordType string          `json:"missing_record_type"`
+	Details           pgtype.Text     `json:"details"`
+}
+
+func (q *Queries) AssessCreateMinimumRecordSetFinding(ctx context.Context, arg AssessCreateMinimumRecordSetFindingParams) (bool, error) {
+	row := q.db.QueryRow(ctx, assessCreateMinimumRecordSetFinding,
+		arg.DomainID,
+		arg.Severity,
+		arg.Status,
+		arg.IssueType,
+		arg.MissingRecordType,
+		arg.Details,
+	)
+	var inserted bool
+	err := row.Scan(&inserted)
+	return inserted, err
+}
+
 const assessCreateSPFFinding = `-- name: AssessCreateSPFFinding :one
 INSERT INTO spf_findings (domain_id,
                           txt_record_id,
@@ -797,6 +836,51 @@ func (q *Queries) AssessGetDanglingCnameFindingsByDomainUID(ctx context.Context,
 	return items, nil
 }
 
+const assessGetMinimumRecordSetFindingsByDomainUID = `-- name: AssessGetMinimumRecordSetFindingsByDomainUID :many
+SELECT mrf.id, mrf.uid, mrf.domain_id, mrf.severity, mrf.status, mrf.issue_type, mrf.missing_record_type, mrf.details, mrf.created_at, mrf.updated_at
+FROM minimum_record_set_findings mrf
+         JOIN domains d ON mrf.domain_id = d.id
+WHERE d.uid = $1
+  AND d.tenant_id = $2
+ORDER BY mrf.severity ASC, mrf.created_at DESC
+`
+
+type AssessGetMinimumRecordSetFindingsByDomainUIDParams struct {
+	Uid      string      `json:"uid"`
+	TenantID pgtype.Int4 `json:"tenant_id"`
+}
+
+func (q *Queries) AssessGetMinimumRecordSetFindingsByDomainUID(ctx context.Context, arg AssessGetMinimumRecordSetFindingsByDomainUIDParams) ([]MinimumRecordSetFindings, error) {
+	rows, err := q.db.Query(ctx, assessGetMinimumRecordSetFindingsByDomainUID, arg.Uid, arg.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MinimumRecordSetFindings{}
+	for rows.Next() {
+		var i MinimumRecordSetFindings
+		if err := rows.Scan(
+			&i.ID,
+			&i.Uid,
+			&i.DomainID,
+			&i.Severity,
+			&i.Status,
+			&i.IssueType,
+			&i.MissingRecordType,
+			&i.Details,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const assessGetSPFFindingByDomainID = `-- name: AssessGetSPFFindingByDomainID :many
 SELECT sf.id, sf.uid, sf.domain_id, sf.txt_record_id, sf.severity, sf.status, sf.issue_type, sf.spf_value, sf.details, sf.created_at, sf.updated_at
 FROM spf_findings sf
@@ -1006,6 +1090,9 @@ open_findings AS (
     UNION ALL
     SELECT domain_id, severity::text FROM caa_compliance_findings
         WHERE status = 'open' AND domain_id = ANY($1::int[])
+    UNION ALL
+    SELECT domain_id, severity::text FROM minimum_record_set_findings
+        WHERE status = 'open' AND domain_id = ANY($1::int[])
 )
 SELECT
     ids.domain_id::int AS domain_id,
@@ -1164,7 +1251,16 @@ FROM (SELECT sf.uid                AS finding_uid,
       FROM caa_compliance_findings cpf
                JOIN domains d ON cpf.domain_id = d.id
       WHERE d.tenant_id = $1
-        AND ($2::bool OR cpf.status = 'open')) f
+        AND ($2::bool OR cpf.status = 'open')
+
+      UNION ALL
+
+      SELECT mrf.uid, d.uid, d.name, 'MIN_RECORDS'::text, mrf.severity, mrf.status,
+             mrf.issue_type, mrf.missing_record_type, mrf.details, NULL::text, mrf.created_at
+      FROM minimum_record_set_findings mrf
+               JOIN domains d ON mrf.domain_id = d.id
+      WHERE d.tenant_id = $1
+        AND ($2::bool OR mrf.status = 'open')) f
 ORDER BY f.domain_name ASC,
          CASE f.severity
              WHEN 'critical' THEN 1
@@ -1407,6 +1503,8 @@ FROM (
         SELECT domain_id, severity::text FROM caa_configuration_findings WHERE status = 'open'
         UNION ALL
         SELECT domain_id, severity::text FROM caa_compliance_findings WHERE status = 'open'
+        UNION ALL
+        SELECT domain_id, severity::text FROM minimum_record_set_findings WHERE status = 'open'
     ) f ON f.domain_id = d.id
     GROUP BY d.tenant_id, d.id
 ) agg
