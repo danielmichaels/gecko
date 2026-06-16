@@ -24,8 +24,11 @@ type ProbeResult struct {
 
 // HTTPProber probes a CNAME target over HTTP(S). It is an interface so the
 // assessor can be unit-tested with a deterministic fake instead of real egress.
+// Get fetches an exact HTTPS URL (used for the MTA-STS policy file); it follows
+// no redirects and reads a bounded body prefix.
 type HTTPProber interface {
 	Probe(ctx context.Context, target string) ProbeResult
+	Get(ctx context.Context, url string) ProbeResult
 }
 
 type httpProber struct {
@@ -56,6 +59,14 @@ func (p *httpProber) Probe(ctx context.Context, target string) ProbeResult {
 		}
 	}
 	return ProbeResult{Reached: false}
+}
+
+// Get fetches an exact URL (no scheme inference, no HTTP fallback), returning the
+// bounded response. Used for the MTA-STS policy file, which must be retrieved over
+// HTTPS at a fixed path with redirects suppressed.
+func (p *httpProber) Get(ctx context.Context, url string) ProbeResult {
+	res, _ := p.do(ctx, url)
+	return res
 }
 
 func (p *httpProber) do(ctx context.Context, url string) (ProbeResult, bool) {

@@ -75,6 +75,7 @@ var (
 
 type assessData struct {
 	txtRecords   []store.TxtRecords
+	mxRecords    []store.MxRecords
 	domainID     int
 	handlesEmail bool
 }
@@ -524,6 +525,7 @@ func (a *Assessor) AssessEmailSecurity(ctx context.Context, domainID int) error 
 		handlesEmail: handlesEmail,
 		domainID:     domainID,
 		txtRecords:   txtRecords,
+		mxRecords:    mxRecords,
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -538,6 +540,12 @@ func (a *Assessor) AssessEmailSecurity(ctx context.Context, domainID int) error 
 	})
 	g.Go(func() error {
 		return a.assessBIMI(ctx, as)
+	})
+	g.Go(func() error {
+		return a.assessMTASTS(ctx, as)
+	})
+	g.Go(func() error {
+		return a.assessTLSRPT(ctx, as)
 	})
 	if err := g.Wait(); err != nil {
 		return fmt.Errorf("assess email security: %w", err)
