@@ -271,6 +271,14 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 			"domain", job.Args.DomainUID, "error", err)
 	}
 
+	// Dangling-NS / delegation-takeover assessment checks whether each NS's parent
+	// domain still exists; it runs unconditionally over the collected NS set.
+	if err := enqueueAssessment(ctx, w.PgxPool, &w.Logger, job.Args.DomainUID,
+		AssessDanglingNSArgs{DomainJobArgs: job.Args.DomainJobArgs}); err != nil {
+		w.Logger.WarnContext(ctx, "failed to queue dangling ns assessment",
+			"domain", job.Args.DomainUID, "error", err)
+	}
+
 	// Email security assessment is data-dependent: enqueue only when TXT records
 	// were discovered (SPF/DKIM/DMARC live in TXT).
 	if len(resolved.TXT.Entries) > 0 {

@@ -439,3 +439,50 @@ func (w *AssessNameserverHealthWorker) Work(
 	)
 	return nil
 }
+
+type AssessDanglingNSArgs struct {
+	DomainJobArgs
+}
+
+func (AssessDanglingNSArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		Queue: queueAssessor,
+	}
+}
+func (AssessDanglingNSArgs) Kind() string { return "assess_dangling_ns" }
+
+type AssessDanglingNSWorker struct {
+	river.WorkerDefaults[AssessDanglingNSArgs]
+	Logger   slog.Logger
+	Store    *store.Queries
+	PgxPool  *pgxpool.Pool
+	Resolver dnsclient.Resolver
+}
+
+func (w *AssessDanglingNSWorker) Work(
+	ctx context.Context,
+	job *river.Job[AssessDanglingNSArgs],
+) error {
+	ctx = tracing.WithNewTraceID(ctx, false)
+	start := time.Now()
+	w.Logger.InfoContext(ctx, "assess dangling ns started", "domain", job.Args.DomainUID)
+	a := assessor.NewAssessor(assessor.Config{
+		Logger:    &w.Logger,
+		Store:     w.Store,
+		DNSClient: w.Resolver,
+		Identity:  job.Args.Identity(),
+	})
+	if err := a.AssessDanglingNS(ctx, job.Args.DomainUID); err != nil {
+		return err
+	}
+
+	w.Logger.InfoContext(
+		ctx,
+		"assess dangling ns complete",
+		"domain",
+		job.Args.DomainUID,
+		"duration",
+		time.Since(start),
+	)
+	return nil
+}
