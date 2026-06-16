@@ -207,6 +207,15 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 				Resolver: cfg.Resolver,
 			},
 		)
+		river.AddWorker(
+			rw,
+			&AssessDanglingNSWorker{
+				Logger:   *cfg.Logger,
+				Store:    cfg.Store,
+				PgxPool:  cfg.PgxPool,
+				Resolver: cfg.Resolver,
+			},
+		)
 		// maintenance
 		river.AddWorker(rw, &PurgeDNSCacheWorker{Logger: *cfg.Logger, Store: cfg.Store})
 		river.AddWorker(rw, &RefreshTenantStatsWorker{Logger: *cfg.Logger, Store: cfg.Store})
