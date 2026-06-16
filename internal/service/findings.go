@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/danielmichaels/gecko/internal/auth"
 	"github.com/danielmichaels/gecko/internal/store"
@@ -17,7 +18,8 @@ type FindingsService struct {
 
 // FindingView is a presentation-ready security finding for one card.
 type FindingView struct {
-	Kind        string // SPF | DKIM | DMARC | ZoneTransfer | ZONE
+	Kind        string // SPF | DKIM | DMARC | ZONE | CERT | ... (canonical, matches FindingsListByTenant)
+	IssueType   string // stable check code, e.g. insufficient_nameservers — keys suppression matching
 	Severity    string // critical | high | medium | low | info
 	SevClass    string // crit | warn | info | ok — 2-tier (per-domain card)
 	Tier        string // crit | high | med | low | ok — 4-tier (tenant screen)
@@ -26,6 +28,10 @@ type FindingView struct {
 	Description string
 	Evidence    string
 	FixHint     string
+	// Suppressed is true when an active silence rule or ack hides this finding. It
+	// is only ever set on findings returned with the "show silenced" toggle on;
+	// suppressed findings are excluded from every count/rollup.
+	Suppressed bool
 	// Tenant-wide fields; zero for the per-domain card and ignored by its renderer.
 	DomainUID  string
 	DomainName string
@@ -52,6 +58,9 @@ type FindingsListOptions struct {
 	Kind             string
 	DomainQuery      string
 	IncludeCompliant bool
+	// IncludeSuppressed returns silenced/acknowledged findings (marked Suppressed)
+	// instead of dropping them. They are still excluded from all counts.
+	IncludeSuppressed bool
 }
 
 // TenantFindingsResult is the tenant-wide roll-up: findings grouped by domain
@@ -102,11 +111,13 @@ func (s *FindingsService) ListByDomain(
 	ctx context.Context,
 	p *auth.Principal,
 	domainUID string,
+	includeSuppressed bool,
 ) (FindingsResult, error) {
-	if _, err := s.DB.DomainsGetByID(ctx, store.DomainsGetByIDParams{
+	dom, err := s.DB.DomainsGetByID(ctx, store.DomainsGetByIDParams{
 		Uid:      domainUID,
 		TenantID: pgtype.Int4{Int32: p.TenantID, Valid: true},
-	}); err != nil {
+	})
+	if err != nil {
 		return FindingsResult{}, ErrNotFound
 	}
 
@@ -119,7 +130,7 @@ func (s *FindingsService) ListByDomain(
 	}); err == nil {
 		for _, f := range spf {
 			findings = append(findings, mapEmailFinding(
-				"SPF", f.Severity, f.Status, f.IssueType, f.Details, f.SpfValue,
+				f.Uid, "SPF", f.Severity, f.Status, f.IssueType, f.Details, f.SpfValue,
 			))
 		}
 	}
@@ -129,7 +140,7 @@ func (s *FindingsService) ListByDomain(
 	}); err == nil {
 		for _, f := range dkim {
 			findings = append(findings, mapEmailFinding(
-				"DKIM", f.Severity, f.Status, f.IssueType, f.Details, f.DkimValue,
+				f.Uid, "DKIM", f.Severity, f.Status, f.IssueType, f.Details, f.DkimValue,
 			))
 		}
 	}
@@ -139,7 +150,7 @@ func (s *FindingsService) ListByDomain(
 	}); err == nil {
 		for _, f := range dmarc {
 			findings = append(findings, mapEmailFinding(
-				"DMARC", f.Severity, f.Status, f.IssueType, f.Details, f.DmarcValue,
+				f.Uid, "DMARC", f.Severity, f.Status, f.IssueType, f.Details, f.DmarcValue,
 			))
 		}
 	}
@@ -157,7 +168,7 @@ func (s *FindingsService) ListByDomain(
 	}); err == nil {
 		for _, f := range certs {
 			findings = append(findings, mapStandardFinding(
-				"CERT", f.Severity, f.Status, f.IssueType, f.Details,
+				f.Uid, "CERT", f.Severity, f.Status, f.IssueType, f.Details,
 			))
 		}
 	}
@@ -167,7 +178,7 @@ func (s *FindingsService) ListByDomain(
 	}); err == nil {
 		for _, f := range dnssec {
 			findings = append(findings, mapStandardFinding(
-				"DNSSEC", f.Severity, f.Status, f.IssueType, f.Details,
+				f.Uid, "DNSSEC", f.Severity, f.Status, f.IssueType, f.Details,
 			))
 		}
 	}
@@ -177,7 +188,7 @@ func (s *FindingsService) ListByDomain(
 	}); err == nil {
 		for _, f := range caaConfig {
 			findings = append(findings, mapStandardFinding(
-				"CAA_CONFIG", f.Severity, f.Status, f.IssueType, f.Details,
+				f.Uid, "CAA_CONFIG", f.Severity, f.Status, f.IssueType, f.Details,
 			))
 		}
 	}
@@ -187,7 +198,7 @@ func (s *FindingsService) ListByDomain(
 	}); err == nil {
 		for _, f := range caaCompliance {
 			findings = append(findings, mapStandardFinding(
-				"CAA_COMPLIANCE", f.Severity, f.Status, f.IssueType, f.Details,
+				f.Uid, "CAA_COMPLIANCE", f.Severity, f.Status, f.IssueType, f.Details,
 			))
 		}
 	}
@@ -197,7 +208,7 @@ func (s *FindingsService) ListByDomain(
 	}); err == nil {
 		for _, f := range minRecords {
 			findings = append(findings, mapStandardFinding(
-				"MIN_RECORDS", f.Severity, f.Status, f.IssueType, f.Details,
+				f.Uid, "MIN_RECORDS", f.Severity, f.Status, f.IssueType, f.Details,
 			))
 		}
 	}
@@ -207,7 +218,7 @@ func (s *FindingsService) ListByDomain(
 	}); err == nil {
 		for _, f := range emailCompliance {
 			findings = append(findings, mapStandardFinding(
-				"EMAIL_COMPLIANCE", f.Severity, f.Status, f.IssueType, f.Details,
+				f.Uid, "EMAIL_COMPLIANCE", f.Severity, f.Status, f.IssueType, f.Details,
 			))
 		}
 	}
@@ -217,7 +228,7 @@ func (s *FindingsService) ListByDomain(
 	}); err == nil {
 		for _, f := range nsConfig {
 			findings = append(findings, mapStandardFinding(
-				"NS_CONFIG", f.Severity, f.Status, f.IssueType, f.Details,
+				f.Uid, "NS_CONFIG", f.Severity, f.Status, f.IssueType, f.Details,
 			))
 		}
 	}
@@ -227,7 +238,7 @@ func (s *FindingsService) ListByDomain(
 	}); err == nil {
 		for _, f := range nsRedundancy {
 			findings = append(findings, mapStandardFinding(
-				"NS_REDUNDANCY", f.Severity, f.Status, f.IssueType, f.Details,
+				f.Uid, "NS_REDUNDANCY", f.Severity, f.Status, f.IssueType, f.Details,
 			))
 		}
 	}
@@ -237,7 +248,7 @@ func (s *FindingsService) ListByDomain(
 	}); err == nil {
 		for _, f := range nsReach {
 			findings = append(findings, mapStandardFinding(
-				"NS_REACHABILITY", f.Severity, f.Status, f.IssueType, f.Details,
+				f.Uid, "NS_REACHABILITY", f.Severity, f.Status, f.IssueType, f.Details,
 			))
 		}
 	}
@@ -247,7 +258,7 @@ func (s *FindingsService) ListByDomain(
 	}); err == nil {
 		for _, f := range nsLatency {
 			findings = append(findings, mapStandardFinding(
-				"NS_LATENCY", f.Severity, f.Status, "high_latency", f.Details,
+				f.Uid, "NS_LATENCY", f.Severity, f.Status, "high_latency", f.Details,
 			))
 		}
 	}
@@ -257,10 +268,34 @@ func (s *FindingsService) ListByDomain(
 	}); err == nil {
 		for _, f := range nsConsistency {
 			findings = append(findings, mapStandardFinding(
-				"NS_CONSISTENCY", f.Severity, f.Status, "resolver_mismatch", f.Details,
+				f.Uid, "NS_CONSISTENCY", f.Severity, f.Status, "resolver_mismatch", f.Details,
 			))
 		}
 	}
+
+	// Apply suppression at read time (Surface 2). The same active-suppression set —
+	// tenant-global rules plus this domain's own rules and acks — is loaded once and
+	// matched in Go via the shared predicate, mirroring the SQL surfaces. Suppressed
+	// findings are dropped unless the caller asked to see them, and never counted.
+	sups, err := s.DB.SuppressionsListActiveByDomain(ctx, store.SuppressionsListActiveByDomainParams{
+		TenantID: p.TenantID,
+		DomainID: pgtype.Int4{Int32: dom.ID, Valid: true},
+	})
+	if err != nil {
+		return FindingsResult{}, err
+	}
+	now := time.Now()
+	kept := findings[:0]
+	for _, f := range findings {
+		if anySuppressionMatches(sups, now, dom.ID, f.Kind, f.IssueType, f.FindingUID) {
+			f.Suppressed = true
+			if !includeSuppressed {
+				continue
+			}
+		}
+		kept = append(kept, f)
+	}
+	findings = kept
 
 	sort.SliceStable(findings, func(i, j int) bool {
 		return severityRank(findings[i].Severity) < severityRank(findings[j].Severity)
@@ -268,6 +303,9 @@ func (s *FindingsService) ListByDomain(
 
 	res := FindingsResult{Findings: findings, TotalCount: len(findings)}
 	for _, f := range findings {
+		if f.Suppressed {
+			continue // listed (toggle on) but excluded from the summary strip
+		}
 		switch f.SevClass {
 		case "crit":
 			res.CriticalCount++
@@ -289,8 +327,9 @@ func (s *FindingsService) ListByTenant(
 	opts FindingsListOptions,
 ) (TenantFindingsResult, error) {
 	rows, err := s.DB.FindingsListByTenant(ctx, store.FindingsListByTenantParams{
-		TenantID:         pgtype.Int4{Int32: p.TenantID, Valid: true},
-		IncludeCompliant: opts.IncludeCompliant,
+		TenantID:          p.TenantID,
+		IncludeCompliant:  opts.IncludeCompliant,
+		IncludeSuppressed: opts.IncludeSuppressed,
 	})
 	if err != nil {
 		return TenantFindingsResult{}, err
@@ -357,13 +396,18 @@ func buildTenantFindings(
 		matchSev := opts.Severity == "" || f.Tier == opts.Severity
 		matchKind := opts.Kind == "" || f.Kind == opts.Kind
 
-		// Faceted counts: each control ignores its own filter so it stays
-		// populated as the user narrows the others.
-		if matchSev {
-			res.KindCounts[f.Kind]++
-		}
-		if matchKind {
-			res.SeverityCounts[f.Tier]++
+		// Suppressed findings (only present when the toggle is on) are listed but
+		// never counted: they must not repopulate facet chips, rollup pills, or the
+		// totals strip — the whole point of silencing is to drop them from the tally.
+		if !f.Suppressed {
+			// Faceted counts: each control ignores its own filter so it stays
+			// populated as the user narrows the others.
+			if matchSev {
+				res.KindCounts[f.Kind]++
+			}
+			if matchKind {
+				res.SeverityCounts[f.Tier]++
+			}
 		}
 		if !matchSev || !matchKind {
 			continue
@@ -380,6 +424,9 @@ func buildTenantFindings(
 		}
 		g := &res.Groups[gi]
 		g.Findings = append(g.Findings, f)
+		if f.Suppressed {
+			continue
+		}
 		switch f.Tier {
 		case "crit":
 			g.CritCount++
@@ -443,6 +490,7 @@ func mapTenantRow(row store.FindingsListByTenantRow) FindingView {
 	}
 	return FindingView{
 		Kind:        row.Kind,
+		IssueType:   row.IssueType,
 		Severity:    string(row.Severity),
 		SevClass:    class,
 		Tier:        tier,
@@ -451,6 +499,7 @@ func mapTenantRow(row store.FindingsListByTenantRow) FindingView {
 		Description: desc,
 		Evidence:    row.Value.String,
 		FixHint:     fix,
+		Suppressed:  row.IsSuppressed,
 		DomainUID:   row.DomainUid,
 		DomainName:  row.DomainName,
 		FindingUID:  row.FindingUid,
@@ -468,6 +517,7 @@ func firstSeen(ts pgtype.Timestamptz) string {
 
 // mapEmailFinding maps an SPF/DKIM/DMARC finding row to a FindingView.
 func mapEmailFinding(
+	uid string,
 	kind string,
 	severity store.FindingSeverity,
 	status store.FindingStatus,
@@ -478,6 +528,7 @@ func mapEmailFinding(
 	title, _, fix := findingText(issueType)
 	return FindingView{
 		Kind:        kind,
+		IssueType:   issueType,
 		Severity:    string(severity),
 		SevClass:    class,
 		Tier:        severityTier(severity),
@@ -486,6 +537,7 @@ func mapEmailFinding(
 		Description: details.String,
 		Evidence:    value.String,
 		FixHint:     fix,
+		FindingUID:  uid,
 	}
 }
 
@@ -493,6 +545,7 @@ func mapEmailFinding(
 // (certificate, dnssec) to a FindingView, preferring the stored details over the
 // generic catalog description.
 func mapStandardFinding(
+	uid string,
 	kind string,
 	severity store.FindingSeverity,
 	status store.FindingStatus,
@@ -506,6 +559,7 @@ func mapStandardFinding(
 	}
 	return FindingView{
 		Kind:        kind,
+		IssueType:   issueType,
 		Severity:    string(severity),
 		SevClass:    class,
 		Tier:        severityTier(severity),
@@ -513,6 +567,7 @@ func mapStandardFinding(
 		Title:       title,
 		Description: desc,
 		FixHint:     fix,
+		FindingUID:  uid,
 	}
 }
 
@@ -534,7 +589,10 @@ func mapZoneTransferFinding(f store.ZoneTransferFindings) FindingView {
 	}
 
 	return FindingView{
-		Kind:        "ZoneTransfer",
+		// Canonical "ZONE" (not "ZoneTransfer") so a silence rule created from the
+		// tenant screen also matches here; the per-domain card doesn't render Kind.
+		Kind:        "ZONE",
+		IssueType:   issueType,
 		Severity:    string(f.Severity),
 		SevClass:    class,
 		Tier:        severityTier(f.Severity),
@@ -543,6 +601,7 @@ func mapZoneTransferFinding(f store.ZoneTransferFindings) FindingView {
 		Description: desc,
 		Evidence:    evidence,
 		FixHint:     fix,
+		FindingUID:  f.Uid,
 	}
 }
 

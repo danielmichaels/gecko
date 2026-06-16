@@ -67,6 +67,11 @@ const (
 	EntityDNSResolutionLatencyFinding     = "dns_resolution_latency_finding"
 	EntityDNSResolutionConsistencyFinding = "dns_resolution_consistency_finding"
 
+	// EntityFindingSuppression records a user silencing a check or acknowledging a
+	// finding (and the reverse) onto the change timeline. The suppression's own uid
+	// is the entity key; the payload carries the scope and action.
+	EntityFindingSuppression = "finding_suppression"
+
 	// EntityDomain is used only on lifecycle NOTIFY signals (create/delete/status),
 	// never stored as an observation — a domain's existence is the projection
 	// itself. It lets the UI refresh on changes that write no observation row.

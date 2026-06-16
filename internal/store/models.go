@@ -321,6 +321,49 @@ func (ns NullScanSource) Value() (driver.Value, error) {
 	return string(ns.ScanSource), nil
 }
 
+type SuppressionState string
+
+const (
+	SuppressionStateSilenced     SuppressionState = "silenced"
+	SuppressionStateAcknowledged SuppressionState = "acknowledged"
+	SuppressionStateResolved     SuppressionState = "resolved"
+)
+
+func (e *SuppressionState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SuppressionState(s)
+	case string:
+		*e = SuppressionState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SuppressionState: %T", src)
+	}
+	return nil
+}
+
+type NullSuppressionState struct {
+	SuppressionState SuppressionState `json:"suppression_state"`
+	Valid            bool             `json:"valid"` // Valid is true if SuppressionState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSuppressionState) Scan(value interface{}) error {
+	if value == nil {
+		ns.SuppressionState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SuppressionState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSuppressionState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SuppressionState), nil
+}
+
 type TransferType string
 
 const (
@@ -780,6 +823,22 @@ type EmailAuthComplianceFindings struct {
 	Details      pgtype.Text        `json:"details"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+type FindingSuppressions struct {
+	ID         int32              `json:"id"`
+	Uid        string             `json:"uid"`
+	TenantID   int32              `json:"tenant_id"`
+	DomainID   pgtype.Int4        `json:"domain_id"`
+	Kind       pgtype.Text        `json:"kind"`
+	IssueType  pgtype.Text        `json:"issue_type"`
+	FindingUid pgtype.Text        `json:"finding_uid"`
+	State      SuppressionState   `json:"state"`
+	Reason     pgtype.Text        `json:"reason"`
+	CreatedBy  pgtype.Int4        `json:"created_by"`
+	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Invitations struct {

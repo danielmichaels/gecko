@@ -20,6 +20,7 @@ templ SettingsPage(props SettingsPageProps) {
 					@PasswordPanel(props)
 					@ScanningPanel(props)
 					@NotificationsPanel(props)
+					@SilencedChecksPanel(props)
 				</div>
 			</div>
 		}
@@ -222,6 +223,70 @@ templ NotificationsPanel(props SettingsPageProps) {
 			>Save my preference</button>
 		</div>
 	</section>
+}
+
+// SilencedChecksPanel lists the tenant's silence rules and acknowledgements, each
+// with a remove control (owner/manager only). Rows live in #silenced-checks so the
+// delete action can patch the region in place.
+templ SilencedChecksPanel(props SettingsPageProps) {
+	<section class="panel set-panel">
+		<div class="panel-h">
+			Silenced checks
+			<span class="count">{ suppressionCountLabel(len(props.SilencedChecks)) }</span>
+		</div>
+		<div class="set-body">
+			<p class="set-note">
+				Silenced checks and acknowledged findings are hidden from your findings list and
+				never reddened a domain's badge. Remove an entry to surface it again.
+			</p>
+			<div id="silenced-checks">
+				@SilencedChecksList(props.SilencedChecks, props.Shell.CSRFToken, props.CanManage)
+			</div>
+		</div>
+	</section>
+}
+
+// SilencedChecksList is the patched region: every rule/ack row, or an empty state.
+templ SilencedChecksList(items []SuppressionRowView, csrfToken string, canManage bool) {
+	if len(items) == 0 {
+		<div class="set-empty">No silenced checks.</div>
+	} else {
+		for _, s := range items {
+			<div class="set-key">
+				<div class="set-key-main">
+					<span class="set-key-name">{ s.Label }</span>
+					<span class="badge ok">{ s.State }</span>
+				</div>
+				<div class="set-key-meta cell-mono">
+					<span>{ s.ScopeText }</span>
+					if s.CreatedBy != "" {
+						<span>by { s.CreatedBy }</span>
+					}
+					<span>added { s.Created }</span>
+					if s.Expires != "" {
+						<span>expires { s.Expires }</span>
+					}
+				</div>
+				<div class="set-key-act">
+					if canManage {
+						<button
+							type="button"
+							class="btn-ghost btn set-revoke"
+							data-on:click={ removeSuppressionAction(s.UID, csrfToken) }
+						>Remove</button>
+					}
+				</div>
+			</div>
+		}
+	}
+}
+
+// suppressionCountLabel renders the panel-header count, singularising for one.
+func suppressionCountLabel(n int) string {
+	if n == 1 {
+		return "1 check"
+	}
+	return fmt.Sprintf("%d checks", n)
 }
 
 // apiKeyCountLabel renders the panel-header count, singularising for one key.

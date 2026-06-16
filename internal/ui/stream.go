@@ -167,7 +167,7 @@ func (h *Handlers) handleDomainDetailStream(w http.ResponseWriter, r *http.Reque
 			h.patchRecordsContent(ctx, sse, p, uid)
 			h.patchTimelineContent(ctx, sse, p, uid)
 			h.patchTimelineFullContent(ctx, sse, p, uid, "")
-			h.patchFindingsContent(ctx, sse, p, uid)
+			h.patchFindingsContent(ctx, sse, p, uid, false)
 		case evt, ok := <-events:
 			if !ok {
 				return

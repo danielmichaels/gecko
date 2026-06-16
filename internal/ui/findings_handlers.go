@@ -30,12 +30,14 @@ func (h *Handlers) handleFindingsPage(w http.ResponseWriter, r *http.Request) {
 			Kind          string `json:"kind"`
 			Q             string `json:"q"`
 			ShowCompliant bool   `json:"showCompliant"`
+			ShowSilenced  bool   `json:"showSilenced"`
 		}
 		if err := datastar.ReadSignals(r, &sig); err == nil {
 			opts.Severity = sig.Sev
 			opts.Kind = sig.Kind
 			opts.DomainQuery = strings.TrimSpace(sig.Q)
 			opts.IncludeCompliant = sig.ShowCompliant
+			opts.IncludeSuppressed = sig.ShowSilenced
 		}
 	}
 
@@ -45,7 +47,9 @@ func (h *Handlers) handleFindingsPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	view := toTenantFindingsView(res)
+	view := toTenantFindingsView(
+		res, service.OwnerOrManager(p), opts.IncludeSuppressed, CSRFTokenFrom(r.Context()),
+	)
 
 	if isDatastar {
 		sse := datastar.NewSSE(w, r)
@@ -70,19 +74,28 @@ func (h *Handlers) handleFindingsPage(w http.ResponseWriter, r *http.Request) {
 }
 
 // toTenantFindingsView maps the service roll-up into the presentation model.
-func toTenantFindingsView(res service.TenantFindingsResult) templates.TenantFindingsView {
+// canManage gates the per-finding silence/acknowledge controls; showSilenced
+// reflects the toggle so the template can keep it lit.
+func toTenantFindingsView(
+	res service.TenantFindingsResult,
+	canManage, showSilenced bool,
+	csrfToken string,
+) templates.TenantFindingsView {
 	v := templates.TenantFindingsView{
-		OpenCount:   res.Totals.Open,
-		DomainCount: res.Totals.DomainCount,
-		CritCount:   res.Totals.Critical,
-		HighCount:   res.Totals.High,
-		MedCount:    res.Totals.Medium,
-		SevCounts:   res.SeverityCounts,
-		KindOptions: kindOptions(res.KindCounts),
+		OpenCount:    res.Totals.Open,
+		DomainCount:  res.Totals.DomainCount,
+		CritCount:    res.Totals.Critical,
+		HighCount:    res.Totals.High,
+		MedCount:     res.Totals.Medium,
+		SevCounts:    res.SeverityCounts,
+		KindOptions:  kindOptions(res.KindCounts),
+		CanManage:    canManage,
+		ShowSilenced: showSilenced,
+		CSRFToken:    csrfToken,
 	}
 	v.Groups = make([]templates.FindingGroupView, 0, len(res.Groups))
 	for _, g := range res.Groups {
-		v.Groups = append(v.Groups, toFindingGroupView(g))
+		v.Groups = append(v.Groups, toFindingGroupView(g, canManage, csrfToken))
 	}
 	return v
 }
@@ -156,7 +169,11 @@ func kindOptions(counts map[string]int) []templates.FindingKindOption {
 }
 
 // toFindingGroupView derives a group's dimmed-apex name, rollup bar, and pills.
-func toFindingGroupView(g service.DomainFindingGroup) templates.FindingGroupView {
+func toFindingGroupView(
+	g service.DomainFindingGroup,
+	canManage bool,
+	csrfToken string,
+) templates.FindingGroupView {
 	label, apexSuffix := splitApexLabel(g.DomainName)
 	gv := templates.FindingGroupView{
 		DomainUID:  g.DomainUID,
@@ -169,7 +186,7 @@ func toFindingGroupView(g service.DomainFindingGroup) templates.FindingGroupView
 	}
 	gv.Findings = make([]templates.FindingRowView, 0, len(g.Findings))
 	for _, f := range g.Findings {
-		gv.Findings = append(gv.Findings, toFindingRowView(f))
+		gv.Findings = append(gv.Findings, toFindingRowView(f, canManage, csrfToken))
 	}
 	return gv
 }
@@ -245,18 +262,26 @@ func rollupPills(g service.DomainFindingGroup) []templates.FindingPill {
 	return pills
 }
 
-func toFindingRowView(f service.FindingView) templates.FindingRowView {
+func toFindingRowView(
+	f service.FindingView,
+	canManage bool,
+	csrfToken string,
+) templates.FindingRowView {
 	return templates.FindingRowView{
 		FindingUID:  f.FindingUID,
 		DomainUID:   f.DomainUID,
 		Tier:        f.Tier,
 		Severity:    f.Severity,
 		Kind:        f.Kind,
+		IssueType:   f.IssueType,
 		Icon:        f.Icon,
 		Title:       f.Title,
 		Description: f.Description,
 		Evidence:    f.Evidence,
 		FixHint:     f.FixHint,
 		FirstSeen:   f.FirstSeen,
+		Suppressed:  f.Suppressed,
+		CanManage:   canManage,
+		CSRFToken:   csrfToken,
 	}
 }

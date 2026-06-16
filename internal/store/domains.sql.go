@@ -306,6 +306,33 @@ func (q *Queries) DomainsGetAllRecordsByTenantID(ctx context.Context, arg Domain
 	return items, nil
 }
 
+const domainsGetByDomainID = `-- name: DomainsGetByDomainID :one
+SELECT id, uid, tenant_id, name
+FROM domains
+WHERE id = $1
+`
+
+type DomainsGetByDomainIDRow struct {
+	ID       int32       `json:"id"`
+	Uid      string      `json:"uid"`
+	TenantID pgtype.Int4 `json:"tenant_id"`
+	Name     string      `json:"name"`
+}
+
+// Read a domain by its internal id (no auth). Used to rebuild a domain identity
+// for an observation from a stored foreign key (e.g. a suppression's domain_id).
+func (q *Queries) DomainsGetByDomainID(ctx context.Context, id int32) (DomainsGetByDomainIDRow, error) {
+	row := q.db.QueryRow(ctx, domainsGetByDomainID, id)
+	var i DomainsGetByDomainIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.Uid,
+		&i.TenantID,
+		&i.Name,
+	)
+	return i, err
+}
+
 const domainsGetByID = `-- name: DomainsGetByID :one
 SELECT id,
        uid,

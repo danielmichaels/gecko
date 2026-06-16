@@ -200,6 +200,62 @@ func (app *Server) registerEndpoints(api huma.API) {
 		Middlewares:   huma.Middlewares{app.apiAuth(api)},
 	}, app.handleFindingsList)
 
+	// Suppressions handlers (silence rules + per-finding acks)
+	huma.Register(api, huma.Operation{
+		OperationID:   "list_suppressions",
+		Method:        http.MethodGet,
+		Path:          "/api/suppressions",
+		Summary:       "List silence rules and acknowledged findings for the tenant",
+		Tags:          []string{"Suppressions"},
+		DefaultStatus: http.StatusOK,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
+	}, app.handleSuppressionsList)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "create_silence_rule",
+		Method:        http.MethodPost,
+		Path:          "/api/suppressions/rules",
+		Summary:       "Silence a check (tenant-global or per-domain)",
+		Tags:          []string{"Suppressions"},
+		DefaultStatus: http.StatusCreated,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
+	}, app.handleSuppressionRuleCreate)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "delete_suppression",
+		Method:        http.MethodDelete,
+		Path:          "/api/suppressions/{uid}",
+		Summary:       "Delete a silence rule or acknowledgement",
+		Tags:          []string{"Suppressions"},
+		DefaultStatus: http.StatusOK,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
+	}, app.handleSuppressionDelete)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "acknowledge_finding",
+		Method:        http.MethodPost,
+		Path:          "/api/findings/{finding_uid}/acknowledge",
+		Summary:       "Acknowledge or resolve a single finding",
+		Tags:          []string{"Suppressions"},
+		DefaultStatus: http.StatusCreated,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
+	}, app.handleFindingAcknowledge)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "unacknowledge_finding",
+		Method:        http.MethodDelete,
+		Path:          "/api/findings/{finding_uid}/acknowledge",
+		Summary:       "Remove a finding's acknowledgement",
+		Tags:          []string{"Suppressions"},
+		DefaultStatus: http.StatusOK,
+		Security:      []map[string][]string{{"xApiKey": []string{"x-api-key"}}},
+		Middlewares:   huma.Middlewares{app.apiAuth(api)},
+	}, app.handleFindingUnacknowledge)
+
 	// Scans handlers
 	huma.Register(api, huma.Operation{
 		OperationID:   "list_scans",

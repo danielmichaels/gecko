@@ -57,9 +57,17 @@ func (h *Handlers) handleSettingsGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	silenced, err := h.silencedRows(r.Context(), p)
+	if err != nil {
+		h.log.Error("settings: list suppressions", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
 	renderPage(w, r, templates.SettingsPage(templates.SettingsPageProps{
 		Shell:                  shell,
 		APIKeys:                apiKeyRows(rows),
+		SilencedChecks:         silenced,
 		CanManage:              service.OwnerOrManager(p),
 		DefaultScanFrequency:   string(defaultFreq),
 		NotifyDailyDigest:      notify.DailyDigest,

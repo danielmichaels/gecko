@@ -734,19 +734,25 @@ func (h *Handlers) handleFindingsFragment(w http.ResponseWriter, r *http.Request
 	}
 
 	uid := chi.URLParam(r, "uid")
+	var sig struct {
+		ShowSilenced bool `json:"showSilenced"`
+	}
+	_ = datastar.ReadSignals(r, &sig)
 	sse := datastar.NewSSE(w, r)
-	h.patchFindingsContent(r.Context(), sse, p, uid)
+	h.patchFindingsContent(r.Context(), sse, p, uid, sig.ShowSilenced)
 }
 
 // patchFindingsContent renders the Findings tab into #findings-content. Shared by
-// the lazy-load endpoint and the detail stream.
+// the lazy-load endpoint and the detail stream. includeSuppressed re-includes
+// silenced/acknowledged findings (rendered dimmed) instead of hiding them.
 func (h *Handlers) patchFindingsContent(
 	ctx context.Context,
 	sse *datastar.ServerSentEventGenerator,
 	p *auth.Principal,
 	uid string,
+	includeSuppressed bool,
 ) {
-	result, err := h.svc.FindingsService().ListByDomain(ctx, p, uid)
+	result, err := h.svc.FindingsService().ListByDomain(ctx, p, uid, includeSuppressed)
 	if err != nil {
 		msg := "failed to load findings"
 		if errors.Is(err, service.ErrNotFound) {

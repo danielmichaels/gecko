@@ -11,7 +11,7 @@ import (
 templ FindingsPage(props FindingsPageProps) {
 	@Page("gecko · Findings") {
 		@AppShell(props.Shell) {
-			<div data-signals='{"sev":"","kind":"","q":"","showCompliant":false,"collapsed":[],"open":[]}'>
+			<div data-signals='{"sev":"","kind":"","q":"","showCompliant":false,"showSilenced":false,"collapsed":[],"open":[]}'>
 				<div class="page-head">
 					<div>
 						<h1 class="page-title">⚠ Findings</h1>
@@ -55,6 +55,11 @@ templ FindingsFilterBar(v TenantFindingsView) {
 			data-class="{'on': $showCompliant}"
 			data-on:click="$showCompliant = !$showCompliant; @get('/app/findings')"
 		><span class="sw"></span> show compliant</div>
+		<div
+			class="toggle"
+			data-class="{'on': $showSilenced}"
+			data-on:click="$showSilenced = !$showSilenced; @get('/app/findings')"
+		><span class="sw"></span> show silenced</div>
 	</div>
 }
 
@@ -141,11 +146,14 @@ templ FindingDomainGroup(g FindingGroupView) {
 
 // FindingRow is a collapsed finding line plus its inline-expanding detail card.
 templ FindingRow(f FindingRowView) {
-	<div class={ "frow", f.Tier } data-class={ findingOpenClass(f.FindingUID) }>
+	<div class={ "frow", f.Tier, templ.KV("suppressed", f.Suppressed) } data-class={ findingOpenClass(f.FindingUID) }>
 		<div class="fline" data-on:click={ findingOpen(f.FindingUID) }>
 			<span class={ "badge", f.Tier }>{ f.Severity }</span>
 			<span class="kind">{ f.Kind }</span>
 			<span class="ftitle">{ f.Title }</span>
+			if f.Suppressed {
+				<span class="pill silenced">silenced</span>
+			}
 			<span class="fexp">▾</span>
 		</div>
 		<div class="fdetail">
@@ -171,6 +179,18 @@ templ FindingRow(f FindingRowView) {
 						</span>
 						<a class="viewlink" href={ templ.SafeURL("/app/domains/" + f.DomainUID) }>View domain →</a>
 					</div>
+					if f.CanManage && !f.Suppressed {
+						<div class="f-actions">
+							<button type="button" class="f-act" data-on:click={ acknowledgeAction(f.FindingUID, f.CSRFToken) }>Acknowledge</button>
+							<button type="button" class="f-act" data-on:click={ silenceDomainAction(f.Kind, f.IssueType, f.DomainUID, f.CSRFToken) }>Silence · this domain</button>
+							<button type="button" class="f-act" data-on:click={ silenceTenantAction(f.Kind, f.IssueType, f.CSRFToken) }>Silence · all domains</button>
+						</div>
+					}
+					if f.Suppressed {
+						<div class="f-actions">
+							<span class="f-meta">Hidden by a silence rule or acknowledgement · manage under Settings → Silenced checks</span>
+						</div>
+					}
 				</div>
 			</div>
 		</div>

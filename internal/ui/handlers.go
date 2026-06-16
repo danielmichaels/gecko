@@ -92,6 +92,9 @@ func (h *Handlers) Routes() http.Handler {
 		r.Post("/workspaces", h.handleWorkspaceCreate)
 
 		r.Get("/findings", h.handleFindingsPage)
+		r.Post("/findings/silence", h.handleFindingSilence)
+		r.Post("/findings/{uid}/acknowledge", h.handleFindingAcknowledgeUI)
+		r.Delete("/suppressions/{uid}", h.handleSuppressionDelete)
 		r.Get("/scans", h.handleScansPage)
 
 		// ComingSoon placeholder pages.

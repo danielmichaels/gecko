@@ -93,6 +93,13 @@ FROM domains
 WHERE uid = $1
   AND tenant_id = $2;
 
+-- name: DomainsGetByDomainID :one
+-- Read a domain by its internal id (no auth). Used to rebuild a domain identity
+-- for an observation from a stored foreign key (e.g. a suppression's domain_id).
+SELECT id, uid, tenant_id, name
+FROM domains
+WHERE id = $1;
+
 -- name: DomainsGetByName :one
 -- Read a domain by name and tenant ID (no auth)
 SELECT id,

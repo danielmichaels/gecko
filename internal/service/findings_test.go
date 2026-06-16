@@ -282,7 +282,7 @@ func TestFindingsService_ListByDomain(t *testing.T) {
 		"certificate_hostname_mismatch",
 	)
 
-	res, err := fs.ListByDomain(ctx, p, d.Uid)
+	res, err := fs.ListByDomain(ctx, p, d.Uid, false)
 	if err != nil {
 		t.Fatalf("ListByDomain: %v", err)
 	}
@@ -317,7 +317,7 @@ func TestFindingsService_ListByDomain(t *testing.T) {
 
 	// A different tenant must not be able to read this domain's findings.
 	other := ownerPrincipal(createTenant(t, ctx, pc, "other@example.com"))
-	if _, err := fs.ListByDomain(ctx, other, d.Uid); !errors.Is(err, service.ErrNotFound) {
+	if _, err := fs.ListByDomain(ctx, other, d.Uid, false); !errors.Is(err, service.ErrNotFound) {
 		t.Errorf("cross-tenant ListByDomain err = %v, want ErrNotFound", err)
 	}
 }

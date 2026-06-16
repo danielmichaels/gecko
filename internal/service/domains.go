@@ -141,14 +141,17 @@ type DomainFindingSummary struct {
 // tenant-bounded.
 func (s *DomainsService) FindingsSummaryForPage(
 	ctx context.Context,
-	_ *auth.Principal,
+	p *auth.Principal,
 	domainIDs []int32,
 ) (map[int32]DomainFindingSummary, error) {
 	out := make(map[int32]DomainFindingSummary, len(domainIDs))
 	if len(domainIDs) == 0 {
 		return out, nil
 	}
-	rows, err := s.DB.DomainsListFindingsSummary(ctx, domainIDs)
+	rows, err := s.DB.DomainsListFindingsSummary(ctx, store.DomainsListFindingsSummaryParams{
+		TenantID:  p.TenantID,
+		DomainIds: domainIDs,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("findings summary: %w", err)
 	}

@@ -429,14 +429,17 @@ type FindingsPageProps struct {
 // the stat strip, the data-driven filter controls, and the grouped rows. It is
 // re-rendered as a fragment (#findings-list) on every filter change.
 type TenantFindingsView struct {
-	SevCounts   map[string]int // tier (crit|high|med|low) -> faceted chip count
-	Groups      []FindingGroupView
-	KindOptions []FindingKindOption
-	OpenCount   int
-	DomainCount int
-	CritCount   int
-	HighCount   int
-	MedCount    int
+	SevCounts    map[string]int // tier (crit|high|med|low) -> faceted chip count
+	Groups       []FindingGroupView
+	KindOptions  []FindingKindOption
+	OpenCount    int
+	DomainCount  int
+	CritCount    int
+	HighCount    int
+	MedCount     int
+	ShowSilenced bool   // reflects the "show silenced" toggle state
+	CanManage    bool   // owner/manager: show silence/acknowledge controls
+	CSRFToken    string // per-session token for the mutation actions
 }
 
 // FindingKindOption is one entry in the data-driven type dropdown.
@@ -479,12 +482,16 @@ type FindingRowView struct {
 	Tier        string // crit | high | med | low | ok (CSS class)
 	Severity    string // "critical" | "high" | ... (label text)
 	Kind        string
+	IssueType   string // stable check code, for the silence action
 	Icon        string
 	Title       string
 	Description string
 	Evidence    string
 	FixHint     string
 	FirstSeen   string
+	Suppressed  bool   // rendered dimmed with a "silenced" pill
+	CanManage   bool   // owner/manager: show silence/acknowledge controls
+	CSRFToken   string // per-session token for the mutation actions
 }
 
 // findingOpen returns the datastar expression that flips a finding's membership
@@ -509,6 +516,39 @@ func sevToggle(sev string) string {
 
 // sevChipClass marks a severity chip active when it is the selected tier.
 func sevChipClass(sev string) string { return fmt.Sprintf("{'on': $sev === '%s'}", sev) }
+
+// csrfHeader returns the datastar options object carrying the per-session CSRF
+// token, required on every browser-initiated mutation.
+func csrfHeader(token string) string {
+	return fmt.Sprintf("{headers: {'X-CSRF-Token': '%s'}}", token)
+}
+
+// silenceTenantAction posts a tenant-global silence rule for a check, then
+// re-fetches the findings list so the now-suppressed row drops out.
+func silenceTenantAction(kind, issueType, token string) string {
+	return fmt.Sprintf(
+		"@post('/app/findings/silence?scope=tenant&kind=%s&issue_type=%s', %s)",
+		kind, issueType, csrfHeader(token),
+	)
+}
+
+// silenceDomainAction posts a per-domain silence rule for a check.
+func silenceDomainAction(kind, issueType, domainUID, token string) string {
+	return fmt.Sprintf(
+		"@post('/app/findings/silence?scope=domain&kind=%s&issue_type=%s&domain_uid=%s', %s)",
+		kind, issueType, domainUID, csrfHeader(token),
+	)
+}
+
+// acknowledgeAction posts an acknowledgement for one finding instance by uid.
+func acknowledgeAction(uid, token string) string {
+	return fmt.Sprintf("@post('/app/findings/%s/acknowledge', %s)", uid, csrfHeader(token))
+}
+
+// removeSuppressionAction deletes a silence rule or ack by uid from the settings list.
+func removeSuppressionAction(uid, token string) string {
+	return fmt.Sprintf("@delete('/app/suppressions/%s', %s)", uid, csrfHeader(token))
+}
 
 // ScansPageProps holds data for the tenant-wide Scans page.
 type ScansPageProps struct {
@@ -649,12 +689,27 @@ type SettingsPageProps struct {
 	LastDigestSent         string
 	LastAlertSent          string
 	APIKeys                []APIKeyRowView
+	SilencedChecks         []SuppressionRowView
 	Shell                  AppShellProps
 	CanManage              bool
 	NotifyDailyDigest      bool
 	NotifyHighImpact       bool
 	NotifyHighImpactAlerts bool
 	NotifyOptOut           bool
+}
+
+// SuppressionRowView is the presentation model for one silence rule or ack in the
+// settings "Silenced checks" list.
+type SuppressionRowView struct {
+	UID       string
+	Scope     string // tenant | domain | finding
+	ScopeText string // human label, e.g. "All domains" / domain name / "Finding"
+	State     string // silenced | acknowledged | resolved
+	Label     string // the check title (or finding uid for acks)
+	Reason    string
+	CreatedBy string
+	Created   string
+	Expires   string // "" = never
 }
 
 // APIKeyRowView is the presentation model for one API key in the settings list.

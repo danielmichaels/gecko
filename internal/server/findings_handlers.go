@@ -24,6 +24,8 @@ type FindingItem struct {
 	Evidence    string `json:"evidence"`
 	FixHint     string `json:"fix_hint"`
 	FirstSeen   string `json:"first_seen,omitempty"`
+	IssueType   string `json:"issue_type,omitempty"`
+	Suppressed  bool   `json:"suppressed,omitempty"`
 }
 
 func toFindingItem(f service.FindingView) FindingItem {
@@ -39,14 +41,17 @@ func toFindingItem(f service.FindingView) FindingItem {
 		Evidence:    f.Evidence,
 		FixHint:     f.FixHint,
 		FirstSeen:   f.FirstSeen,
+		IssueType:   f.IssueType,
+		Suppressed:  f.Suppressed,
 	}
 }
 
 type FindingsListInput struct {
-	Severity         string `query:"severity"          example:"crit"  doc:"Filter by tier: crit|high|med|low. Optional." enum:"crit,high,med,low,"`
-	Kind             string `query:"kind"              example:"SPF"   doc:"Filter by type: SPF|DKIM|DMARC|ZONE|CERT|DNSSEC|CAA_CONFIG|CAA_COMPLIANCE|MIN_RECORDS|EMAIL_COMPLIANCE|NS_CONFIG|NS_REDUNDANCY|NS_REACHABILITY|NS_LATENCY|NS_CONSISTENCY. Optional." enum:"SPF,DKIM,DMARC,ZONE,CERT,DNSSEC,CAA_CONFIG,CAA_COMPLIANCE,MIN_RECORDS,EMAIL_COMPLIANCE,NS_CONFIG,NS_REDUNDANCY,NS_REACHABILITY,NS_LATENCY,NS_CONSISTENCY,"`
-	DomainQuery      string `query:"q"                 example:"acme"  doc:"Case-insensitive domain-name substring. Optional."`
-	IncludeCompliant bool   `query:"include_compliant" example:"false" doc:"Include compliant/closed findings. Optional."`
+	Severity          string `query:"severity"          example:"crit"  doc:"Filter by tier: crit|high|med|low. Optional." enum:"crit,high,med,low,"`
+	Kind              string `query:"kind"              example:"SPF"   doc:"Filter by type: SPF|DKIM|DMARC|ZONE|CERT|DNSSEC|CAA_CONFIG|CAA_COMPLIANCE|MIN_RECORDS|EMAIL_COMPLIANCE|NS_CONFIG|NS_REDUNDANCY|NS_REACHABILITY|NS_LATENCY|NS_CONSISTENCY. Optional." enum:"SPF,DKIM,DMARC,ZONE,CERT,DNSSEC,CAA_CONFIG,CAA_COMPLIANCE,MIN_RECORDS,EMAIL_COMPLIANCE,NS_CONFIG,NS_REDUNDANCY,NS_REACHABILITY,NS_LATENCY,NS_CONSISTENCY,"`
+	DomainQuery       string `query:"q"                 example:"acme"  doc:"Case-insensitive domain-name substring. Optional."`
+	IncludeCompliant  bool   `query:"include_compliant" example:"false" doc:"Include compliant/closed findings. Optional."`
+	IncludeSuppressed bool   `query:"include_suppressed" example:"false" doc:"Include silenced/acknowledged findings (marked suppressed). Optional."`
 	PaginationQuery
 }
 
@@ -69,10 +74,11 @@ func (app *Server) handleFindingsList(
 
 	pageSize, pageNumber, offset := i.GetPaginationParams()
 	result, err := app.Svc.FindingsService().ListByTenantFlat(ctx, p, service.FindingsListOptions{
-		Severity:         i.Severity,
-		Kind:             i.Kind,
-		DomainQuery:      i.DomainQuery,
-		IncludeCompliant: i.IncludeCompliant,
+		Severity:          i.Severity,
+		Kind:              i.Kind,
+		DomainQuery:       i.DomainQuery,
+		IncludeCompliant:  i.IncludeCompliant,
+		IncludeSuppressed: i.IncludeSuppressed,
 	}, pageSize, offset)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to list findings", err)
@@ -105,19 +111,26 @@ type FindingsSummary struct {
 	HealthyCount  int `json:"healthy_count"`
 }
 
+// DomainFindingsInput is the per-domain findings request: the domain path id plus
+// an optional toggle to include silenced/acknowledged findings.
+type DomainFindingsInput struct {
+	ID                string `json:"id" example:"domain_00000001" path:"id"`
+	IncludeSuppressed bool   `query:"include_suppressed" example:"false" doc:"Include silenced/acknowledged findings (marked suppressed). Optional."`
+}
+
 // handleDomainFindings serves a single domain's findings. Tenant isolation is
 // enforced inside ListByDomain, which gates on the domain belonging to the caller's
 // tenant and returns ErrNotFound otherwise.
 func (app *Server) handleDomainFindings(
 	ctx context.Context,
-	i *DomainGetInput,
+	i *DomainFindingsInput,
 ) (*DomainFindingsOutput, error) {
 	p, err := principalOrErr(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	result, err := app.Svc.FindingsService().ListByDomain(ctx, p, i.ID)
+	result, err := app.Svc.FindingsService().ListByDomain(ctx, p, i.ID, i.IncludeSuppressed)
 	if err != nil {
 		if errors.Is(err, service.ErrNotFound) {
 			return nil, huma.Error404NotFound("domain not found")

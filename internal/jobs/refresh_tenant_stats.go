@@ -148,7 +148,10 @@ func (w *RefreshTenantStatsWorker) refreshOne(ctx context.Context, tenantID int3
 			recordTotal += int64(c.RecordCount)
 		}
 
-		sums, err := w.Store.DomainsListFindingsSummary(ctx, ids)
+		sums, err := w.Store.DomainsListFindingsSummary(ctx, store.DomainsListFindingsSummaryParams{
+			TenantID:  tenantID,
+			DomainIds: ids,
+		})
 		if err != nil {
 			return fmt.Errorf("findings summary (tenant %d): %w", tenantID, err)
 		}
