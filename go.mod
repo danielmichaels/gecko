@@ -13,23 +13,23 @@ require (
 	github.com/fergusstrange/embedded-postgres v1.34.0
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/go-chi/httplog/v2 v2.1.1
-	github.com/jackc/pgx/v5 v5.9.2
+	github.com/jackc/pgx/v5 v5.10.0
 	github.com/joeshaw/envdecode v0.0.0-20200121155833-099f1fc765bd
 	github.com/miekg/dns v1.1.63
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/pressly/goose/v3 v3.24.1
 	github.com/projectdiscovery/goflags v0.1.74
 	github.com/projectdiscovery/subfinder/v2 v2.14.0
-	github.com/riverqueue/river v0.38.0
-	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.38.0
-	github.com/riverqueue/river/rivertype v0.38.0
+	github.com/riverqueue/river v0.40.0
+	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.40.0
+	github.com/riverqueue/river/rivertype v0.40.0
 	github.com/rs/xid v1.5.0
 	github.com/starfederation/datastar-go v1.2.1
 	github.com/weppos/publicsuffix-go v0.50.3-0.20260104170930-90713dec78f2
 	github.com/wneessen/go-mail v0.7.3
 	golang.org/x/crypto v0.52.0
 	golang.org/x/net v0.55.0
-	golang.org/x/sync v0.20.0
+	golang.org/x/sync v0.21.0
 	golang.org/x/term v0.43.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -123,8 +123,8 @@ require (
 	github.com/projectdiscovery/retryablehttp-go v1.3.8 // indirect
 	github.com/projectdiscovery/utils v0.10.1 // indirect
 	github.com/refraction-networking/utls v1.8.2 // indirect
-	github.com/riverqueue/river/riverdriver v0.38.0 // indirect
-	github.com/riverqueue/river/rivershared v0.38.0 // indirect
+	github.com/riverqueue/river/riverdriver v0.40.0 // indirect
+	github.com/riverqueue/river/rivershared v0.40.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d // indirect
 	github.com/sethvargo/go-retry v0.3.0 // indirect
@@ -160,10 +160,10 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go4.org v0.0.0-20230225012048-214862532bf5 // indirect
 	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8 // indirect
-	golang.org/x/mod v0.36.0 // indirect
+	golang.org/x/mod v0.37.0 // indirect
 	golang.org/x/oauth2 v0.27.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
+	golang.org/x/text v0.38.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
-	golang.org/x/tools v0.44.0 // indirect
+	golang.org/x/tools v0.45.0 // indirect
 )
