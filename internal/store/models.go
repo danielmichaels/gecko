@@ -483,6 +483,19 @@ type ApiKeys struct {
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 }
 
+type Assets struct {
+	ID            int64              `json:"id"`
+	Uid           string             `json:"uid"`
+	TenantID      int32              `json:"tenant_id"`
+	Kind          string             `json:"kind"`
+	Value         string             `json:"value"`
+	ParentAssetID pgtype.Int8        `json:"parent_asset_id"`
+	IsCdn         bool               `json:"is_cdn"`
+	Source        string             `json:"source"`
+	FirstSeen     pgtype.Timestamptz `json:"first_seen"`
+	LastSeen      pgtype.Timestamptz `json:"last_seen"`
+}
+
 type CaaComplianceFindings struct {
 	ID           int32              `json:"id"`
 	Uid          string             `json:"uid"`
@@ -780,6 +793,31 @@ type EmailAuthComplianceFindings struct {
 	Details      pgtype.Text        `json:"details"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+type Findings struct {
+	ID         int64              `json:"id"`
+	Uid        string             `json:"uid"`
+	TenantID   int32              `json:"tenant_id"`
+	AssetID    int64              `json:"asset_id"`
+	CheckKind  string             `json:"check_kind"`
+	IssueType  string             `json:"issue_type"`
+	EntityKey  string             `json:"entity_key"`
+	Severity   string             `json:"severity"`
+	Status     string             `json:"status"`
+	Title      string             `json:"title"`
+	Details    string             `json:"details"`
+	Evidence   []byte             `json:"evidence"`
+	FirstSeen  pgtype.Timestamptz `json:"first_seen"`
+	LastSeen   pgtype.Timestamptz `json:"last_seen"`
+	ResolvedAt pgtype.Timestamptz `json:"resolved_at"`
+}
+
+type FindingsEvents struct {
+	ID        int64              `json:"id"`
+	FindingID int64              `json:"finding_id"`
+	Event     string             `json:"event"`
+	At        pgtype.Timestamptz `json:"at"`
 }
 
 type Invitations struct {
