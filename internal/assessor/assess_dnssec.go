@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/danielmichaels/gecko/internal/detect"
 	"github.com/danielmichaels/gecko/internal/observer"
 	"github.com/danielmichaels/gecko/internal/scanner"
 	"github.com/danielmichaels/gecko/internal/store"
@@ -46,58 +47,32 @@ func (a *Assessor) AssessDNSSEC(ctx context.Context, domainUID string) error {
 		return err
 	}
 
+	ev := detect.DNSSECEvidence{}
 	result, err := a.store.ScannersGetDNSSECResult(ctx, pgtype.Int4{Int32: domain.ID, Valid: true})
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			a.logger.InfoContext(ctx, "No DNSSEC scan result to assess", "domain", domain.Uid)
-			return nil
-		}
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		// No scan result -> Fetched false -> detector emits nothing; reconcile still
+		// resolves any previously-open dnssec finding.
+	case err != nil:
 		a.logger.ErrorContext(ctx, "Failed to retrieve DNSSEC scan result", "error", err)
 		return err
-	}
-
-	// DNSSEC lives at the zone apex; a non-apex name has nothing to assess.
-	if result.Status == scanner.DNSSECNotApplicable {
-		return nil
-	}
-
-	switch {
-	case result.ValidationError.Valid && result.ValidationError.String != "":
-		return a.createDNSSECFinding(ctx, domain.ID,
-			store.FindingSeverityHigh, store.FindingStatusOpen, DNSSECBrokenChain,
-			fmt.Sprintf("DNSSEC validation failed: %s", result.ValidationError.String))
-
-	case !result.HasDnskey && !result.HasDs && !result.HasRrsig:
-		return a.createDNSSECFinding(ctx, domain.ID,
-			store.FindingSeverityInfo, store.FindingStatusCompliant, DNSSECNotEnabled,
-			"DNSSEC is not enabled for this domain")
-
-	case result.HasDnskey && result.HasDs && result.HasRrsig:
-		if err := a.createDNSSECFinding(ctx, domain.ID,
-			store.FindingSeverityInfo, store.FindingStatusCompliant, DNSSECEnabled,
-			"DNSSEC is enabled with a complete chain of trust"); err != nil {
-			return err
-		}
-		if names := deprecatedAlgorithmNames(result.Algorithms); len(names) > 0 {
-			return a.createDNSSECFinding(
-				ctx,
-				domain.ID,
-				store.FindingSeverityMedium,
-				store.FindingStatusOpen,
-				DNSSECWeakAlgorithm,
-				fmt.Sprintf(
-					"DNSSEC uses deprecated signing algorithm(s): %s",
-					strings.Join(names, ", "),
-				),
-			)
-		}
-		return nil
-
 	default:
-		return a.createDNSSECFinding(ctx, domain.ID,
-			store.FindingSeverityHigh, store.FindingStatusOpen, DNSSECBrokenChain,
-			"DNSSEC is partially deployed: missing DNSKEY, DS, or RRSIG records")
+		ev.Fetched = true
+		ev.NotApplicable = result.Status == scanner.DNSSECNotApplicable
+		if result.ValidationError.Valid {
+			ev.ValidationError = result.ValidationError.String
+		}
+		ev.HasDNSKEY = result.HasDnskey
+		ev.HasDS = result.HasDs
+		ev.HasRRSIG = result.HasRrsig
+		ev.Algorithms = result.Algorithms
 	}
+
+	found, err := detect.DNSSECDetector{}.Detect(ev)
+	if err != nil {
+		return err
+	}
+	return a.reconcile(ctx, domain.Name, detect.CheckDNSSEC, found)
 }
 
 func deprecatedAlgorithmNames(algorithms []string) []string {

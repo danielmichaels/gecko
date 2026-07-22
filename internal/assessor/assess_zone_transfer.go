@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/danielmichaels/gecko/internal/detect"
 	"github.com/danielmichaels/gecko/internal/dnsrecords"
 	"github.com/danielmichaels/gecko/internal/observer"
 	"github.com/danielmichaels/gecko/internal/store"
@@ -99,35 +100,20 @@ func (a *Assessor) AssessZoneTransfer(ctx context.Context, domainUID string) err
 		a.logger.ErrorContext(ctx, "Failed to retrieve zone transfer attempts", "error", err)
 		return err
 	}
-	nsIDByHost := a.nsRecordIDsByHost(ctx, domain.ID)
-
-	assessed := 0
+	ev := detect.ZoneTransferEvidence{}
 	for _, attempt := range attempts {
-		nsRecordID := nsRecordIDFor(attempt.Nameserver, nsIDByHost)
-		var recorded bool
-		if attempt.WasSuccessful {
-			recorded = a.recordExposedFinding(ctx, domain.ID, attempt, nsRecordID)
-		} else {
-			recorded = a.recordRefusedFinding(ctx, domain.ID, attempt, nsRecordID)
-		}
-		if recorded {
-			assessed++
-		}
+		ev.Attempts = append(ev.Attempts, detect.ZoneTransferAttemptEvidence{
+			Nameserver:   attempt.Nameserver,
+			TransferType: string(attempt.TransferType),
+			Successful:   attempt.WasSuccessful,
+			ResponseData: attempt.ResponseData,
+		})
 	}
-
-	if len(attempts) == 0 {
-		a.logger.InfoContext(ctx, "No zone transfer attempts found to assess", "domain", domain.Uid)
-		return nil
+	found, err := detect.ZoneTransferDetector{}.Detect(ev)
+	if err != nil {
+		return err
 	}
-	a.logger.InfoContext(
-		ctx,
-		"Successfully assessed zone transfers",
-		"domain",
-		domain.Uid,
-		"count",
-		assessed,
-	)
-	return nil
+	return a.reconcile(ctx, domain.Name, detect.CheckZoneTransfer, found)
 }
 
 // nsRecordIDsByHost maps a domain's NS hostnames to their ns_records row IDs so

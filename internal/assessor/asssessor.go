@@ -6,7 +6,9 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/danielmichaels/gecko/internal/checks"
 	"github.com/danielmichaels/gecko/internal/dnsclient"
+	"github.com/danielmichaels/gecko/internal/findings"
 	"github.com/danielmichaels/gecko/internal/observer"
 
 	"github.com/danielmichaels/gecko/internal/store"
@@ -68,6 +70,30 @@ func NewAssessor(cfg Config) *Assessor {
 		nsProber:  nsProber,
 		identity:  cfg.Identity,
 	}
+}
+
+// reconcile resolves the domain's asset and persists the detector output via the
+// desired-state reconciler. It is a no-op without a real scan identity (unit tests
+// exercise detectors directly), so callers need not guard it. The reconcile runs
+// on the pool store; it is idempotent and self-heals a partial run on the next
+// scan (tx-wrapping is a Phase 2 follow-up).
+func (a *Assessor) reconcile(
+	ctx context.Context,
+	domainName, checkKind string,
+	found []checks.Finding,
+) error {
+	if a.identity.TenantID == 0 {
+		return nil
+	}
+	asset, err := a.store.AssetsUpsertDomain(ctx, store.AssetsUpsertDomainParams{
+		TenantID: a.identity.TenantID,
+		Value:    domainName,
+		Source:   "discovered",
+	})
+	if err != nil {
+		return fmt.Errorf("resolve asset for %s: %w", domainName, err)
+	}
+	return findings.Reconcile(ctx, a.store, a.identity.TenantID, asset.ID, checkKind, found)
 }
 
 // createFinding upserts an email-security finding and, when running under a real

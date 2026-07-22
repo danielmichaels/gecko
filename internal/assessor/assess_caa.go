@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/danielmichaels/gecko/internal/detect"
 	"github.com/danielmichaels/gecko/internal/observer"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -83,11 +84,15 @@ func (a *Assessor) AssessCAA(ctx context.Context, domainUID string) error {
 		return err
 	}
 
-	hasCert := a.domainHasCertificate(ctx, domain.ID)
-	if len(records) == 0 {
-		return a.assessMissingCAA(ctx, domain.ID, hasCert)
+	ev := detect.CAAEvidence{LookedUp: true, HasCert: a.domainHasCertificate(ctx, domain.ID)}
+	for _, r := range records {
+		ev.Records = append(ev.Records, detect.CAARecord{Tag: r.Tag, Value: r.Value, Flags: r.Flags})
 	}
-	return a.assessPresentCAA(ctx, domain.ID, hasCert, records)
+	found, err := detect.CAADetector{}.Detect(ev)
+	if err != nil {
+		return err
+	}
+	return a.reconcile(ctx, domain.Name, detect.CheckCAA, found)
 }
 
 func (a *Assessor) domainHasCertificate(ctx context.Context, domainID int32) bool {
