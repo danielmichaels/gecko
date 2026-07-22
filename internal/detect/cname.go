@@ -90,7 +90,8 @@ func danglingFinding(t CNAMETargetEvidence) (checks.Finding, bool) {
 			return checks.Finding{}, false
 		default:
 			return danglingF(t.Target, "medium", t.Provider, false, fmt.Sprintf(
-				"CNAME target points to %s; takeover could not be confirmed", t.Provider)), true
+				"CNAME target points to %s; takeover could not be confirmed", t.Provider,
+			)), true
 		}
 	}
 
@@ -134,7 +135,8 @@ func (d CNAMEDetector) chainFinding(t CNAMETargetEvidence) (checks.Finding, bool
 			Title:     "CNAME points to an IP address",
 			Details: fmt.Sprintf(
 				"CNAME target %q is an IP address; a CNAME must point to a name",
-				strings.TrimSuffix(t.Target, ".")),
+				strings.TrimSuffix(t.Target, "."),
+			),
 		}, true
 	case t.ChainLooped:
 		return checks.Finding{

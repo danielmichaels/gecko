@@ -103,7 +103,8 @@ func (a *Assessor) collectEmailSecurity(
 	ev.DKIMSelectorsChecked = knownDkimSelectors
 	for _, selector := range knownDkimSelectors {
 		recs, st := a.dnsClient.LookupWithStatus(
-			fmt.Sprintf("%s._domainkey.%s", selector, name), dns.TypeTXT)
+			fmt.Sprintf("%s._domainkey.%s", selector, name), dns.TypeTXT,
+		)
 		ev.DKIMSelectors = append(ev.DKIMSelectors, detect.DKIMSelectorEvidence{
 			Selector: selector,
 			Status:   resolutionString(st),

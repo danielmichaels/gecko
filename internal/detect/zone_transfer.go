@@ -177,7 +177,8 @@ func extractSensitiveInfo(data *dnsrecords.ZoneTransferData) SensitiveInformatio
 					}
 					info.EmailAddresses = append(
 						info.EmailAddresses,
-						emailRegex.FindAllString(content, -1)...)
+						emailRegex.FindAllString(content, -1)...,
+					)
 					if m := apiKeyRegex.FindStringSubmatch(content); len(m) > 2 {
 						info.ApiKeys = append(info.ApiKeys, m[2])
 					}

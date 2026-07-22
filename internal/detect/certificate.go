@@ -77,7 +77,8 @@ func (d CertificateDetector) Detect(ev CertificateEvidence) ([]checks.Finding, e
 			Title:     "Self-signed certificate",
 			Details: fmt.Sprintf(
 				"Certificate issuer and subject are identical (%s); chain is self-signed",
-				ev.Subject),
+				ev.Subject,
+			),
 		})
 	}
 	if !hostnameCovered(ev.DomainName, ev.SANs, ev.DNSNames) {

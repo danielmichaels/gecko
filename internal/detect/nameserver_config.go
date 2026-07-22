@@ -93,7 +93,8 @@ func (d NameserverConfigDetector) Detect(ev NameserverConfigEvidence) ([]checks.
 			Title:     "Insufficient nameservers",
 			Details: fmt.Sprintf(
 				"Domain delegates to only %d nameserver(s); RFC 2182 recommends at least %d",
-				count, d.RecommendedCount),
+				count, d.RecommendedCount,
+			),
 		})
 	} else if distinctProviders(ev.Nameservers) <= 1 {
 		out = append(out, checks.Finding{
