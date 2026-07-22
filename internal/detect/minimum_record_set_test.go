@@ -49,19 +49,69 @@ func TestMinimumRecordSetDetect(t *testing.T) {
 		want   []string
 	}{
 		{"healthy apex -> nothing", func(*MinimumRecordSetEvidence) {}, nil},
-		{"non-apex -> nothing", func(e *MinimumRecordSetEvidence) { *e = MinimumRecordSetEvidence{IsApex: false, NSCount: 0, NSLookedUp: true} }, nil},
-		{"too few nameservers", func(e *MinimumRecordSetEvidence) { e.NSCount = 1 }, []string{IssueInsufficientNameservers}},
-		{"ns lookup failed -> no ns finding", func(e *MinimumRecordSetEvidence) { e.NSLookedUp = false; e.NSCount = 0 }, nil},
-		{"no apex address", func(e *MinimumRecordSetEvidence) { e.HasA = false; e.HasAAAA = false }, []string{IssueMissingApexAddress}},
-		{"missing ipv6", func(e *MinimumRecordSetEvidence) { e.HasAAAA = false }, []string{IssueMissingIPv6}},
-		{"missing soa", func(e *MinimumRecordSetEvidence) { e.SOAPresent = false }, []string{IssueMissingSOA}},
-		{"soa timers out of range", func(e *MinimumRecordSetEvidence) { e.SOARefresh = 60 }, []string{IssueSOATimersOutOfRange}},
-		{"soa serial not date-based", func(e *MinimumRecordSetEvidence) { e.SOASerial = 42 }, []string{IssueSOASerialFormat}},
-		{"soa mname unresolvable", func(e *MinimumRecordSetEvidence) { e.SOAMNameResolves = false }, []string{IssueSOAMNameUnresolvable}},
-		{"soa mname lookup failed -> nothing", func(e *MinimumRecordSetEvidence) { e.SOAMNameLookedUp = false; e.SOAMNameResolves = false }, nil},
-		{"soa rname malformed", func(e *MinimumRecordSetEvidence) { e.SOARName = "nolocalpart" }, []string{IssueSOARNameMalformed}},
-		{"missing mx with email intent", func(e *MinimumRecordSetEvidence) { e.HasMX = false; e.TXTValues = []string{"v=spf1 -all"} }, []string{IssueMissingMX}},
-		{"missing mx without email intent -> nothing", func(e *MinimumRecordSetEvidence) { e.HasMX = false }, nil},
+		{"non-apex -> nothing", func(e *MinimumRecordSetEvidence) {
+			*e = MinimumRecordSetEvidence{IsApex: false, NSCount: 0, NSLookedUp: true}
+		}, nil},
+		{
+			"too few nameservers",
+			func(e *MinimumRecordSetEvidence) { e.NSCount = 1 },
+			[]string{IssueInsufficientNameservers},
+		},
+		{
+			"ns lookup failed -> no ns finding",
+			func(e *MinimumRecordSetEvidence) { e.NSLookedUp = false; e.NSCount = 0 },
+			nil,
+		},
+		{
+			"no apex address",
+			func(e *MinimumRecordSetEvidence) { e.HasA = false; e.HasAAAA = false },
+			[]string{IssueMissingApexAddress},
+		},
+		{
+			"missing ipv6",
+			func(e *MinimumRecordSetEvidence) { e.HasAAAA = false },
+			[]string{IssueMissingIPv6},
+		},
+		{
+			"missing soa",
+			func(e *MinimumRecordSetEvidence) { e.SOAPresent = false },
+			[]string{IssueMissingSOA},
+		},
+		{
+			"soa timers out of range",
+			func(e *MinimumRecordSetEvidence) { e.SOARefresh = 60 },
+			[]string{IssueSOATimersOutOfRange},
+		},
+		{
+			"soa serial not date-based",
+			func(e *MinimumRecordSetEvidence) { e.SOASerial = 42 },
+			[]string{IssueSOASerialFormat},
+		},
+		{
+			"soa mname unresolvable",
+			func(e *MinimumRecordSetEvidence) { e.SOAMNameResolves = false },
+			[]string{IssueSOAMNameUnresolvable},
+		},
+		{
+			"soa mname lookup failed -> nothing",
+			func(e *MinimumRecordSetEvidence) { e.SOAMNameLookedUp = false; e.SOAMNameResolves = false },
+			nil,
+		},
+		{
+			"soa rname malformed",
+			func(e *MinimumRecordSetEvidence) { e.SOARName = "nolocalpart" },
+			[]string{IssueSOARNameMalformed},
+		},
+		{
+			"missing mx with email intent",
+			func(e *MinimumRecordSetEvidence) { e.HasMX = false; e.TXTValues = []string{"v=spf1 -all"} },
+			[]string{IssueMissingMX},
+		},
+		{
+			"missing mx without email intent -> nothing",
+			func(e *MinimumRecordSetEvidence) { e.HasMX = false },
+			nil,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

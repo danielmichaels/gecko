@@ -84,7 +84,8 @@ func danglingFinding(t CNAMETargetEvidence) (checks.Finding, bool) {
 		case bodyConfirmed || nonResolving:
 			return danglingF(t.Target, "high", t.Provider, true, fmt.Sprintf(
 				"CNAME target points to %s and the resource appears unclaimed (subdomain takeover candidate)",
-				t.Provider)), true
+				t.Provider,
+			)), true
 		case t.ProbeReached && t.ProbeStatusCode == 200:
 			return checks.Finding{}, false
 		default:

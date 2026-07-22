@@ -85,7 +85,10 @@ func (d CertificateDetector) Detect(ev CertificateEvidence) ([]checks.Finding, e
 			IssueType: IssueCertHostnameMismatch,
 			Severity:  "high",
 			Title:     "Certificate hostname mismatch",
-			Details:   fmt.Sprintf("Domain %s is not covered by the certificate SANs", ev.DomainName),
+			Details: fmt.Sprintf(
+				"Domain %s is not covered by the certificate SANs",
+				ev.DomainName,
+			),
 		})
 	}
 	return out, nil

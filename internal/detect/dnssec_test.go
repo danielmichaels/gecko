@@ -11,13 +11,61 @@ func TestDNSSECDetect(t *testing.T) {
 		wantSev string
 	}{
 		{"not fetched -> nothing", DNSSECEvidence{Fetched: false}, "", ""},
-		{"not applicable (non-apex) -> nothing", DNSSECEvidence{Fetched: true, NotApplicable: true, HasDNSKEY: true}, "", ""},
-		{"validation error -> broken chain high", DNSSECEvidence{Fetched: true, ValidationError: "no valid RRSIG", HasDNSKEY: true, HasDS: true, HasRRSIG: true}, IssueDNSSECBrokenChain, "high"},
+		{
+			"not applicable (non-apex) -> nothing",
+			DNSSECEvidence{Fetched: true, NotApplicable: true, HasDNSKEY: true},
+			"",
+			"",
+		},
+		{
+			"validation error -> broken chain high",
+			DNSSECEvidence{
+				Fetched:         true,
+				ValidationError: "no valid RRSIG",
+				HasDNSKEY:       true,
+				HasDS:           true,
+				HasRRSIG:        true,
+			},
+			IssueDNSSECBrokenChain,
+			"high",
+		},
 		{"not enabled (none present) -> nothing", DNSSECEvidence{Fetched: true}, "", ""},
-		{"fully signed, modern algo -> nothing", DNSSECEvidence{Fetched: true, HasDNSKEY: true, HasDS: true, HasRRSIG: true, Algorithms: []string{"13"}}, "", ""},
-		{"fully signed, deprecated algo -> weak medium", DNSSECEvidence{Fetched: true, HasDNSKEY: true, HasDS: true, HasRRSIG: true, Algorithms: []string{"13", "5"}}, IssueDNSSECWeakAlgorithm, "medium"},
-		{"partial (only DNSKEY) -> broken chain high", DNSSECEvidence{Fetched: true, HasDNSKEY: true}, IssueDNSSECBrokenChain, "high"},
-		{"partial (DS without RRSIG) -> broken chain high", DNSSECEvidence{Fetched: true, HasDNSKEY: true, HasDS: true}, IssueDNSSECBrokenChain, "high"},
+		{
+			"fully signed, modern algo -> nothing",
+			DNSSECEvidence{
+				Fetched:    true,
+				HasDNSKEY:  true,
+				HasDS:      true,
+				HasRRSIG:   true,
+				Algorithms: []string{"13"},
+			},
+			"",
+			"",
+		},
+		{
+			"fully signed, deprecated algo -> weak medium",
+			DNSSECEvidence{
+				Fetched:    true,
+				HasDNSKEY:  true,
+				HasDS:      true,
+				HasRRSIG:   true,
+				Algorithms: []string{"13", "5"},
+			},
+			IssueDNSSECWeakAlgorithm,
+			"medium",
+		},
+		{
+			"partial (only DNSKEY) -> broken chain high",
+			DNSSECEvidence{Fetched: true, HasDNSKEY: true},
+			IssueDNSSECBrokenChain,
+			"high",
+		},
+		{
+			"partial (DS without RRSIG) -> broken chain high",
+			DNSSECEvidence{Fetched: true, HasDNSKEY: true, HasDS: true},
+			IssueDNSSECBrokenChain,
+			"high",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

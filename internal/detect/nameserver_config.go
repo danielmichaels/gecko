@@ -61,7 +61,8 @@ func (d NameserverConfigDetector) Detect(ev NameserverConfigEvidence) ([]checks.
 				Details:   "Nameserver target is a CNAME, which is illegal for NS records (RFC 2181 §10.3)",
 			})
 		}
-		if ns.AStatus == ResolutionEmpty && ns.AAAAStatus == ResolutionEmpty && ns.CNAMEStatus != ResolutionData {
+		if ns.AStatus == ResolutionEmpty && ns.AAAAStatus == ResolutionEmpty &&
+			ns.CNAMEStatus != ResolutionData {
 			out = append(out, checks.Finding{
 				IssueType: IssueNSNotResolvable,
 				EntityKey: ns.Host,
@@ -78,7 +79,8 @@ func (d NameserverConfigDetector) Detect(ev NameserverConfigEvidence) ([]checks.
 				Title:     "Dangling nameserver delegation",
 				Details: fmt.Sprintf(
 					"Nameserver parent domain %q does not exist (NXDOMAIN); it may be registerable and used to hijack this delegation",
-					nsProviderApex(ns.Host)),
+					nsProviderApex(ns.Host),
+				),
 			})
 		}
 	}

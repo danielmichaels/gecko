@@ -30,7 +30,7 @@ type fakeDetector struct {
 	scope EvidenceScope
 }
 
-func (d fakeDetector) Kind() string       { return d.kind }
+func (d fakeDetector) Kind() string         { return d.kind }
 func (d fakeDetector) Scope() EvidenceScope { return d.scope }
 func (d fakeDetector) Detect(ev fakeEvidence) ([]Finding, error) {
 	if ev.LookedUp && ev.Record == "weak" {

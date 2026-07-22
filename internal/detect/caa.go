@@ -102,7 +102,10 @@ func caaPresentFindings(ev CAAEvidence) []checks.Finding {
 			IssueType: IssueCAAUntrustedIssuer,
 			Severity:  "low",
 			Title:     "CAA authorises untrusted issuer",
-			Details:   fmt.Sprintf("CAA authorises issuance by unrecognised CA(s): %s", strings.Join(c.untrusted, ", ")),
+			Details: fmt.Sprintf(
+				"CAA authorises issuance by unrecognised CA(s): %s",
+				strings.Join(c.untrusted, ", "),
+			),
 		})
 	}
 	if c.hasUnknownCritical {

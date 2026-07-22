@@ -55,7 +55,9 @@ func (ZoneTransferDetector) Detect(ev ZoneTransferEvidence) ([]checks.Finding, e
 				Severity: "critical",
 				Details: fmt.Sprintf(
 					"Zone transfer (%s) allowed from nameserver %s. This can leak internal DNS information to attackers.",
-					at.TransferType, at.Nameserver),
+					at.TransferType,
+					at.Nameserver,
+				),
 			},
 			Assessment:       assessment,
 			RecordData:       extractRecordDataByType(&td),
@@ -157,8 +159,12 @@ func getRecordTypeCounts(data *dnsrecords.ZoneTransferData) map[string]int {
 func extractSensitiveInfo(data *dnsrecords.ZoneTransferData) SensitiveInformation {
 	var info SensitiveInformation
 	emailRegex := regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`)
-	apiKeyRegex := regexp.MustCompile(`(?i)(api_?key|access_?key|secret|token)[=:]\s*['"]?([a-zA-Z0-9]{16,})['"]?`)
-	credRegex := regexp.MustCompile(`(?i)(password|passwd|pwd|user|username)[=:]\s*['"]?([^'"]{3,})['"]?`)
+	apiKeyRegex := regexp.MustCompile(
+		`(?i)(api_?key|access_?key|secret|token)[=:]\s*['"]?([a-zA-Z0-9]{16,})['"]?`,
+	)
+	credRegex := regexp.MustCompile(
+		`(?i)(password|passwd|pwd|user|username)[=:]\s*['"]?([^'"]{3,})['"]?`,
+	)
 
 	allRecords := append(data.Records.AXFR, data.Records.IXFR...)
 	for _, record := range allRecords {
@@ -169,7 +175,9 @@ func extractSensitiveInfo(data *dnsrecords.ZoneTransferData) SensitiveInformatio
 					if !ok {
 						continue
 					}
-					info.EmailAddresses = append(info.EmailAddresses, emailRegex.FindAllString(content, -1)...)
+					info.EmailAddresses = append(
+						info.EmailAddresses,
+						emailRegex.FindAllString(content, -1)...)
 					if m := apiKeyRegex.FindStringSubmatch(content); len(m) > 2 {
 						info.ApiKeys = append(info.ApiKeys, m[2])
 					}
@@ -274,8 +282,14 @@ func identifySecurityFlags(data *dnsrecords.ZoneTransferData) SecurityWarnings {
 			}
 			for _, pattern := range suspiciousPatterns {
 				if strings.Contains(lower, pattern) {
-					warnings.SuspiciousText = append(warnings.SuspiciousText,
-						fmt.Sprintf("Suspicious pattern '%s' found in TXT record: %s", pattern, content))
+					warnings.SuspiciousText = append(
+						warnings.SuspiciousText,
+						fmt.Sprintf(
+							"Suspicious pattern '%s' found in TXT record: %s",
+							pattern,
+							content,
+						),
+					)
 					break
 				}
 			}
@@ -291,20 +305,36 @@ func identifySecurityFlags(data *dnsrecords.ZoneTransferData) SecurityWarnings {
 func collectSensitiveInfoFindings(a ZoneTransferAssessment) []ztFinding {
 	var f []ztFinding
 	if n := len(a.SensitiveInfo.EmailAddresses); n > 0 {
-		f = append(f, ztFinding{"Email addresses exposed in zone transfer", "medium",
-			fmt.Sprintf("Zone transfer exposed %d email addresses including: %s", n, joinWithLimit(a.SensitiveInfo.EmailAddresses, 5))})
+		f = append(f, ztFinding{
+			"Email addresses exposed in zone transfer", "medium",
+			fmt.Sprintf(
+				"Zone transfer exposed %d email addresses including: %s",
+				n,
+				joinWithLimit(a.SensitiveInfo.EmailAddresses, 5),
+			),
+		})
 	}
 	if n := len(a.SensitiveInfo.Credentials); n > 0 {
-		f = append(f, ztFinding{"Credentials exposed in zone transfer", "critical",
-			fmt.Sprintf("Zone transfer exposed %d possible credentials or secrets", n)})
+		f = append(f, ztFinding{
+			"Credentials exposed in zone transfer", "critical",
+			fmt.Sprintf("Zone transfer exposed %d possible credentials or secrets", n),
+		})
 	}
 	if n := len(a.SensitiveInfo.ApiKeys); n > 0 {
-		f = append(f, ztFinding{"API keys exposed in zone transfer", "critical",
-			fmt.Sprintf("Zone transfer exposed %d possible API keys or tokens", n)})
+		f = append(f, ztFinding{
+			"API keys exposed in zone transfer", "critical",
+			fmt.Sprintf("Zone transfer exposed %d possible API keys or tokens", n),
+		})
 	}
 	if n := len(a.SensitiveInfo.InternalHosts); n > 0 {
-		f = append(f, ztFinding{"Internal hostnames exposed in zone transfer", "medium",
-			fmt.Sprintf("Zone transfer exposed %d internal hostnames including: %s", n, joinWithLimit(a.SensitiveInfo.InternalHosts, 5))})
+		f = append(f, ztFinding{
+			"Internal hostnames exposed in zone transfer", "medium",
+			fmt.Sprintf(
+				"Zone transfer exposed %d internal hostnames including: %s",
+				n,
+				joinWithLimit(a.SensitiveInfo.InternalHosts, 5),
+			),
+		})
 	}
 	return f
 }
@@ -312,12 +342,24 @@ func collectSensitiveInfoFindings(a ZoneTransferAssessment) []ztFinding {
 func collectInternalExposureFindings(a ZoneTransferAssessment) []ztFinding {
 	var f []ztFinding
 	if n := len(a.InternalExposure.InternalIPs); n > 0 {
-		f = append(f, ztFinding{"Internal IP addresses exposed in zone transfer", "high",
-			fmt.Sprintf("Zone transfer exposed %d internal IP addresses including: %s", n, joinWithLimit(a.InternalExposure.InternalIPs, 5))})
+		f = append(f, ztFinding{
+			"Internal IP addresses exposed in zone transfer", "high",
+			fmt.Sprintf(
+				"Zone transfer exposed %d internal IP addresses including: %s",
+				n,
+				joinWithLimit(a.InternalExposure.InternalIPs, 5),
+			),
+		})
 	}
 	if n := len(a.InternalExposure.DevelopmentEnv); n > 0 {
-		f = append(f, ztFinding{"Development environments exposed in zone transfer", "medium",
-			fmt.Sprintf("Zone transfer exposed %d development/test environment hostnames including: %s", n, joinWithLimit(a.InternalExposure.DevelopmentEnv, 5))})
+		f = append(f, ztFinding{
+			"Development environments exposed in zone transfer", "medium",
+			fmt.Sprintf(
+				"Zone transfer exposed %d development/test environment hostnames including: %s",
+				n,
+				joinWithLimit(a.InternalExposure.DevelopmentEnv, 5),
+			),
+		})
 	}
 	return f
 }
@@ -325,16 +367,33 @@ func collectInternalExposureFindings(a ZoneTransferAssessment) []ztFinding {
 func collectSecurityFlagFindings(a ZoneTransferAssessment) []ztFinding {
 	var f []ztFinding
 	if n := len(a.SecurityFlags.SpfIssues); n > 0 {
-		f = append(f, ztFinding{"SPF configuration issues identified", "medium",
-			fmt.Sprintf("Zone transfer revealed %d SPF configuration issues: %s", n, joinWithLimit(a.SecurityFlags.SpfIssues, 3))})
+		f = append(f, ztFinding{
+			"SPF configuration issues identified", "medium",
+			fmt.Sprintf(
+				"Zone transfer revealed %d SPF configuration issues: %s",
+				n,
+				joinWithLimit(a.SecurityFlags.SpfIssues, 3),
+			),
+		})
 	}
 	if n := len(a.SecurityFlags.DmarcIssues); n > 0 {
-		f = append(f, ztFinding{"DMARC configuration issues identified", "medium",
-			fmt.Sprintf("Zone transfer revealed %d DMARC configuration issues: %s", n, joinWithLimit(a.SecurityFlags.DmarcIssues, 3))})
+		f = append(f, ztFinding{
+			"DMARC configuration issues identified", "medium",
+			fmt.Sprintf(
+				"Zone transfer revealed %d DMARC configuration issues: %s",
+				n,
+				joinWithLimit(a.SecurityFlags.DmarcIssues, 3),
+			),
+		})
 	}
 	if n := len(a.SecurityFlags.SuspiciousText); n > 0 {
-		f = append(f, ztFinding{"Suspicious text patterns in DNS records", "medium",
-			fmt.Sprintf("Zone transfer revealed %d suspicious text patterns in DNS records that may indicate security issues", n)})
+		f = append(f, ztFinding{
+			"Suspicious text patterns in DNS records", "medium",
+			fmt.Sprintf(
+				"Zone transfer revealed %d suspicious text patterns in DNS records that may indicate security issues",
+				n,
+			),
+		})
 	}
 	return f
 }

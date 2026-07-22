@@ -25,12 +25,12 @@ const (
 	IssueDKIMMissingTags = "missing_tags"
 	IssueDKIMMissing     = "missing_dkim"
 
-	IssueDMARCMissing      = "missing_dmarc"
-	IssueDMARCWeakPolicy   = "weak_dmarc_policy"
-	IssueDMARCQuarantine   = "quarantine_dmarc_policy"
-	IssueDMARCReducedPct   = "dmarc_reduced_pct"
-	IssueDMARCWeakSubPol   = "dmarc_weak_subdomain_policy"
-	IssueDMARCMissingTags  = "dmarc_missing_tags"
+	IssueDMARCMissing     = "missing_dmarc"
+	IssueDMARCWeakPolicy  = "weak_dmarc_policy"
+	IssueDMARCQuarantine  = "quarantine_dmarc_policy"
+	IssueDMARCReducedPct  = "dmarc_reduced_pct"
+	IssueDMARCWeakSubPol  = "dmarc_weak_subdomain_policy"
+	IssueDMARCMissingTags = "dmarc_missing_tags"
 
 	IssueBIMIRequiresDMARC = "bimi_requires_enforced_dmarc"
 	IssueBIMIInvalidLogo   = "bimi_invalid_logo"
@@ -127,8 +127,13 @@ func (d EmailSecurityDetector) spfFindings(ev EmailSecurityEvidence) []checks.Fi
 func (d EmailSecurityDetector) spfVerdict(v string, handlesEmail bool) (checks.Finding, bool) {
 	switch {
 	case spfPermitsAll(v):
-		return ef(IssueSPFPermitAll, "", "critical", "SPF permits all senders",
-			"SPF policy permits all senders ('+all'/'all'), allowing anyone to spoof the domain"), true
+		return ef(
+			IssueSPFPermitAll,
+			"",
+			"critical",
+			"SPF permits all senders",
+			"SPF policy permits all senders ('+all'/'all'), allowing anyone to spoof the domain",
+		), true
 	case strings.Contains(v, " ?all"):
 		return ef(IssueSPFWeakPolicy, "", "high", "SPF uses ?all",
 			"SPF policy uses '?all' which is too permissive"), true
@@ -204,20 +209,33 @@ func (d EmailSecurityDetector) dkimFindings(ev EmailSecurityEvidence) []checks.F
 			}
 			if strings.Contains(value, "t=y") && !seen[IssueDKIMTestMode] {
 				seen[IssueDKIMTestMode] = true
-				out = append(out, ef(IssueDKIMTestMode, sel.Selector, "medium", "DKIM test mode enabled",
-					"DKIM record has testing mode enabled"))
+				out = append(
+					out,
+					ef(IssueDKIMTestMode, sel.Selector, "medium", "DKIM test mode enabled",
+						"DKIM record has testing mode enabled"),
+				)
 			}
 			if !strings.Contains(value, "k=") && !seen[IssueDKIMMissingTags] {
 				seen[IssueDKIMMissingTags] = true
-				out = append(out, ef(IssueDKIMMissingTags, sel.Selector, "info", "DKIM missing tags",
-					"DKIM record omits the recommended 'k=' key-type tag"))
+				out = append(
+					out,
+					ef(IssueDKIMMissingTags, sel.Selector, "info", "DKIM missing tags",
+						"DKIM record omits the recommended 'k=' key-type tag"),
+				)
 			}
 		}
 	}
 	if !foundValid && ev.HandlesEmail && sawAuthoritative {
-		out = append(out, ef(IssueDKIMMissing, "", "high", "Missing DKIM",
-			fmt.Sprintf("No DKIM records found for any common selectors and domain has MX records. Checked: %s",
-				strings.Join(ev.DKIMSelectorsChecked, ", "))))
+		out = append(out, ef(
+			IssueDKIMMissing,
+			"",
+			"high",
+			"Missing DKIM",
+			fmt.Sprintf(
+				"No DKIM records found for any common selectors and domain has MX records. Checked: %s",
+				strings.Join(ev.DKIMSelectorsChecked, ", "),
+			),
+		))
 	}
 	return out
 }
@@ -285,12 +303,29 @@ func dmarcRecordFindings(record string) []checks.Finding {
 	spWeaker := subPolicy != "" && dmarcPolicyRank(subPolicy) < dmarcPolicyRank(policy)
 	if enforcing {
 		if pct < 100 {
-			out = append(out, ef(IssueDMARCReducedPct, "", "medium", "DMARC partial coverage",
-				fmt.Sprintf("DMARC pct=%d applies the policy to only part of the mail stream", pct)))
+			out = append(out, ef(
+				IssueDMARCReducedPct,
+				"",
+				"medium",
+				"DMARC partial coverage",
+				fmt.Sprintf(
+					"DMARC pct=%d applies the policy to only part of the mail stream",
+					pct,
+				),
+			))
 		}
 		if spWeaker {
-			out = append(out, ef(IssueDMARCWeakSubPol, "", "medium", "DMARC weak subdomain policy",
-				fmt.Sprintf("DMARC subdomain policy 'sp=%s' is weaker than the domain policy 'p=%s'", subPolicy, policy)))
+			out = append(out, ef(
+				IssueDMARCWeakSubPol,
+				"",
+				"medium",
+				"DMARC weak subdomain policy",
+				fmt.Sprintf(
+					"DMARC subdomain policy 'sp=%s' is weaker than the domain policy 'p=%s'",
+					subPolicy,
+					policy,
+				),
+			))
 		}
 	}
 	if missingTags {
@@ -395,22 +430,45 @@ func (d EmailSecurityDetector) mtaStsFindings(ev EmailSecurityEvidence) []checks
 	}
 	policy, ok := parseMTASTSPolicy(ev.MTASTSPolicyBody)
 	if !ev.MTASTSPolicyReached || ev.MTASTSPolicyStatus != 200 || !ok {
-		return []checks.Finding{ef(IssueMTASTSPolicyUnreachable, "", "low", "MTA-STS policy unreachable",
-			"MTA-STS TXT record is published but its HTTPS policy file could not be fetched or parsed")}
+		return []checks.Finding{
+			ef(
+				IssueMTASTSPolicyUnreachable,
+				"",
+				"low",
+				"MTA-STS policy unreachable",
+				"MTA-STS TXT record is published but its HTTPS policy file could not be fetched or parsed",
+			),
+		}
 	}
 	var out []checks.Finding
 	if policy.mode != "enforce" {
-		out = append(out, ef(IssueMTASTSModeNotEnforcing, "", "low", "MTA-STS not enforcing",
-			fmt.Sprintf("MTA-STS policy mode is %q; only mode=enforce protects mail in transit", policy.mode)))
+		out = append(out, ef(
+			IssueMTASTSModeNotEnforcing,
+			"",
+			"low",
+			"MTA-STS not enforcing",
+			fmt.Sprintf(
+				"MTA-STS policy mode is %q; only mode=enforce protects mail in transit",
+				policy.mode,
+			),
+		))
 	}
 	if !mxSetCovered(policy.mx, ev.MXTargets) {
 		out = append(out, ef(IssueMTASTSMXMismatch, "", "medium", "MTA-STS MX mismatch",
 			"MTA-STS policy mx list does not cover the domain's published MX hosts"))
 	}
 	if policy.maxAge < d.MTASTSMinMaxAge {
-		out = append(out, ef(IssueMTASTSShortMaxAge, "", "info", "MTA-STS short max_age",
-			fmt.Sprintf("MTA-STS max_age is %ds; a short window weakens downgrade protection (recommend >= %ds)",
-				policy.maxAge, d.MTASTSMinMaxAge)))
+		out = append(out, ef(
+			IssueMTASTSShortMaxAge,
+			"",
+			"info",
+			"MTA-STS short max_age",
+			fmt.Sprintf(
+				"MTA-STS max_age is %ds; a short window weakens downgrade protection (recommend >= %ds)",
+				policy.maxAge,
+				d.MTASTSMinMaxAge,
+			),
+		))
 	}
 	return out
 }

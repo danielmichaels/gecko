@@ -88,7 +88,11 @@ func (d NameserverHealthDetector) Detect(ev NameserverHealthEvidence) ([]checks.
 					EntityKey: ns.Nameserver + "|" + ev.RecordType,
 					Severity:  sev,
 					Title:     "Nameserver response is slow",
-					Details:   fmt.Sprintf("Nameserver responded in %dms (exceeds %dms)", ns.LatencyMs, threshold),
+					Details: fmt.Sprintf(
+						"Nameserver responded in %dms (exceeds %dms)",
+						ns.LatencyMs,
+						threshold,
+					),
 				})
 			}
 		}
@@ -102,7 +106,9 @@ func (d NameserverHealthDetector) Detect(ev NameserverHealthEvidence) ([]checks.
 
 // latencyTier maps a latency onto its exceeded threshold tier, or ok=false when
 // under the info floor (compliant, no finding).
-func (d NameserverHealthDetector) latencyTier(ms int32) (severity string, threshold int32, ok bool) {
+func (d NameserverHealthDetector) latencyTier(
+	ms int32,
+) (severity string, threshold int32, ok bool) {
 	switch {
 	case ms >= d.LatencyMediumMs:
 		return "medium", d.LatencyMediumMs, true
@@ -123,7 +129,9 @@ type nsAnswer struct {
 // consistencyFinding flags divergent apex SOA serials across the reachable
 // nameservers. Kept low severity and worded as possibly-transient: this check has
 // no cross-scan memory, so propagation lag is not escalated.
-func (d NameserverHealthDetector) consistencyFinding(ev NameserverHealthEvidence) (checks.Finding, bool) {
+func (d NameserverHealthDetector) consistencyFinding(
+	ev NameserverHealthEvidence,
+) (checks.Finding, bool) {
 	var answers []nsAnswer
 	for _, ns := range ev.Nameservers {
 		if ns.Reached && ns.ApexSerial != "" {
@@ -153,7 +161,9 @@ func (d NameserverHealthDetector) consistencyFinding(ev NameserverHealthEvidence
 		Severity:  "low",
 		Title:     "Nameservers return divergent answers",
 		Details: "Authoritative nameservers return divergent apex SOA records (may be transient propagation): " +
-			summarizeSerials(answers),
+			summarizeSerials(
+				answers,
+			),
 		Evidence: evJSON,
 	}, true
 }

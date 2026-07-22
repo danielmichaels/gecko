@@ -37,14 +37,51 @@ func TestNameserverHealthReachability(t *testing.T) {
 		wantIT string
 	}{
 		{"healthy -> nothing", healthyProbe("ns1.example.com", "2026072201"), ""},
-		{"probed but not reached -> unreachable", NameserverProbeEvidence{Nameserver: "ns1.example.com", Probed: true, Reached: false}, IssueNSUnreachable},
-		{"not probed (rate limited) -> nothing", NameserverProbeEvidence{Nameserver: "ns1.example.com", Probed: false}, ""},
-		{"reached, tcp probed but fails -> no_tcp", NameserverProbeEvidence{Nameserver: "ns1.example.com", Probed: true, Reached: true, TCPProbed: true, TCPOK: false, HasEDNS: true, LatencyMs: 50}, IssueNSNoTCPSupport},
-		{"reached, no edns -> no_edns", NameserverProbeEvidence{Nameserver: "ns1.example.com", Probed: true, Reached: true, TCPProbed: true, TCPOK: true, HasEDNS: false, LatencyMs: 50}, IssueNSNoEDNSSupport},
+		{
+			"probed but not reached -> unreachable",
+			NameserverProbeEvidence{Nameserver: "ns1.example.com", Probed: true, Reached: false},
+			IssueNSUnreachable,
+		},
+		{
+			"not probed (rate limited) -> nothing",
+			NameserverProbeEvidence{Nameserver: "ns1.example.com", Probed: false},
+			"",
+		},
+		{
+			"reached, tcp probed but fails -> no_tcp",
+			NameserverProbeEvidence{
+				Nameserver: "ns1.example.com",
+				Probed:     true,
+				Reached:    true,
+				TCPProbed:  true,
+				TCPOK:      false,
+				HasEDNS:    true,
+				LatencyMs:  50,
+			},
+			IssueNSNoTCPSupport,
+		},
+		{
+			"reached, no edns -> no_edns",
+			NameserverProbeEvidence{
+				Nameserver: "ns1.example.com",
+				Probed:     true,
+				Reached:    true,
+				TCPProbed:  true,
+				TCPOK:      true,
+				HasEDNS:    false,
+				LatencyMs:  50,
+			},
+			IssueNSNoEDNSSupport,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, _ := d.Detect(NameserverHealthEvidence{RecordType: "SOA", Nameservers: []NameserverProbeEvidence{tt.probe}})
+			got, _ := d.Detect(
+				NameserverHealthEvidence{
+					RecordType:  "SOA",
+					Nameservers: []NameserverProbeEvidence{tt.probe},
+				},
+			)
 			var its []string
 			for _, f := range got {
 				its = append(its, f.IssueType)
@@ -77,12 +114,17 @@ func TestNameserverHealthLatencyTiers(t *testing.T) {
 		ms      int32
 		wantSev string // "" = no finding
 	}{
-		{50, ""}, {149, ""}, {150, "info"}, {399, "info"}, {400, "low"}, {899, "low"}, {900, "medium"}, {5000, "medium"},
+		{
+			50,
+			"",
+		}, {149, ""}, {150, "info"}, {399, "info"}, {400, "low"}, {899, "low"}, {900, "medium"}, {5000, "medium"},
 	}
 	for _, tt := range tests {
 		p := healthyProbe("ns1.example.com", "2026072201")
 		p.LatencyMs = tt.ms
-		got, _ := d.Detect(NameserverHealthEvidence{RecordType: "SOA", Nameservers: []NameserverProbeEvidence{p}})
+		got, _ := d.Detect(
+			NameserverHealthEvidence{RecordType: "SOA", Nameservers: []NameserverProbeEvidence{p}},
+		)
 		var sev string
 		for _, f := range got {
 			if f.IssueType == IssueNSHighLatency {
@@ -102,10 +144,12 @@ func TestNameserverHealthConsistency(t *testing.T) {
 	d := nsHealthDetector()
 
 	t.Run("agreeing serials -> nothing", func(t *testing.T) {
-		got, _ := d.Detect(NameserverHealthEvidence{RecordType: "SOA", Nameservers: []NameserverProbeEvidence{
-			healthyProbe("ns1.example.com", "2026072201"),
-			healthyProbe("ns2.example.com", "2026072201"),
-		}})
+		got, _ := d.Detect(
+			NameserverHealthEvidence{RecordType: "SOA", Nameservers: []NameserverProbeEvidence{
+				healthyProbe("ns1.example.com", "2026072201"),
+				healthyProbe("ns2.example.com", "2026072201"),
+			}},
+		)
 		for _, f := range got {
 			if f.IssueType == IssueNSResolverMismatch {
 				t.Fatal("agreeing serials wrongly flagged")
@@ -114,10 +158,12 @@ func TestNameserverHealthConsistency(t *testing.T) {
 	})
 
 	t.Run("divergent serials -> resolver_mismatch low, keyed by record_type", func(t *testing.T) {
-		got, _ := d.Detect(NameserverHealthEvidence{RecordType: "SOA", Nameservers: []NameserverProbeEvidence{
-			healthyProbe("ns1.example.com", "2026072201"),
-			healthyProbe("ns2.example.com", "2026072199"),
-		}})
+		got, _ := d.Detect(
+			NameserverHealthEvidence{RecordType: "SOA", Nameservers: []NameserverProbeEvidence{
+				healthyProbe("ns1.example.com", "2026072201"),
+				healthyProbe("ns2.example.com", "2026072199"),
+			}},
+		)
 		var f *checks.Finding
 		for i := range got {
 			if got[i].IssueType == IssueNSResolverMismatch {
@@ -136,10 +182,12 @@ func TestNameserverHealthConsistency(t *testing.T) {
 	})
 
 	t.Run("unreached nameservers excluded from consistency", func(t *testing.T) {
-		got, _ := d.Detect(NameserverHealthEvidence{RecordType: "SOA", Nameservers: []NameserverProbeEvidence{
-			healthyProbe("ns1.example.com", "2026072201"),
-			{Nameserver: "ns2.example.com", Probed: true, Reached: false},
-		}})
+		got, _ := d.Detect(
+			NameserverHealthEvidence{RecordType: "SOA", Nameservers: []NameserverProbeEvidence{
+				healthyProbe("ns1.example.com", "2026072201"),
+				{Nameserver: "ns2.example.com", Probed: true, Reached: false},
+			}},
+		)
 		for _, f := range got {
 			if f.IssueType == IssueNSResolverMismatch {
 				t.Fatal("unreached NS should not create a divergence")

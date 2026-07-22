@@ -44,7 +44,9 @@ func TestZoneTransferExposed(t *testing.T) {
 		Attempts: []ZoneTransferAttemptEvidence{
 			{
 				Nameserver: "ns1.example.com:53", TransferType: "AXFR", Successful: true,
-				ResponseData: ztData(txtRecord("_dmarc.example.com", "v=spf1 include:x contact admin@example.com")),
+				ResponseData: ztData(
+					txtRecord("_dmarc.example.com", "v=spf1 include:x contact admin@example.com"),
+				),
 			},
 		},
 	})
@@ -70,18 +72,31 @@ func TestZoneTransferExposed(t *testing.T) {
 func TestZoneTransferUnparseableStillFires(t *testing.T) {
 	got, _ := ZoneTransferDetector{}.Detect(ZoneTransferEvidence{
 		Attempts: []ZoneTransferAttemptEvidence{
-			{Nameserver: "ns1.example.com:53", TransferType: "AXFR", Successful: true, ResponseData: []byte("not json")},
+			{
+				Nameserver:   "ns1.example.com:53",
+				TransferType: "AXFR",
+				Successful:   true,
+				ResponseData: []byte("not json"),
+			},
 		},
 	})
 	if len(got) != 1 {
-		t.Fatalf("unparseable-but-successful transfer produced %d findings, want 1 (the transfer succeeded)", len(got))
+		t.Fatalf(
+			"unparseable-but-successful transfer produced %d findings, want 1 (the transfer succeeded)",
+			len(got),
+		)
 	}
 }
 
 func TestZoneTransferMixedAttempts(t *testing.T) {
 	got, _ := ZoneTransferDetector{}.Detect(ZoneTransferEvidence{
 		Attempts: []ZoneTransferAttemptEvidence{
-			{Nameserver: "ns1.example.com:53", TransferType: "AXFR", Successful: true, ResponseData: ztData()},
+			{
+				Nameserver:   "ns1.example.com:53",
+				TransferType: "AXFR",
+				Successful:   true,
+				ResponseData: ztData(),
+			},
 			{Nameserver: "ns2.example.com:53", TransferType: "AXFR", Successful: false},
 		},
 	})

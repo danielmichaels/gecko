@@ -67,7 +67,10 @@ func (DNSSECDetector) Detect(ev DNSSECEvidence) ([]checks.Finding, error) {
 				IssueType: IssueDNSSECWeakAlgorithm,
 				Severity:  "medium",
 				Title:     "Deprecated DNSSEC signing algorithm",
-				Details:   "DNSSEC uses deprecated signing algorithm(s): " + strings.Join(names, ", "),
+				Details: "DNSSEC uses deprecated signing algorithm(s): " + strings.Join(
+					names,
+					", ",
+				),
 			})
 		}
 	default:

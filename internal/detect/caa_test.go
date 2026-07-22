@@ -45,12 +45,18 @@ func TestCAADetect(t *testing.T) {
 		},
 		{
 			name: "only iodef, no issue tag -> allows_any_ca",
-			ev:   CAAEvidence{LookedUp: true, Records: []CAARecord{rec("iodef", "mailto:sec@example.com")}},
+			ev: CAAEvidence{
+				LookedUp: true,
+				Records:  []CAARecord{rec("iodef", "mailto:sec@example.com")},
+			},
 			want: []string{IssueCAAAllowsAnyCA},
 		},
 		{
 			name: "untrusted issuer, no iodef -> untrusted + missing_iodef",
-			ev:   CAAEvidence{LookedUp: true, Records: []CAARecord{rec("issue", "sketchy-ca.example")}},
+			ev: CAAEvidence{
+				LookedUp: true,
+				Records:  []CAARecord{rec("issue", "sketchy-ca.example")},
+			},
 			want: []string{IssueCAAMissingIodef, IssueCAAUntrustedIssuer},
 		},
 		{
@@ -58,7 +64,11 @@ func TestCAADetect(t *testing.T) {
 			ev: CAAEvidence{LookedUp: true, Records: []CAARecord{
 				rec("issue", ";"), rec("issue", "sketchy-ca.example"),
 			}},
-			want: []string{IssueCAAConflictingRecords, IssueCAAMissingIodef, IssueCAAUntrustedIssuer},
+			want: []string{
+				IssueCAAConflictingRecords,
+				IssueCAAMissingIodef,
+				IssueCAAUntrustedIssuer,
+			},
 		},
 		{
 			name: "unknown tag with critical flag -> unknown_critical (+missing_iodef, +allows_any_ca)",

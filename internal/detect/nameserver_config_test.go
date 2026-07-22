@@ -47,7 +47,10 @@ func TestNameserverConfigDetect(t *testing.T) {
 		unres.AStatus, unres.AAAAStatus = ResolutionEmpty, ResolutionEmpty
 		dangling := healthyNS("ns1.sketchy.example")
 		dangling.ApexStatus = ResolutionEmpty
-		ev := NameserverConfigEvidence{DomainName: "example.com", Nameservers: []NameserverEvidence{cname, unres, dangling}}
+		ev := NameserverConfigEvidence{
+			DomainName:  "example.com",
+			Nameservers: []NameserverEvidence{cname, unres, dangling},
+		}
 		got := nsConfigIssues(mustDetect(t, d, ev))
 		want := []string{
 			IssueDanglingNS + "@ns1.sketchy.example",
@@ -64,7 +67,10 @@ func TestNameserverConfigDetect(t *testing.T) {
 		ns := healthyNS("ns1.example.com")
 		ns.InBailiwick = true
 		ns.ApexStatus = ResolutionEmpty // would be dangling if judged
-		ev := NameserverConfigEvidence{DomainName: "example.com", Nameservers: []NameserverEvidence{ns, healthyNS("ns2.provider-b.net")}}
+		ev := NameserverConfigEvidence{
+			DomainName:  "example.com",
+			Nameservers: []NameserverEvidence{ns, healthyNS("ns2.provider-b.net")},
+		}
 		for _, f := range mustDetect(t, d, ev) {
 			if f.IssueType == IssueDanglingNS {
 				t.Fatalf("in-bailiwick NS wrongly flagged dangling")
@@ -73,7 +79,9 @@ func TestNameserverConfigDetect(t *testing.T) {
 	})
 
 	t.Run("too few nameservers, no same_provider double-signal", func(t *testing.T) {
-		ev := NameserverConfigEvidence{Nameservers: []NameserverEvidence{healthyNS("ns1.provider-a.com")}}
+		ev := NameserverConfigEvidence{
+			Nameservers: []NameserverEvidence{healthyNS("ns1.provider-a.com")},
+		}
 		got := nsConfigIssues(mustDetect(t, d, ev))
 		want := []string{IssueInsufficientNameservers + "@"}
 		if !equalStrings(got, want) {
@@ -103,7 +111,11 @@ func TestNameserverConfigDetect(t *testing.T) {
 	})
 }
 
-func mustDetect(t *testing.T, d NameserverConfigDetector, ev NameserverConfigEvidence) []checks.Finding {
+func mustDetect(
+	t *testing.T,
+	d NameserverConfigDetector,
+	ev NameserverConfigEvidence,
+) []checks.Finding {
 	t.Helper()
 	got, err := d.Detect(ev)
 	if err != nil {

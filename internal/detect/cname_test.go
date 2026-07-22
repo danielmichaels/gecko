@@ -124,9 +124,35 @@ func TestCNAMEChainHygiene(t *testing.T) {
 		ev     CNAMETargetEvidence
 		wantIT string
 	}{
-		{"ip literal", CNAMETargetEvidence{Target: "1.2.3.4", ResolutionStatus: ResolutionData, IsIPLiteral: true, ChainLength: 1}, IssuePointsToIP},
-		{"loop", CNAMETargetEvidence{Target: "a.example.com", ResolutionStatus: ResolutionData, ChainLooped: true, ChainLength: 3}, IssueCNAMELoop},
-		{"long chain", CNAMETargetEvidence{Target: "a.example.com", ResolutionStatus: ResolutionData, ChainLength: 9}, IssueLongChain},
+		{
+			"ip literal",
+			CNAMETargetEvidence{
+				Target:           "1.2.3.4",
+				ResolutionStatus: ResolutionData,
+				IsIPLiteral:      true,
+				ChainLength:      1,
+			},
+			IssuePointsToIP,
+		},
+		{
+			"loop",
+			CNAMETargetEvidence{
+				Target:           "a.example.com",
+				ResolutionStatus: ResolutionData,
+				ChainLooped:      true,
+				ChainLength:      3,
+			},
+			IssueCNAMELoop,
+		},
+		{
+			"long chain",
+			CNAMETargetEvidence{
+				Target:           "a.example.com",
+				ResolutionStatus: ResolutionData,
+				ChainLength:      9,
+			},
+			IssueLongChain,
+		},
 		{"short chain -> nothing", target("a.example.com"), ""},
 	}
 	for _, tt := range tests {
@@ -153,7 +179,12 @@ func TestCNAMEMultipleTargets(t *testing.T) {
 	d := cnameDetector()
 	ev := CNAMEEvidence{Targets: []CNAMETargetEvidence{
 		{Target: "a.example.com", ResolutionStatus: ResolutionEmpty, ChainLength: 1},
-		{Target: "b.example.com", ResolutionStatus: ResolutionData, IsIPLiteral: true, ChainLength: 1},
+		{
+			Target:           "b.example.com",
+			ResolutionStatus: ResolutionData,
+			IsIPLiteral:      true,
+			ChainLength:      1,
+		},
 		target("c.example.com"),
 	}}
 	got, _ := d.Detect(ev)

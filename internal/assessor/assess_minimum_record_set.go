@@ -41,7 +41,11 @@ func (a *Assessor) AssessMinimumRecordSet(ctx context.Context, domainUID string)
 		}
 	}
 
-	found, err := detect.MinimumRecordSetDetector{MinNameservers: recommendedNameserverCount}.Detect(ev)
+	found, err := detect.MinimumRecordSetDetector{
+		MinNameservers: recommendedNameserverCount,
+	}.Detect(
+		ev,
+	)
 	if err != nil {
 		return err
 	}
@@ -116,7 +120,8 @@ func (a *Assessor) resolveHost(host string) (lookedUp, resolves bool) {
 	}
 	aVals, aStatus := a.dnsClient.LookupWithStatus(host, dns.TypeA)
 	aaaaVals, aaaaStatus := a.dnsClient.LookupWithStatus(host, dns.TypeAAAA)
-	lookedUp = aStatus != dnsclient.ResolutionIndeterminate || aaaaStatus != dnsclient.ResolutionIndeterminate
+	lookedUp = aStatus != dnsclient.ResolutionIndeterminate ||
+		aaaaStatus != dnsclient.ResolutionIndeterminate
 	resolves = len(aVals) > 0 || len(aaaaVals) > 0
 	return lookedUp, resolves
 }

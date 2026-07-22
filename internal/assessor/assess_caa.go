@@ -44,7 +44,10 @@ func (a *Assessor) AssessCAA(ctx context.Context, domainUID string) error {
 
 	ev := detect.CAAEvidence{LookedUp: true, HasCert: a.domainHasCertificate(ctx, domain.ID)}
 	for _, r := range records {
-		ev.Records = append(ev.Records, detect.CAARecord{Tag: r.Tag, Value: r.Value, Flags: r.Flags})
+		ev.Records = append(
+			ev.Records,
+			detect.CAARecord{Tag: r.Tag, Value: r.Value, Flags: r.Flags},
+		)
 	}
 	found, err := detect.CAADetector{}.Detect(ev)
 	if err != nil {

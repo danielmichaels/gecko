@@ -70,7 +70,9 @@ func (d MinimumRecordSetDetector) Detect(ev MinimumRecordSetEvidence) ([]checks.
 			Title:     "Insufficient nameservers",
 			Details: fmt.Sprintf(
 				"Only %d nameserver(s) published; RFC 2182 recommends at least %d on separate networks",
-				ev.NSCount, d.MinNameservers),
+				ev.NSCount,
+				d.MinNameservers,
+			),
 		})
 	}
 
@@ -107,7 +109,10 @@ func (d MinimumRecordSetDetector) Detect(ev MinimumRecordSetEvidence) ([]checks.
 				IssueType: IssueSOATimersOutOfRange,
 				Severity:  "low",
 				Title:     "SOA timers outside recommended range",
-				Details:   "SOA timers outside RFC 1912 recommended ranges: " + strings.Join(offenders, ", "),
+				Details: "SOA timers outside RFC 1912 recommended ranges: " + strings.Join(
+					offenders,
+					", ",
+				),
 			})
 		}
 		if !serialLooksDateBased(ev.SOASerial) {
@@ -115,7 +120,10 @@ func (d MinimumRecordSetDetector) Detect(ev MinimumRecordSetEvidence) ([]checks.
 				IssueType: IssueSOASerialFormat,
 				Severity:  "info",
 				Title:     "SOA serial not date-based",
-				Details:   fmt.Sprintf("SOA serial %d is not in the advisory date-based YYYYMMDDnn format", ev.SOASerial),
+				Details: fmt.Sprintf(
+					"SOA serial %d is not in the advisory date-based YYYYMMDDnn format",
+					ev.SOASerial,
+				),
 			})
 		}
 		if ev.SOAMNameLookedUp && !ev.SOAMNameResolves {
@@ -123,7 +131,10 @@ func (d MinimumRecordSetDetector) Detect(ev MinimumRecordSetEvidence) ([]checks.
 				IssueType: IssueSOAMNameUnresolvable,
 				Severity:  "medium",
 				Title:     "SOA MNAME does not resolve",
-				Details:   fmt.Sprintf("SOA MNAME %q does not resolve to an A or AAAA record", ev.SOAMName),
+				Details: fmt.Sprintf(
+					"SOA MNAME %q does not resolve to an A or AAAA record",
+					ev.SOAMName,
+				),
 			})
 		}
 		if !rnameWellFormed(ev.SOARName) {
@@ -131,7 +142,10 @@ func (d MinimumRecordSetDetector) Detect(ev MinimumRecordSetEvidence) ([]checks.
 				IssueType: IssueSOARNameMalformed,
 				Severity:  "low",
 				Title:     "SOA RNAME malformed",
-				Details:   fmt.Sprintf("SOA RNAME %q is not a well-formed responsible-party address", ev.SOARName),
+				Details: fmt.Sprintf(
+					"SOA RNAME %q is not a well-formed responsible-party address",
+					ev.SOARName,
+				),
 			})
 		}
 	}
