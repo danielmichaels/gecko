@@ -108,6 +108,62 @@ func TestSubfinderDefaults(t *testing.T) {
 	}
 }
 
+func TestShouldStartEmbedded(t *testing.T) {
+	tests := []struct {
+		name        string
+		databaseURL string
+		embedded    bool
+		want        bool
+	}{
+		{name: "off, no url", embedded: false, databaseURL: "", want: false},
+		{name: "on, no url", embedded: true, databaseURL: "", want: true},
+		{name: "on, url set wins", embedded: true, databaseURL: "postgres://x", want: false},
+		{name: "off, url set", embedded: false, databaseURL: "postgres://x", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("DATABASE_URL", tt.databaseURL)
+			c := &Conf{}
+			c.Db.Embedded = tt.embedded
+			if got := ShouldStartEmbedded(c); got != tt.want {
+				t.Errorf("ShouldStartEmbedded() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestShouldSeedOnStartup(t *testing.T) {
+	tests := []struct {
+		name        string
+		databaseURL string
+		embedded    bool
+		seed        bool
+		want        bool
+	}{
+		{name: "embedded + seed", embedded: true, seed: true, want: true},
+		{name: "embedded, seed off", embedded: true, seed: false, want: false},
+		{name: "seed on but not embedded", embedded: false, seed: true, want: false},
+		{
+			name:        "url set disables",
+			embedded:    true,
+			seed:        true,
+			databaseURL: "postgres://x",
+			want:        false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("DATABASE_URL", tt.databaseURL)
+			c := &Conf{}
+			c.Db.Embedded = tt.embedded
+			c.Db.SeedOnStartup = tt.seed
+			if got := ShouldSeedOnStartup(c); got != tt.want {
+				t.Errorf("ShouldSeedOnStartup() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func ExampleAppConfig() {
 	type exampleStruct struct {
 		String string `env:"STRING"`

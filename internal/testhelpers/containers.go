@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/danielmichaels/gecko/assets"
+	"github.com/danielmichaels/gecko/internal/embeddedpg"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -57,16 +58,26 @@ var (
 	sharedContainerURL    string
 	sharedContainerUsers  int
 	sharedContainerSerial int
+
+	sharedEmbeddedMu     sync.Mutex
+	sharedEmbedded       *embeddedpg.Server
+	sharedEmbeddedURL    string
+	sharedEmbeddedUsers  int
+	sharedEmbeddedSerial int
 )
 
 // CreatePostgresContainer provisions an isolated Postgres database for a test.
 // When TEST_DATABASE_URL is set (Dagger/CI), it creates a uniquely-named
-// database on that shared server by cloning a migrated template database.
-// Otherwise it spins up a throwaway container via testcontainers, which
-// requires a local Docker daemon.
+// database on that shared server by cloning a migrated template database. When
+// GECKO_TEST_EMBEDDED_PG is set, it boots one shared in-process Postgres for the
+// test binary (no Docker daemon required). Otherwise it spins up a throwaway
+// container via testcontainers, which requires a local Docker daemon.
 func CreatePostgresContainer(ctx context.Context) (*PostgresContainer, error) {
 	if adminURL := os.Getenv("TEST_DATABASE_URL"); adminURL != "" {
 		return createSharedDatabase(ctx, adminURL)
+	}
+	if os.Getenv("GECKO_TEST_EMBEDDED_PG") != "" {
+		return createSharedEmbeddedDatabase(ctx)
 	}
 	return createSharedTestcontainerDatabase(ctx)
 }
@@ -144,10 +155,73 @@ func sharedTestcontainerAdminURL(ctx context.Context) (string, func(), error) {
 	return sharedContainerURL, release, nil
 }
 
+func createSharedEmbeddedDatabase(ctx context.Context) (*PostgresContainer, error) {
+	adminURL, release, err := sharedEmbeddedAdminURL()
+	if err != nil {
+		return nil, err
+	}
+	pc, err := createSharedDatabase(ctx, adminURL)
+	if err != nil {
+		release()
+		return nil, err
+	}
+	pc.releaseShared = release
+	return pc, nil
+}
+
+// sharedEmbeddedAdminURL boots a single embedded Postgres for the whole test
+// binary and hands out its admin URL, refcounted like the shared testcontainer:
+// the instance is stopped (and its temp data dir removed) when the last test
+// releases it.
+func sharedEmbeddedAdminURL() (string, func(), error) {
+	sharedEmbeddedMu.Lock()
+	defer sharedEmbeddedMu.Unlock()
+
+	if sharedEmbedded == nil {
+		srv, err := embeddedpg.Start(embeddedpg.Options{})
+		if err != nil {
+			return "", nil, err
+		}
+		sharedEmbedded = srv
+		sharedEmbeddedURL = srv.DSN
+		sharedEmbeddedSerial++
+	}
+
+	sharedEmbeddedUsers++
+	released := false
+	serial := sharedEmbeddedSerial
+	release := func() {
+		sharedEmbeddedMu.Lock()
+		defer sharedEmbeddedMu.Unlock()
+		if released {
+			return
+		}
+		released = true
+		sharedEmbeddedUsers--
+		if sharedEmbeddedUsers != 0 || sharedEmbedded == nil || sharedEmbeddedSerial != serial {
+			return
+		}
+		if err := sharedEmbedded.Stop(); err != nil {
+			slog.Error("failed to stop shared embedded postgres", "err", err)
+		}
+		sharedTemplatesMu.Lock()
+		for key := range sharedTemplates {
+			if strings.HasPrefix(key, sharedEmbeddedURL+"|") {
+				delete(sharedTemplates, key)
+			}
+		}
+		sharedTemplatesMu.Unlock()
+		sharedEmbedded = nil
+		sharedEmbeddedURL = ""
+	}
+
+	return sharedEmbeddedURL, release, nil
+}
+
 func createTestcontainer(ctx context.Context) (*postgres.PostgresContainer, string, error) {
 	pgContainer, err := postgres.Run(
 		ctx,
-		"postgres:16-alpine",
+		"postgres:18-alpine",
 		postgres.WithDatabase("postgres"),
 		postgres.WithUsername("postgres"),
 		postgres.WithPassword("postgres"),

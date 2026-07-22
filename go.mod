@@ -10,6 +10,7 @@ require (
 	github.com/briandowns/spinner v1.23.2
 	github.com/carlmjohnson/requests v0.24.3
 	github.com/danielgtaylor/huma/v2 v2.38.1-0.20260605013000-2b690545335b
+	github.com/fergusstrange/embedded-postgres v1.34.0
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/go-chi/httplog/v2 v2.1.1
 	github.com/jackc/pgx/v5 v5.9.2
@@ -176,6 +177,7 @@ require (
 	github.com/ulikunitz/xz v0.5.15 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
+	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8 // indirect
 	github.com/yuin/goldmark v1.7.4 // indirect
 	github.com/yuin/goldmark-emoji v1.0.3 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect

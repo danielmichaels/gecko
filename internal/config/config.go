@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -34,10 +35,34 @@ type dbConf struct {
 	User     string `env:"POSTGRES_USER,default=dbuser"`
 	Password string `env:"POSTGRES_PASSWORD,default=dbuser"`
 	// PG SSL MODES: allow, disable
-	SSLMode  string `env:"POSTGRES_SSL_MODE,default=disable"`
-	Port     int    `env:"POSTGRES_PORT,default=5432"`
-	MaxConns int    `env:"POSTGRES_MAX_CONNS,default=16"`
+	SSLMode string `env:"POSTGRES_SSL_MODE,default=disable"`
+	// EmbeddedStoreDir is the persistent data directory for the embedded Postgres
+	// instance (local dev / worktrees). Ignored unless Embedded is set.
+	EmbeddedStoreDir string `env:"POSTGRES_EMBEDDED_STORE_DIR,default=./tmp/postgres"`
+	Port             int    `env:"POSTGRES_PORT,default=5432"`
+	MaxConns         int    `env:"POSTGRES_MAX_CONNS,default=16"`
+	// Embedded starts an in-process Postgres for local dev/worktrees so no Docker
+	// is required. Default false so production can never self-host a database; an
+	// explicit DATABASE_URL also disables it (see ShouldStartEmbedded).
+	Embedded bool `env:"POSTGRES_EMBEDDED,default=false"`
+	// SeedOnStartup loads demo data when the embedded database is empty. Gated on
+	// Embedded (see ShouldSeedOnStartup) so it can never touch an external DB.
+	SeedOnStartup bool `env:"SEED_ON_STARTUP,default=true"`
 }
+
+// ShouldStartEmbedded reports whether the embedded Postgres server should start:
+// the flag is set and no external DATABASE_URL is present (an explicit external
+// URL always wins, matching store.NewDatabasePool).
+func ShouldStartEmbedded(cfg *Conf) bool {
+	return cfg.Db.Embedded && os.Getenv("DATABASE_URL") == ""
+}
+
+// ShouldSeedOnStartup reports whether demo data should be seeded at startup. It is
+// gated on the embedded server so it can never run against an external database.
+func ShouldSeedOnStartup(cfg *Conf) bool {
+	return ShouldStartEmbedded(cfg) && cfg.Db.SeedOnStartup
+}
+
 type authConf struct {
 	// Provider selects the auth backend: "local" (email/password) or "oidc" (stub).
 	Provider string `env:"AUTH_PROVIDER,default=local"`

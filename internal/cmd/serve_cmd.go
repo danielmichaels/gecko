@@ -44,6 +44,13 @@ func (s *ServeCmd) Run() error {
 
 	dbtx := store.New(setup.PgxPool)
 
+	// Seed demo data on a fresh embedded database before bootstrap, so the
+	// auto-bootstrapped owner adopts the seeded tenant. Non-fatal: the server
+	// still starts if seeding fails.
+	if err := maybeSeedOnStartup(setup); err != nil {
+		setup.Logger.Error("startup seed failed", "error", err)
+	}
+
 	if email, pass := setup.Config.Bootstrap.Email, setup.Config.Bootstrap.Password; email != "" &&
 		pass != "" {
 		_, created, berr := bootstrapOwner(

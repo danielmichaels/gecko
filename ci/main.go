@@ -28,7 +28,7 @@ func (m *Backend) Test(
 	src *dagger.Directory,
 ) (string, error) {
 	pg := dag.Container().
-		From("postgres:16-alpine").
+		From("postgres:18-alpine").
 		WithEnvVariable("POSTGRES_PASSWORD", "postgres").
 		WithEnvVariable("POSTGRES_USER", "postgres").
 		WithEnvVariable("POSTGRES_DB", "test-db").

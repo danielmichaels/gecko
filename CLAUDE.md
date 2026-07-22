@@ -8,9 +8,9 @@ Gecko is a DNS security tool (Go module `github.com/danielmichaels/gecko`). It s
 
 Tasks are defined in `Taskfile.yml` (run `task --list-all`). Common ones:
 
-- `task test` — full suite: `go test -race -v -cover ./...`. Run a single test directly: `go test -run TestName ./internal/service/...`.
-- `task serve` / `task worker` — run the HTTP server / job worker locally under `air` (live reload). `task cli -- <args>` runs the binary one-shot.
-- `task compose:up` — start the local stack (Postgres via `compose.yaml` `dev` profile), run Goose + River migrations, seed data, tail logs. `task compose:down` to stop.
+- `task test` — full suite: `go test -race -v -cover ./...`. Run a single test directly: `go test -run TestName ./internal/service/...`. `task test:embedded` runs the suite against an in-process Postgres (no Docker; `GECKO_TEST_EMBEDDED_PG=1`, downloads a PG binary on first run).
+- `task serve` / `task worker` — run the HTTP server / job worker locally under `air` (live reload). `task cli -- <args>` runs the binary one-shot. **Local dev defaults to embedded Postgres** (`.env` `POSTGRES_EMBEDDED=true`): `serve`/`worker` boot an in-process PG (`internal/embeddedpg`, `fergusstrange/embedded-postgres`) on `POSTGRES_PORT`, persist data under `POSTGRES_EMBEDDED_STORE_DIR` (`./tmp/postgres`), and on a fresh DB migrate (`store.MigrateUp`) + seed demo data + bootstrap the owner — no Docker required, and each worktree runs its own instance. `task dev:reset` wipes it; `task test:clean-orphans` clears leftover embedded test processes.
+- `task compose:up` — **opt-out path** (set `POSTGRES_EMBEDDED=false` or an explicit `DATABASE_URL` first): start the Docker stack (Postgres via `compose.yaml`), run Goose + River migrations, seed data, tail logs. `task compose:down` to stop. Note: the DB now runs `postgres:18` and mounts `gecko_db:/var/lib/postgresql`; an existing PG16 volume must be recreated once.
 - `task sqlc` — regenerate `internal/store` after changing `sql/queries/*.sql` or migrations. **Required** after any query/schema change.
 - `task ui` — `templ generate` + Tailwind build. Run after editing `.templ` sources or `assets/css/app.css`.
 - `task audit` — `betteralign` + `golines` + `golangci-lint`. Run after broad Go changes or formatting-sensitive edits.
@@ -20,7 +20,7 @@ Tasks are defined in `Taskfile.yml` (run `task --list-all`). Common ones:
 
 ## Architecture
 
-**Request → command → service → store/jobs.** A single `gecko` binary (Kong CLI in `cmd/gecko/main.go`, subcommands in `internal/cmd`) runs as `serve` (HTTP) or `worker` (jobs). `internal/cmd/cmd.go` `NewSetup` wires config + pgx pool + sqlc store + optional River client; `WithRiver(count, addWorkers)` decides whether a process registers workers (server runs without them).
+**Request → command → service → store/jobs.** A single `gecko` binary (Kong CLI in `cmd/gecko/main.go`, subcommands in `internal/cmd`) runs as `serve` (HTTP) or `worker` (jobs). `internal/cmd/cmd.go` `NewSetup` wires config + pgx pool + sqlc store + optional River client; `WithRiver(count, addWorkers)` decides whether a process registers workers (server runs without them). When `config.ShouldStartEmbedded` (local dev only), `NewSetup` first boots an embedded Postgres and runs `store.MigrateUp` against it before building the pool; `Setup.Close` stops it. This is gated so production (default `POSTGRES_EMBEDDED=false`, or any external `DATABASE_URL`) is unaffected.
 
 **HTTP layer** (`internal/server`): chi router + Huma (`humachi`) for the typed API, secured by `X-API-Key`. Handlers are thin — they unwrap the `auth.Principal` and delegate to the service layer, returning Huma errors directly. `internal/ui` is the separate browser-facing path: session-cookie middleware (`WebAuth`) + per-session CSRF, redirecting with 303. Templ + Tailwind UI is nascent (toolchain wired, assets embedded via `assets/embed.go`).
 
