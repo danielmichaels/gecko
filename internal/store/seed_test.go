@@ -33,7 +33,7 @@ func TestSeedDemo(t *testing.T) {
 	).Scan(&domains); err != nil {
 		t.Fatalf("count demo domains: %v", err)
 	}
-	if domains != 3 {
-		t.Errorf("demo domains = %d, want 3", domains)
+	if domains != 2 {
+		t.Errorf("demo domains = %d, want 2", domains)
 	}
 }

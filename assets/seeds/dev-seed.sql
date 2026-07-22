@@ -22,5 +22,5 @@ SELECT
     'active',
     'domain_demo' || LPAD(d.n::text, 5, '0')
 FROM demo,
-     (VALUES (1, 'example.com'), (2, 'iana.org'), (3, 'cloudflare.com')) AS d(n, name)
+     (VALUES (1, 'danielms.site'), (2, 'nslookup.io')) AS d(n, name)
 ON CONFLICT (tenant_id, name) DO NOTHING;
