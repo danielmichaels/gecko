@@ -7,12 +7,27 @@ import (
 	"os"
 
 	"github.com/danielmichaels/gecko/internal/checks"
+	"github.com/danielmichaels/gecko/internal/detect"
 	"github.com/danielmichaels/gecko/internal/dnsclient"
 	"github.com/danielmichaels/gecko/internal/findings"
 	"github.com/danielmichaels/gecko/internal/observer"
 
 	"github.com/danielmichaels/gecko/internal/store"
 )
+
+// resolutionString maps the resolver's tri-state onto the detect package's string
+// form, so collectors record it in evidence without leaking the dnsclient type and
+// a failed lookup (Indeterminate) stays distinguishable from authoritative absence.
+func resolutionString(s dnsclient.ResolutionStatus) string {
+	switch s {
+	case dnsclient.ResolutionData:
+		return detect.ResolutionData
+	case dnsclient.ResolutionEmpty:
+		return detect.ResolutionEmpty
+	default:
+		return detect.ResolutionIndeterminate
+	}
+}
 
 type Config struct {
 	Logger    *slog.Logger

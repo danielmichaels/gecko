@@ -7,14 +7,13 @@ import (
 	"fmt"
 	"net"
 	"strings"
-	"sync/atomic"
 
+	"github.com/danielmichaels/gecko/internal/detect"
 	"github.com/danielmichaels/gecko/internal/dnsclient"
 	"github.com/danielmichaels/gecko/internal/observer"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/miekg/dns"
-	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -134,29 +133,51 @@ func (a *Assessor) AssessCNAMEDangling(ctx context.Context, domainUID string) er
 		a.logger.ErrorContext(ctx, "Failed to retrieve CNAME records", "error", err)
 		return err
 	}
-	if len(records) == 0 {
-		a.logger.InfoContext(ctx, "No CNAME records to assess", "domain", domain.Uid)
-		return nil
-	}
 
-	var danglingFound atomic.Int64
-	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(probeConcurrency)
+	ev := detect.CNAMEEvidence{}
 	for _, record := range records {
-		g.Go(func() error {
-			if a.assessCNAMETarget(gctx, domain.ID, record) {
-				danglingFound.Add(1)
-			}
-			return nil
-		})
+		ev.Targets = append(ev.Targets, a.collectCNAMETarget(ctx, record))
 	}
-	_ = g.Wait()
+	found, err := detect.CNAMEDetector{LongChainThreshold: longChainThreshold}.Detect(ev)
+	if err != nil {
+		return err
+	}
+	return a.reconcile(ctx, domain.Name, detect.CheckCNAME, found)
+}
 
-	a.logger.InfoContext(ctx, "assessed CNAME records",
-		"domain", domain.Uid,
-		"records", len(records),
-		"dangling_findings", danglingFound.Load())
-	return nil
+// collectCNAMETarget gathers one CNAME target's live resolution, takeover-provider
+// fingerprint, conditional HTTP probe, and chain-hygiene facts into evidence. The
+// probe fires only for a takeover-able provider that still resolves -- the only
+// case the verdict consults it (matching the pre-refactor short-circuit).
+func (a *Assessor) collectCNAMETarget(
+	ctx context.Context,
+	record store.CnameRecords,
+) detect.CNAMETargetEvidence {
+	target := record.Target
+	_, res := a.dnsClient.LookupWithStatus(target, dns.TypeA)
+	fp, fpMatched := matchFingerprint(target)
+
+	t := detect.CNAMETargetEvidence{
+		Target:           target,
+		ResolutionStatus: resolutionString(res),
+		FPMatched:        fpMatched,
+		IsIPLiteral:      net.ParseIP(strings.TrimSuffix(target, ".")) != nil,
+	}
+	if fpMatched {
+		t.Provider = fp.Provider
+		t.TakeoverProvider = fp.TakeoverPossible
+		t.FPErrorBody = fp.ErrorBody
+	}
+	if fpMatched && fp.TakeoverPossible && res == dnsclient.ResolutionData {
+		probe := a.prober.Probe(ctx, target)
+		t.ProbeReached = probe.Reached
+		t.ProbeStatusCode = probe.StatusCode
+		t.ProbeBody = probe.Body
+	}
+	length, looped := a.walkCNAMEChain(record.Target)
+	t.ChainLength = length
+	t.ChainLooped = looped
+	return t
 }
 
 // assessCNAMETarget evaluates a single CNAME record for both the dangling/takeover

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/danielmichaels/gecko/internal/detect"
 	"github.com/danielmichaels/gecko/internal/dnsclient"
 	"github.com/danielmichaels/gecko/internal/observer"
 	"github.com/danielmichaels/gecko/internal/store"
@@ -94,27 +95,31 @@ func (a *Assessor) AssessNameserverHealth(ctx context.Context, domainUID string)
 		return err
 	}
 
-	var reachable []nsAnswer
-
+	ev := detect.NameserverHealthEvidence{RecordType: nsHealthRecordType}
 	for _, r := range records {
 		host := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(r.Nameserver)), ".")
 		probe := a.nsProber.ProbeNameserver(net.JoinHostPort(host, "53"), domain.Name, dns.TypeSOA)
-
-		if err := a.recordReachability(ctx, domain.ID, r, probe); err != nil {
-			return err
-		}
-		if !probe.Reachable {
-			continue
-		}
-		if err := a.recordLatency(ctx, domain.ID, r.Nameserver, probe.RTT); err != nil {
-			return err
-		}
-		if serial := strings.Join(probe.Answers, " "); serial != "" {
-			reachable = append(reachable, nsAnswer{nameserver: r.Nameserver, serial: serial})
-		}
+		ev.Nameservers = append(ev.Nameservers, detect.NameserverProbeEvidence{
+			Nameserver: r.Nameserver,
+			Probed:     true,
+			Reached:    probe.Reachable,
+			TCPProbed:  true,
+			TCPOK:      probe.TCPOK,
+			HasEDNS:    probe.HasEDNS,
+			LatencyMs:  int32(probe.RTT.Milliseconds()),
+			ApexSerial: strings.Join(probe.Answers, " "),
+		})
 	}
 
-	return a.recordConsistency(ctx, domain.ID, reachable)
+	found, err := detect.NameserverHealthDetector{
+		LatencyInfoMs:   nsLatencyInfoMs,
+		LatencyLowMs:    nsLatencyLowMs,
+		LatencyMediumMs: nsLatencyMediumMs,
+	}.Detect(ev)
+	if err != nil {
+		return err
+	}
+	return a.reconcile(ctx, domain.Name, detect.CheckNameserverHealth, found)
 }
 
 func (a *Assessor) recordReachability(
