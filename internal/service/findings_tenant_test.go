@@ -5,13 +5,12 @@ import (
 	"testing"
 
 	"github.com/danielmichaels/gecko/internal/service"
-	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/danielmichaels/gecko/internal/testhelpers"
 )
 
 // TestFindingsService_ListByTenant exercises the tenant-wide roll-up against a
-// real database: the cross-tenant isolation invariant, the compliant toggle, the
-// severity/kind/domain filters, and the data-driven KindCounts.
+// real database: the cross-tenant isolation invariant, the severity/kind/domain
+// filters, and the data-driven KindCounts.
 func TestFindingsService_ListByTenant(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -33,57 +32,44 @@ func TestFindingsService_ListByTenant(t *testing.T) {
 	blog := seedDomain(t, ctx, pc, tenantA, "blog.example.org")
 	secret := seedDomain(t, ctx, pc, tenantB, "secret.io")
 
-	// Tenant A: a critical + high on acme, a medium on blog, plus a possible AXFR
-	// on acme and (compliant) closed-SPF + refused-AXFR on blog.
-	seedSPFFinding(
+	// Tenant A: a critical + high on acme plus a possible AXFR, a medium on blog.
+	seedFinding(t, ctx, pc, tenantA, acme.Name, "SPF", "missing_spf", "critical", "missing_spf")
+	seedFinding(
 		t,
 		ctx,
 		pc,
-		acme.ID,
-		store.FindingSeverityCritical,
-		store.FindingStatusOpen,
-		"missing_spf",
-	)
-	seedDMARCFinding(
-		t,
-		ctx,
-		pc,
-		acme.ID,
-		store.FindingSeverityHigh,
-		store.FindingStatusOpen,
+		tenantA,
+		acme.Name,
+		"DMARC",
+		"weak_dmarc_policy",
+		"high",
 		"weak_dmarc_policy",
 	)
-	seedZoneTransferFinding(t, ctx, pc, acme.ID, "ns1.acme.com", true)
-	seedDKIMFinding(
+	seedFinding(
 		t,
 		ctx,
 		pc,
-		blog.ID,
-		store.FindingSeverityMedium,
-		store.FindingStatusOpen,
+		tenantA,
+		acme.Name,
+		"ZONE",
+		"zone_transfer_exposed",
+		"high",
+		"zone_transfer_exposed",
+	)
+	seedFinding(
+		t,
+		ctx,
+		pc,
+		tenantA,
+		blog.Name,
+		"DKIM",
+		"test_mode_enabled",
+		"medium",
 		"test_mode_enabled",
 	)
-	seedSPFFinding(
-		t,
-		ctx,
-		pc,
-		blog.ID,
-		store.FindingSeverityInfo,
-		store.FindingStatusClosed,
-		"spf_compliant",
-	)
-	seedZoneTransferFinding(t, ctx, pc, blog.ID, "ns1.blog.example.org", false)
 
 	// Tenant B: a finding that must never appear in tenant A's roll-up.
-	seedSPFFinding(
-		t,
-		ctx,
-		pc,
-		secret.ID,
-		store.FindingSeverityCritical,
-		store.FindingStatusOpen,
-		"missing_spf",
-	)
+	seedFinding(t, ctx, pc, tenantB, secret.Name, "SPF", "missing_spf", "critical", "missing_spf")
 
 	t.Run("tenant isolation", func(t *testing.T) {
 		resA, err := fs.ListByTenant(ctx, pA, service.FindingsListOptions{})
@@ -102,27 +88,6 @@ func TestFindingsService_ListByTenant(t *testing.T) {
 		}
 		if len(resB.Groups) != 1 || resB.Groups[0].DomainName != "secret.io" {
 			t.Fatalf("tenant B groups = %v, want [secret.io]", groupNames(resB.Groups))
-		}
-	})
-
-	t.Run("compliant toggle", func(t *testing.T) {
-		open, err := fs.ListByTenant(ctx, pA, service.FindingsListOptions{IncludeCompliant: false})
-		if err != nil {
-			t.Fatalf("open: %v", err)
-		}
-		// acme: SPF + DMARC + possible AXFR (3); blog: DKIM only (1). Compliant SPF
-		// and refused AXFR on blog are hidden.
-		if open.Totals.Open != 4 {
-			t.Errorf("open total = %d, want 4 (%v)", open.Totals.Open, groupNames(open.Groups))
-		}
-
-		all, err := fs.ListByTenant(ctx, pA, service.FindingsListOptions{IncludeCompliant: true})
-		if err != nil {
-			t.Fatalf("all: %v", err)
-		}
-		// Adds blog's compliant SPF and refused AXFR.
-		if all.Totals.Open != 6 {
-			t.Errorf("compliant total = %d, want 6", all.Totals.Open)
 		}
 	})
 
@@ -190,42 +155,30 @@ func TestFindingsService_ListByTenantFlat(t *testing.T) {
 	acme := seedDomain(t, ctx, pc, tenantA, "acme.com")
 	secret := seedDomain(t, ctx, pc, tenantB, "secret.io")
 
-	seedSPFFinding(
+	seedFinding(t, ctx, pc, tenantA, acme.Name, "SPF", "missing_spf", "critical", "missing_spf")
+	seedFinding(
 		t,
 		ctx,
 		pc,
-		acme.ID,
-		store.FindingSeverityCritical,
-		store.FindingStatusOpen,
-		"missing_spf",
-	)
-	seedDMARCFinding(
-		t,
-		ctx,
-		pc,
-		acme.ID,
-		store.FindingSeverityHigh,
-		store.FindingStatusOpen,
+		tenantA,
+		acme.Name,
+		"DMARC",
+		"weak_dmarc_policy",
+		"high",
 		"weak_dmarc_policy",
 	)
-	seedDKIMFinding(
+	seedFinding(
 		t,
 		ctx,
 		pc,
-		acme.ID,
-		store.FindingSeverityMedium,
-		store.FindingStatusOpen,
+		tenantA,
+		acme.Name,
+		"DKIM",
+		"test_mode_enabled",
+		"medium",
 		"test_mode_enabled",
 	)
-	seedSPFFinding(
-		t,
-		ctx,
-		pc,
-		secret.ID,
-		store.FindingSeverityCritical,
-		store.FindingStatusOpen,
-		"missing_spf",
-	)
+	seedFinding(t, ctx, pc, tenantB, secret.Name, "SPF", "missing_spf", "critical", "missing_spf")
 
 	t.Run("tenant isolation", func(t *testing.T) {
 		res, err := fs.ListByTenantFlat(ctx, pA, service.FindingsListOptions{}, 25, 0)

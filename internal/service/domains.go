@@ -148,7 +148,7 @@ func (s *DomainsService) FindingsSummaryForPage(
 	if len(domainIDs) == 0 {
 		return out, nil
 	}
-	rows, err := s.DB.DomainsListFindingsSummary(ctx, domainIDs)
+	rows, err := s.DB.FindingsSummaryByDomainIDs(ctx, domainIDs)
 	if err != nil {
 		return nil, fmt.Errorf("findings summary: %w", err)
 	}

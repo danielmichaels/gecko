@@ -81,7 +81,7 @@ func (w *RefreshTenantStatsWorker) refreshAll(ctx context.Context) (int, error) 
 	if err != nil {
 		return 0, fmt.Errorf("tenant record totals: %w", err)
 	}
-	findingStats, err := w.Store.TenantFindingStatsAll(ctx)
+	findingStats, err := w.Store.FindingsTenantStats(ctx, pgtype.Int4{})
 	if err != nil {
 		return 0, fmt.Errorf("tenant finding stats: %w", err)
 	}
@@ -107,10 +107,7 @@ func (w *RefreshTenantStatsWorker) refreshAll(ctx context.Context) (int, error) 
 		at(rt.TenantID.Int32).recordTotal = rt.Total
 	}
 	for _, fs := range findingStats {
-		if !fs.TenantID.Valid {
-			continue
-		}
-		r := at(fs.TenantID.Int32)
+		r := at(fs.TenantID)
 		r.criticalCount = fs.CriticalCount
 		r.warningCount = fs.WarningCount
 	}
@@ -128,9 +125,10 @@ func (w *RefreshTenantStatsWorker) refreshAll(ctx context.Context) (int, error) 
 	return len(merged), nil
 }
 
-// refreshOne recomputes a single tenant from the index-driven per-page aggregates
-// over the tenant's own domain IDs. A tenant with no domains yields zeros — this
-// is what makes the drop-to-zero case correct the instant the delete lands.
+// refreshOne recomputes a single tenant from the index-driven per-page record
+// aggregate plus the generic findings table's tenant-scoped rollup. A tenant with
+// no domains yields zeros — this is what makes the drop-to-zero case correct the
+// instant the delete lands.
 func (w *RefreshTenantStatsWorker) refreshOne(ctx context.Context, tenantID int32) error {
 	ids, err := w.Store.DomainsIDsByTenantID(ctx, pgtype.Int4{Int32: tenantID, Valid: true})
 	if err != nil {
@@ -138,7 +136,6 @@ func (w *RefreshTenantStatsWorker) refreshOne(ctx context.Context, tenantID int3
 	}
 
 	var recordTotal int64
-	var critical, warning int32
 	if len(ids) > 0 {
 		counts, err := w.Store.DomainsListRecordCounts(ctx, ids)
 		if err != nil {
@@ -147,19 +144,16 @@ func (w *RefreshTenantStatsWorker) refreshOne(ctx context.Context, tenantID int3
 		for _, c := range counts {
 			recordTotal += int64(c.RecordCount)
 		}
+	}
 
-		sums, err := w.Store.DomainsListFindingsSummary(ctx, ids)
-		if err != nil {
-			return fmt.Errorf("findings summary (tenant %d): %w", tenantID, err)
-		}
-		for _, s := range sums {
-			switch {
-			case s.SeverityRank <= 2:
-				critical++
-			case s.SeverityRank == 3 || s.SeverityRank == 4:
-				warning++
-			}
-		}
+	var critical, warning int32
+	findingStats, err := w.Store.FindingsTenantStats(ctx, pgtype.Int4{Int32: tenantID, Valid: true})
+	if err != nil {
+		return fmt.Errorf("findings summary (tenant %d): %w", tenantID, err)
+	}
+	if len(findingStats) > 0 {
+		critical = findingStats[0].CriticalCount
+		warning = findingStats[0].WarningCount
 	}
 
 	if err := w.Store.TenantStatsUpsert(ctx, store.TenantStatsUpsertParams{

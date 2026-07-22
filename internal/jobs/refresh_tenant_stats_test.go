@@ -56,21 +56,35 @@ func seedStatsARecord(
 	}
 }
 
-func seedStatsSPF(
+// seedStatsFinding writes a row directly into the generic findings table (the
+// source RefreshTenantStatsWorker now reads), upserting the backing asset first
+// since assets aren't auto-created for a domain outside the migration backfill.
+func seedStatsFinding(
 	t *testing.T,
 	ctx context.Context,
 	q *store.Queries,
-	domainID int32,
-	severity store.FindingSeverity,
+	tenantID int32,
+	domainName, severity string,
 ) {
 	t.Helper()
-	if _, err := q.AssessCreateSPFFinding(ctx, store.AssessCreateSPFFindingParams{
-		DomainID:  pgtype.Int4{Int32: domainID, Valid: true},
-		Severity:  severity,
-		Status:    store.FindingStatusOpen,
+	asset, err := q.AssetsUpsertDomain(ctx, store.AssetsUpsertDomainParams{
+		TenantID: tenantID,
+		Value:    domainName,
+		Source:   "discovered",
+	})
+	if err != nil {
+		t.Fatalf("seed finding: upsert asset (%s): %v", domainName, err)
+	}
+	if _, err := q.FindingsUpsert(ctx, store.FindingsUpsertParams{
+		TenantID:  tenantID,
+		AssetID:   asset.ID,
+		CheckKind: "email_security",
 		IssueType: "missing_spf",
+		Severity:  severity,
+		Title:     "missing_spf",
+		Details:   "missing_spf",
 	}); err != nil {
-		t.Fatalf("seed spf finding (domain %d): %v", domainID, err)
+		t.Fatalf("seed finding (%s): %v", domainName, err)
 	}
 }
 
@@ -100,8 +114,8 @@ func TestRefreshTenantStatsWorker_ComputesAndIsolatesTenants(t *testing.T) {
 	seedStatsARecord(t, ctx, q, dCrit, "192.0.2.2")
 	seedStatsARecord(t, ctx, q, dCrit, "192.0.2.3")
 	seedStatsARecord(t, ctx, q, dWarn, "192.0.2.4")
-	seedStatsSPF(t, ctx, q, dCrit, store.FindingSeverityCritical)
-	seedStatsSPF(t, ctx, q, dWarn, store.FindingSeverityMedium)
+	seedStatsFinding(t, ctx, q, t1, "crit.t1.test", "critical")
+	seedStatsFinding(t, ctx, q, t1, "warn.t1.test", "medium")
 
 	// Tenant 2: one domain with 1 A record and no findings. Record total = 1,
 	// critical = 0, warning = 0.
@@ -183,7 +197,7 @@ func TestRefreshTenantStatsWorker_SingleTenant(t *testing.T) {
 	d := seedStatsDomain(t, ctx, q, tid, "d.single.test")
 	seedStatsARecord(t, ctx, q, d, "192.0.2.10")
 	seedStatsARecord(t, ctx, q, d, "192.0.2.11")
-	seedStatsSPF(t, ctx, q, d, store.FindingSeverityCritical)
+	seedStatsFinding(t, ctx, q, tid, "d.single.test", "critical")
 
 	run(tid)
 

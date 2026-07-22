@@ -7,46 +7,37 @@ import (
 
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/danielmichaels/gecko/internal/testhelpers"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
-func seedSPFFinding(
+// seedFinding writes a row directly into the generic findings table (the source
+// the findings API now reads), upserting the backing asset first since assets
+// aren't auto-created for a domain outside the migration backfill.
+func seedFinding(
 	t *testing.T,
 	ctx context.Context,
 	pc *testhelpers.TestDatabase,
-	domainID int32,
-	severity store.FindingSeverity,
-	issueType string,
+	tenantID int32,
+	domainName, checkKind, issueType, severity string,
 ) {
 	t.Helper()
-	if _, err := pc.Queries.AssessCreateSPFFinding(ctx, store.AssessCreateSPFFindingParams{
-		DomainID:  pgtype.Int4{Int32: domainID, Valid: true},
-		Severity:  severity,
-		Status:    store.FindingStatusOpen,
-		IssueType: issueType,
-		Details:   pgtype.Text{String: issueType, Valid: true},
-	}); err != nil {
-		t.Fatalf("seed spf finding (domain %d): %v", domainID, err)
+	asset, err := pc.Queries.AssetsUpsertDomain(ctx, store.AssetsUpsertDomainParams{
+		TenantID: tenantID,
+		Value:    domainName,
+		Source:   "discovered",
+	})
+	if err != nil {
+		t.Fatalf("seed finding: upsert asset (%s): %v", domainName, err)
 	}
-}
-
-func seedDMARCFinding(
-	t *testing.T,
-	ctx context.Context,
-	pc *testhelpers.TestDatabase,
-	domainID int32,
-	severity store.FindingSeverity,
-	issueType string,
-) {
-	t.Helper()
-	if _, err := pc.Queries.AssessCreateDMARCFinding(ctx, store.AssessCreateDMARCFindingParams{
-		DomainID:  pgtype.Int4{Int32: domainID, Valid: true},
-		Severity:  severity,
-		Status:    store.FindingStatusOpen,
+	if _, err := pc.Queries.FindingsUpsert(ctx, store.FindingsUpsertParams{
+		TenantID:  tenantID,
+		AssetID:   asset.ID,
+		CheckKind: checkKind,
 		IssueType: issueType,
-		Details:   pgtype.Text{String: issueType, Valid: true},
+		Severity:  severity,
+		Title:     issueType,
+		Details:   issueType,
 	}); err != nil {
-		t.Fatalf("seed dmarc finding (domain %d): %v", domainID, err)
+		t.Fatalf("seed finding (%s/%s/%s): %v", domainName, checkKind, issueType, err)
 	}
 }
 
@@ -97,10 +88,10 @@ func TestFindingsAPI(t *testing.T) {
 	blog := seedDomain(t, ctx, pc, tenantA, "blog.example.org")
 	secret := seedDomain(t, ctx, pc, tenantB, "secret.io")
 
-	seedSPFFinding(t, ctx, pc, acme.ID, store.FindingSeverityCritical, "missing_spf")
-	seedDMARCFinding(t, ctx, pc, acme.ID, store.FindingSeverityHigh, "weak_dmarc_policy")
-	seedSPFFinding(t, ctx, pc, blog.ID, store.FindingSeverityMedium, "spf_softfail")
-	seedSPFFinding(t, ctx, pc, secret.ID, store.FindingSeverityCritical, "missing_spf")
+	seedFinding(t, ctx, pc, tenantA, acme.Name, "SPF", "missing_spf", "critical")
+	seedFinding(t, ctx, pc, tenantA, acme.Name, "DMARC", "weak_dmarc_policy", "high")
+	seedFinding(t, ctx, pc, tenantA, blog.Name, "SPF", "spf_softfail", "medium")
+	seedFinding(t, ctx, pc, tenantB, secret.Name, "SPF", "missing_spf", "critical")
 
 	t.Run("tenant listing is isolated", func(t *testing.T) {
 		var resA findingsListResp
