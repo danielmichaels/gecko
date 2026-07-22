@@ -156,15 +156,9 @@ tasks:
     cmds:
       - river migrate-list --line=main --database-url="{{.DATABASE_URL}}"
   test:
-    desc: Run all tests
+    desc: Run all tests against an in-process embedded Postgres (no Docker; downloads a PG binary on first run). Export TEST_DATABASE_URL to run against an external server instead.
     cmds:
-      - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} up --wait -d {{.DATABASE_CONTAINER_NAME}}
-      - TEST_DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:${POSTGRES_PORT}/postgres?sslmode=${POSTGRES_SSL_MODE}" go test -race -v -cover ./...
-
-  test:embedded:
-    desc: Run all tests against an embedded Postgres (no Docker; downloads a PG binary on first run)
-    cmds:
-      - GECKO_TEST_EMBEDDED_PG=1 go test -race -cover ./...
+      - go test -race -v -cover ./...
 
   dev:reset:
     desc: Wipe the embedded dev DB (stop `task serve` first; next `serve` re-migrates + reseeds)

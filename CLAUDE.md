@@ -8,7 +8,7 @@ Gecko is a DNS security tool (Go module `github.com/danielmichaels/gecko`). It s
 
 Tasks are defined in `Taskfile.yml` (run `task --list-all`). Common ones:
 
-- `task test` — full suite: `go test -race -v -cover ./...`. Run a single test directly: `go test -run TestName ./internal/service/...`. `task test:embedded` runs the suite against an in-process Postgres (no Docker; `GECKO_TEST_EMBEDDED_PG=1`, downloads a PG binary on first run).
+- `task test` — full suite: `go test -race -v -cover ./...`, run against an **in-process embedded Postgres by default** (no Docker; downloads a PG binary on first run, cached in `~/.embedded-postgres-go`). Export `TEST_DATABASE_URL` to run against an external server instead — the only way to opt out of embedded (this is what Dagger CI does). Run a single test directly: `go test -run TestName ./internal/service/...`. `task test:clean-orphans` clears leftover embedded test processes.
 - `task serve` / `task worker` — run the HTTP server / job worker locally under `air` (live reload). `task cli -- <args>` runs the binary one-shot. **Local dev defaults to embedded Postgres** (`.env` `POSTGRES_EMBEDDED=true`): `serve`/`worker` boot an in-process PG (`internal/embeddedpg`, `fergusstrange/embedded-postgres`) on `POSTGRES_PORT`, persist data under `POSTGRES_EMBEDDED_STORE_DIR` (`./tmp/postgres`), and on a fresh DB migrate (`store.MigrateUp`) + seed demo data + bootstrap the owner — no Docker required, and each worktree runs its own instance. `task dev:reset` wipes it; `task test:clean-orphans` clears leftover embedded test processes.
 - `task compose:up` — **opt-out path** (set `POSTGRES_EMBEDDED=false` or an explicit `DATABASE_URL` first): start the Docker stack (Postgres via `compose.yaml`), run Goose + River migrations, seed data, tail logs. `task compose:down` to stop. Note: the DB now runs `postgres:18` and mounts `gecko_db:/var/lib/postgresql`; an existing PG16 volume must be recreated once.
 - `task sqlc` — regenerate `internal/store` after changing `sql/queries/*.sql` or migrations. **Required** after any query/schema change.
@@ -41,7 +41,7 @@ Tasks are defined in `Taskfile.yml` (run `task --list-all`). Common ones:
 
 ## Conventions
 
-- TDD by default (see `internal/.../​*_test.go` patterns). For DB behavior prefer real migrations + sqlc query tests / integration tests (testcontainers in `internal/testhelpers`) over mocking query semantics. For auth/tenancy, exercise the real chi→Huma middleware path where practical.
+- TDD by default (see `internal/.../​*_test.go` patterns). For DB behavior prefer real migrations + sqlc query tests / integration tests (`internal/testhelpers` provisions an isolated per-test database off a shared embedded Postgres, or an external server when `TEST_DATABASE_URL` is set) over mocking query semantics. For auth/tenancy, exercise the real chi→Huma middleware path where practical.
 - Use `errors.Is`, not `err == err`. Prefer error groups + singleflight where applicable.
 - Config is env-var driven via `joeshaw/envdecode` (`internal/config`, `.env` locally).
 - Avoid unrelated `go.mod`/`go.sum` churn; keep dependency changes scoped and explained.

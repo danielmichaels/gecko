@@ -11,18 +11,17 @@ import (
 )
 
 // requireEmbeddedPG gates the tests that boot a real embedded Postgres: they
-// download a ~15MB PG binary from Maven Central on first run, so they stay off
-// by default (short mode, and Gecko's Dagger CI which runs without -short).
-// Opt in locally with GECKO_TEST_EMBEDDED_PG=1.
+// download a ~15MB PG binary from Maven Central on first run. They run by default
+// locally (embedded is the default test backend) but are skipped in short mode and
+// whenever TEST_DATABASE_URL points at an external server — the path Dagger/CI take,
+// so CI never downloads a binary.
 func requireEmbeddedPG(t *testing.T) {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in short mode (requires binary download)")
 	}
-	if os.Getenv("GECKO_TEST_EMBEDDED_PG") == "" {
-		t.Skip(
-			"set GECKO_TEST_EMBEDDED_PG=1 to run embedded-postgres tests (downloads a PG binary)",
-		)
+	if os.Getenv("TEST_DATABASE_URL") != "" {
+		t.Skip("skipping embedded-postgres test: TEST_DATABASE_URL configures an external database")
 	}
 }
 
