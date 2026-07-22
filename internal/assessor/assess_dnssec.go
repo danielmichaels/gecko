@@ -5,31 +5,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/danielmichaels/gecko/internal/detect"
-	"github.com/danielmichaels/gecko/internal/observer"
 	"github.com/danielmichaels/gecko/internal/scanner"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5/pgtype"
 )
-
-const (
-	DNSSECNotEnabled    = "dnssec_not_enabled"
-	DNSSECBrokenChain   = "dnssec_broken_chain"
-	DNSSECWeakAlgorithm = "dnssec_weak_algorithm"
-	DNSSECEnabled       = "dnssec_enabled"
-)
-
-// deprecatedDNSSECAlgorithms maps DNSSEC algorithm numbers (RFC 8624) that are
-// deprecated/insecure for signing to their names.
-var deprecatedDNSSECAlgorithms = map[string]string{
-	"1": "RSAMD5",
-	"3": "DSA",
-	"5": "RSASHA1",
-	"6": "DSA-NSEC3-SHA1",
-	"7": "RSASHA1-NSEC3-SHA1",
-}
 
 // AssessDNSSEC interprets the stored DNSSEC scan state and records findings that
 // distinguish absent DNSSEC (informational) from a broken chain of trust (an
@@ -73,54 +54,4 @@ func (a *Assessor) AssessDNSSEC(ctx context.Context, domainUID string) error {
 		return err
 	}
 	return a.reconcile(ctx, domain.Name, detect.CheckDNSSEC, found)
-}
-
-func deprecatedAlgorithmNames(algorithms []string) []string {
-	var names []string
-	for _, alg := range algorithms {
-		if name, ok := deprecatedDNSSECAlgorithms[strings.TrimSpace(alg)]; ok {
-			names = append(names, name)
-		}
-	}
-	return names
-}
-
-func (a *Assessor) createDNSSECFinding(
-	ctx context.Context,
-	domainID int32,
-	severity store.FindingSeverity,
-	status store.FindingStatus,
-	issueType, details string,
-) error {
-	if _, err := a.store.AssessCreateDNSSECFinding(ctx, store.AssessCreateDNSSECFindingParams{
-		DomainID:  pgtype.Int4{Int32: domainID, Valid: true},
-		Severity:  severity,
-		Status:    status,
-		IssueType: issueType,
-		Details:   pgtype.Text{String: details, Valid: details != ""},
-	}); err != nil {
-		a.logger.WarnContext(
-			ctx,
-			"failed to create dnssec finding",
-			"issue_type",
-			issueType,
-			"error",
-			err,
-		)
-		return fmt.Errorf("create dnssec finding %s: %w", issueType, err)
-	}
-
-	payload := observer.PayloadJSON(map[string]any{
-		"issue_type": issueType,
-		"severity":   string(severity),
-		"status":     string(status),
-		"details":    details,
-	})
-	if oErr := observer.New(a.store).RecordFindingChange(
-		ctx, a.identity, observer.EntityDNSSECFinding, issueType, payload,
-	); oErr != nil {
-		a.logger.WarnContext(ctx, "failed to emit dnssec finding observation",
-			"issue_type", issueType, "error", oErr)
-	}
-	return nil
 }

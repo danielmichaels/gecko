@@ -42,30 +42,8 @@ const (
 
 	EntityZoneTransferAttempt = "zone_transfer_attempt"
 	EntitySPFFinding          = "spf_finding"
-	EntityDKIMFinding         = "dkim_finding"
-	EntityDMARCFinding        = "dmarc_finding"
-	EntityZoneTransferFinding = "zone_transfer_finding"
 	EntityCertificate         = "certificate"
-	EntityCertificateFinding  = "certificate_finding"
 	EntityDNSSEC              = "dnssec"
-	EntityDNSSECFinding       = "dnssec_finding"
-
-	EntityCNAMEDanglingFinding    = "dangling_cname_finding"
-	EntityCNAMERedirectionFinding = "cname_redirection_finding"
-
-	EntityCAAConfigurationFinding = "caa_configuration_finding"
-	EntityCAAComplianceFinding    = "caa_compliance_finding"
-
-	EntityMinimumRecordSetFinding = "minimum_record_set_finding"
-
-	EntityEmailAuthComplianceFinding = "email_auth_compliance_finding"
-
-	EntityNSConfigurationFinding      = "ns_configuration_finding"
-	EntityNameserverRedundancyFinding = "nameserver_redundancy_finding"
-
-	EntityNameserverReachabilityFinding   = "nameserver_reachability_finding"
-	EntityDNSResolutionLatencyFinding     = "dns_resolution_latency_finding"
-	EntityDNSResolutionConsistencyFinding = "dns_resolution_consistency_finding"
 
 	// EntityDomain is used only on lifecycle NOTIFY signals (create/delete/status),
 	// never stored as an observation — a domain's existence is the projection
