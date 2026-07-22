@@ -7,9 +7,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/danielmichaels/gecko/internal/detect"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5/pgtype"
-	"golang.org/x/sync/errgroup"
+	"github.com/miekg/dns"
 )
 
 const (
@@ -503,54 +504,87 @@ func hasDeliverableMX(mxRecords []store.MxRecords) bool {
 }
 
 func (a *Assessor) AssessEmailSecurity(ctx context.Context, domainID int) error {
-	mxRecords, err := a.store.RecordsGetMXByDomainID(
-		ctx,
-		pgtype.Int4{Int32: int32(domainID), Valid: true},
-	)
+	domain, err := a.store.DomainsGetByIdentifier(ctx, store.DomainsGetByIdentifierParams{
+		ID:       int32(domainID),
+		TenantID: pgtype.Int4{Int32: a.identity.TenantID, Valid: true},
+	})
 	if err != nil {
-		return fmt.Errorf("get MX records: %w", err)
+		return fmt.Errorf("get domain %d: %w", domainID, err)
 	}
 
-	// An explicit null-MX (RFC 7505: a single "0 .") declares that the domain
-	// neither sends nor receives mail, so email-auth records are not applicable.
-	handlesEmail := hasDeliverableMX(mxRecords)
-	txtRecords, err := a.store.RecordsGetTXTByDomainID(
-		ctx,
-		pgtype.Int4{Int32: int32(domainID), Valid: true},
-	)
+	ev, err := a.collectEmailSecurity(ctx, domain.ID, domain.Name)
 	if err != nil {
-		return fmt.Errorf("get TXT records: %w", err)
+		return err
 	}
-	as := assessData{
-		handlesEmail: handlesEmail,
-		domainID:     domainID,
-		txtRecords:   txtRecords,
-		mxRecords:    mxRecords,
+	found, err := detect.EmailSecurityDetector{
+		MaxSPFLookups:    MaxSPFLookups,
+		MinDKIMKeyLength: MinDKIMKeyLength,
+		MTASTSMinMaxAge:  mtaStsMinMaxAge,
+	}.Detect(ev)
+	if err != nil {
+		return err
+	}
+	return a.reconcile(ctx, domain.Name, detect.CheckEmailSecurity, found)
+}
+
+// collectEmailSecurity gathers evidence for all six email sub-checks: SPF from the
+// stored apex TXT records; DKIM/DMARC via per-name 3-way TXT lookups (so SERVFAIL
+// is not read as "absent"); BIMI/TLS-RPT via prefixed TXT lookups; MTA-STS via its
+// TXT record plus the HTTPS policy fetch. The _dmarc lookup is done once and shared
+// with BIMI's enforcement check.
+func (a *Assessor) collectEmailSecurity(
+	ctx context.Context,
+	domainID int32,
+	name string,
+) (detect.EmailSecurityEvidence, error) {
+	id := pgtype.Int4{Int32: domainID, Valid: true}
+	mx, err := a.store.RecordsGetMXByDomainID(ctx, id)
+	if err != nil {
+		return detect.EmailSecurityEvidence{}, fmt.Errorf("get MX records: %w", err)
+	}
+	txt, err := a.store.RecordsGetTXTByDomainID(ctx, id)
+	if err != nil {
+		return detect.EmailSecurityEvidence{}, fmt.Errorf("get TXT records: %w", err)
 	}
 
-	g, ctx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		return a.assessSPF(ctx, as)
-	})
-	g.Go(func() error {
-		return a.assessDKIM(ctx, as, knownDkimSelectors)
-	})
-	g.Go(func() error {
-		return a.assessDMARC(ctx, as)
-	})
-	g.Go(func() error {
-		return a.assessBIMI(ctx, as)
-	})
-	g.Go(func() error {
-		return a.assessMTASTS(ctx, as)
-	})
-	g.Go(func() error {
-		return a.assessTLSRPT(ctx, as)
-	})
-	if err := g.Wait(); err != nil {
-		return fmt.Errorf("assess email security: %w", err)
+	ev := detect.EmailSecurityEvidence{HandlesEmail: hasDeliverableMX(mx)}
+	for _, t := range txt {
+		if SPFPrefix.MatchString(t.Value) {
+			ev.SPFRecords = append(ev.SPFRecords, t.Value)
+		}
 	}
-	return nil
+
+	ev.DKIMSelectorsChecked = knownDkimSelectors
+	for _, selector := range knownDkimSelectors {
+		recs, st := a.dnsClient.LookupWithStatus(
+			fmt.Sprintf("%s._domainkey.%s", selector, name), dns.TypeTXT)
+		ev.DKIMSelectors = append(ev.DKIMSelectors, detect.DKIMSelectorEvidence{
+			Selector: selector,
+			Status:   resolutionString(st),
+			Records:  recs,
+		})
+	}
+
+	dmarcRecs, dmarcSt := a.dnsClient.LookupWithStatus("_dmarc."+name, dns.TypeTXT)
+	ev.DMARCStatus = resolutionString(dmarcSt)
+	ev.DMARCRecords = dmarcRecs
+
+	ev.BIMIRecord = a.lookupBIMIRecord(name)
+
+	if a.lookupTXTPrefixed("_mta-sts."+name, "v=STSv1") != "" {
+		ev.MTASTSConfigured = true
+		res := a.prober.Get(ctx, "https://mta-sts."+name+"/.well-known/mta-sts.txt")
+		ev.MTASTSPolicyReached = res.Reached
+		ev.MTASTSPolicyStatus = res.StatusCode
+		ev.MTASTSPolicyBody = res.Body
+	}
+	for _, m := range mx {
+		ev.MXTargets = append(ev.MXTargets, m.Target)
+	}
+
+	ev.TLSRPTRecord = a.lookupTXTPrefixed("_smtp._tls."+name, "v=TLSRPTv1")
+
+	return ev, nil
 }
 
 // EmailFindingOption represents an option for configuring an email finding
