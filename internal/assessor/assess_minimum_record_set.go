@@ -7,9 +7,12 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/danielmichaels/gecko/internal/detect"
+	"github.com/danielmichaels/gecko/internal/dnsclient"
 	"github.com/danielmichaels/gecko/internal/observer"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/miekg/dns"
 )
 
 const (
@@ -51,11 +54,28 @@ func (a *Assessor) AssessMinimumRecordSet(ctx context.Context, domainUID string)
 		return err
 	}
 
-	if domain.DomainType != store.DomainTypeTld {
-		return nil
+	ev := detect.MinimumRecordSetEvidence{IsApex: domain.DomainType == store.DomainTypeTld}
+	if ev.IsApex {
+		if err := a.collectMinimumRecordSet(ctx, domain.ID, &ev); err != nil {
+			return err
+		}
 	}
 
-	id := pgtype.Int4{Int32: domain.ID, Valid: true}
+	found, err := detect.MinimumRecordSetDetector{MinNameservers: recommendedNameserverCount}.Detect(ev)
+	if err != nil {
+		return err
+	}
+	return a.reconcile(ctx, domain.Name, detect.CheckMinimumRecordSet, found)
+}
+
+// collectMinimumRecordSet fills the apex-hygiene evidence from stored records plus
+// a live SOA MNAME resolvability lookup.
+func (a *Assessor) collectMinimumRecordSet(
+	ctx context.Context,
+	domainID int32,
+	ev *detect.MinimumRecordSetEvidence,
+) error {
+	id := pgtype.Int4{Int32: domainID, Valid: true}
 	ns, err := a.store.RecordsGetNSByDomainID(ctx, id)
 	if err != nil {
 		return fmt.Errorf("get NS records: %w", err)
@@ -81,16 +101,44 @@ func (a *Assessor) AssessMinimumRecordSet(ctx context.Context, domainUID string)
 		return fmt.Errorf("get TXT records: %w", err)
 	}
 
-	if err := a.assessNameservers(ctx, domain.ID, ns); err != nil {
-		return err
+	ev.NSLookedUp, ev.NSCount = true, len(ns)
+	ev.ALookedUp, ev.HasA = true, len(aRecs) > 0
+	ev.AAAALookedUp, ev.HasAAAA = true, len(aaaa) > 0
+	ev.SOALookedUp = true
+	if len(soa) > 0 {
+		rec := soa[0]
+		ev.SOAPresent = true
+		ev.SOARefresh, ev.SOARetry, ev.SOAExpire, ev.SOAMinimumTTL = rec.Refresh, rec.Retry, rec.Expire, rec.MinimumTtl
+		ev.SOASerial = rec.Serial
+		ev.SOAMName = strings.TrimSuffix(strings.TrimSpace(rec.Nameserver), ".")
+		ev.SOARName = rec.Email
+		ev.SOAMNameLookedUp, ev.SOAMNameResolves = a.resolveHost(ev.SOAMName)
 	}
-	if err := a.assessApexAddress(ctx, domain.ID, len(aRecs) > 0, len(aaaa) > 0); err != nil {
-		return err
+	ev.MXLookedUp = true
+	for _, m := range mx {
+		if strings.TrimSuffix(strings.TrimSpace(m.Target), ".") == "" {
+			ev.HasNullMX = true
+		} else {
+			ev.HasMX = true
+		}
 	}
-	if err := a.assessSOA(ctx, domain.ID, soa); err != nil {
-		return err
+	for _, t := range txt {
+		ev.TXTValues = append(ev.TXTValues, t.Value)
 	}
-	return a.assessMailRouting(ctx, domain.ID, mx, txt)
+	return nil
+}
+
+// resolveHost reports whether a host has an A or AAAA record and whether the lookup
+// was authoritative, so a SERVFAIL is not mistaken for "does not resolve".
+func (a *Assessor) resolveHost(host string) (lookedUp, resolves bool) {
+	if host == "" {
+		return false, false
+	}
+	aVals, aStatus := a.dnsClient.LookupWithStatus(host, dns.TypeA)
+	aaaaVals, aaaaStatus := a.dnsClient.LookupWithStatus(host, dns.TypeAAAA)
+	lookedUp = aStatus != dnsclient.ResolutionIndeterminate || aaaaStatus != dnsclient.ResolutionIndeterminate
+	resolves = len(aVals) > 0 || len(aaaaVals) > 0
+	return lookedUp, resolves
 }
 
 func (a *Assessor) assessNameservers(

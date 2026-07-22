@@ -7,9 +7,12 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/danielmichaels/gecko/internal/detect"
+	"github.com/danielmichaels/gecko/internal/dnsclient"
 	"github.com/danielmichaels/gecko/internal/observer"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/miekg/dns"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 )
 
@@ -65,11 +68,51 @@ func (a *Assessor) AssessNameserverConfig(ctx context.Context, domainUID string)
 		return err
 	}
 
-	resolutions := a.resolveNameservers(records)
-	if err := a.assessPerNameserver(ctx, domain.ID, resolutions); err != nil {
+	ev := a.collectNameserverConfig(domain.Name, records)
+	found, err := detect.NameserverConfigDetector{RecommendedCount: nsRecommendedCount}.Detect(ev)
+	if err != nil {
 		return err
 	}
-	return a.assessRedundancy(ctx, domain.ID, resolutions)
+	return a.reconcile(ctx, domain.Name, detect.CheckNameserverConfig, found)
+}
+
+// collectNameserverConfig resolves each delegated nameserver (CNAME/A/AAAA via the
+// 3-way status API) and, for out-of-bailiwick nameservers, the registrable-parent
+// SOA (memoized per apex) that drives the dangling-delegation check. This one
+// collector feeds both the config and dangling-NS findings under nameserver_config.
+func (a *Assessor) collectNameserverConfig(
+	domainName string,
+	records []store.NsRecords,
+) detect.NameserverConfigEvidence {
+	domainApex := nsProviderApex(domainName)
+	apexStatus := make(map[string]dnsclient.ResolutionStatus)
+	ev := detect.NameserverConfigEvidence{DomainName: domainName}
+
+	for _, r := range records {
+		host := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(r.Nameserver)), ".")
+		_, cnameSt := a.dnsClient.LookupWithStatus(host, dns.TypeCNAME)
+		_, aSt := a.dnsClient.LookupWithStatus(host, dns.TypeA)
+		_, aaaaSt := a.dnsClient.LookupWithStatus(host, dns.TypeAAAA)
+
+		nse := detect.NameserverEvidence{
+			Host:        r.Nameserver,
+			CNAMEStatus: resolutionString(cnameSt),
+			AStatus:     resolutionString(aSt),
+			AAAAStatus:  resolutionString(aaaaSt),
+		}
+		apex := nsProviderApex(r.Nameserver)
+		nse.InBailiwick = apex == "" || apex == domainApex
+		if !nse.InBailiwick {
+			st, seen := apexStatus[apex]
+			if !seen {
+				_, st = a.dnsClient.LookupWithStatus(apex, dns.TypeSOA)
+				apexStatus[apex] = st
+			}
+			nse.ApexStatus = resolutionString(st)
+		}
+		ev.Nameservers = append(ev.Nameservers, nse)
+	}
+	return ev
 }
 
 // nsResolution captures the live resolution state of a single nameserver host.
