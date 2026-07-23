@@ -12,6 +12,7 @@ vars:
   DATABASE_CONTAINER_NAME: db
   DOCKER_COMPOSE_LOCAL: ./compose.yaml
   DOCKERFILE: ./Dockerfile
+  PG_EMBEDDED_DIR: ./tmp/postgres
 
 tasks:
   default:
@@ -155,10 +156,23 @@ tasks:
     cmds:
       - river migrate-list --line=main --database-url="{{.DATABASE_URL}}"
   test:
-    desc: Run all tests
+    desc: Run all tests against an in-process embedded Postgres (no Docker; downloads a PG binary on first run). Export TEST_DATABASE_URL to run against an external server instead.
     cmds:
-      - docker compose -f {{.DOCKER_COMPOSE_LOCAL}} up --wait -d {{.DATABASE_CONTAINER_NAME}}
-      - TEST_DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:${POSTGRES_PORT}/postgres?sslmode=${POSTGRES_SSL_MODE}" go test -race -v -cover ./...
+      - go test -race -v -cover ./...
+
+  dev:reset:
+    desc: Wipe the embedded dev DB (stop `task serve` first; next `serve` re-migrates + reseeds)
+    cmds:
+      - pkill -f '{{.PG_EMBEDDED_DIR}}' 2>/dev/null || true
+      - rm -rf {{.PG_EMBEDDED_DIR}}
+      - echo 'Embedded DB wiped. Run "task serve" to re-migrate and reseed an empty database.'
+
+  test:clean-orphans:
+    desc: Kill orphaned embedded-postgres test processes and remove their leftover temp data dirs
+    cmds:
+      - pkill -f 'embeddedpg-data-' || echo "no orphaned processes found"
+      - sleep 1
+      - rm -rf "${TMPDIR:-/tmp}"/embeddedpg-data-* "${TMPDIR:-/tmp}"/embeddedpg-rt-*
 
   verify:auth:
     desc: 'End-to-end check of the auth/role guards: boots DB, migrates, runs the server, executes scripts/verify-auth.sh, tears down.'

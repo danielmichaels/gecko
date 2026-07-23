@@ -13,7 +13,7 @@ import (
 func PrincipalForEmail(
 	t *testing.T,
 	ctx context.Context,
-	pc *PostgresContainer,
+	pc *TestDatabase,
 	email string,
 ) *auth.Principal {
 	t.Helper()
@@ -41,7 +41,7 @@ func PrincipalForEmail(
 func TenantIDForEmail(
 	t *testing.T,
 	ctx context.Context,
-	pc *PostgresContainer,
+	pc *TestDatabase,
 	email string,
 ) int32 {
 	t.Helper()

@@ -17,22 +17,18 @@ import (
 	"time"
 
 	"github.com/danielmichaels/gecko/assets"
+	"github.com/danielmichaels/gecko/internal/embeddedpg"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
-
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 var TestLogger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 	Level: slog.LevelDebug,
 }))
 
-type PostgresContainer struct {
-	*postgres.PostgresContainer
+type TestDatabase struct {
 	Pool             *pgxpool.Pool
 	Queries          *store.Queries
 	ConnectionString string
@@ -52,26 +48,25 @@ var (
 	sharedTemplatesMu sync.Mutex
 	sharedTemplates   = map[string]*sharedTemplateState{}
 
-	sharedContainerMu     sync.Mutex
-	sharedContainer       *postgres.PostgresContainer
-	sharedContainerURL    string
-	sharedContainerUsers  int
-	sharedContainerSerial int
+	sharedEmbeddedMu     sync.Mutex
+	sharedEmbedded       *embeddedpg.Server
+	sharedEmbeddedURL    string
+	sharedEmbeddedUsers  int
+	sharedEmbeddedSerial int
 )
 
-// CreatePostgresContainer provisions an isolated Postgres database for a test.
-// When TEST_DATABASE_URL is set (Dagger/CI), it creates a uniquely-named
-// database on that shared server by cloning a migrated template database.
-// Otherwise it spins up a throwaway container via testcontainers, which
-// requires a local Docker daemon.
-func CreatePostgresContainer(ctx context.Context) (*PostgresContainer, error) {
+// CreateTestDatabase provisions an isolated Postgres database for a test by
+// cloning a migrated template database. By default it boots one shared in-process
+// embedded Postgres for the test binary (no Docker required); set TEST_DATABASE_URL
+// to run against an external server instead (Dagger/CI, or an explicit local one).
+func CreateTestDatabase(ctx context.Context) (*TestDatabase, error) {
 	if adminURL := os.Getenv("TEST_DATABASE_URL"); adminURL != "" {
 		return createSharedDatabase(ctx, adminURL)
 	}
-	return createSharedTestcontainerDatabase(ctx)
+	return createSharedEmbeddedDatabase(ctx)
 }
 
-// ParallelDBTest opts a DB-backed test into parallel execution. CreatePostgresContainer
+// ParallelDBTest opts a DB-backed test into parallel execution. CreateTestDatabase
 // keeps per-test database isolation by cloning a migrated template database.
 type parallelTest interface {
 	Helper()
@@ -83,8 +78,8 @@ func ParallelDBTest(t parallelTest) {
 	t.Parallel()
 }
 
-func createSharedTestcontainerDatabase(ctx context.Context) (*PostgresContainer, error) {
-	adminURL, release, err := sharedTestcontainerAdminURL(ctx)
+func createSharedEmbeddedDatabase(ctx context.Context) (*TestDatabase, error) {
+	adminURL, release, err := sharedEmbeddedAdminURL()
 	if err != nil {
 		return nil, err
 	}
@@ -97,78 +92,55 @@ func createSharedTestcontainerDatabase(ctx context.Context) (*PostgresContainer,
 	return pc, nil
 }
 
-func sharedTestcontainerAdminURL(ctx context.Context) (string, func(), error) {
-	sharedContainerMu.Lock()
-	defer sharedContainerMu.Unlock()
+// sharedEmbeddedAdminURL boots a single embedded Postgres for the whole test
+// binary and hands out its admin URL, refcounted so the instance is stopped (and
+// its temp data dir removed) when the last test releases it.
+func sharedEmbeddedAdminURL() (string, func(), error) {
+	sharedEmbeddedMu.Lock()
+	defer sharedEmbeddedMu.Unlock()
 
-	if sharedContainer == nil {
-		pgContainer, connStr, err := createTestcontainer(ctx)
+	if sharedEmbedded == nil {
+		srv, err := embeddedpg.Start(embeddedpg.Options{})
 		if err != nil {
 			return "", nil, err
 		}
-		sharedContainer = pgContainer
-		sharedContainerURL = connStr
-		sharedContainerSerial++
+		sharedEmbedded = srv
+		sharedEmbeddedURL = srv.DSN
+		sharedEmbeddedSerial++
 	}
 
-	sharedContainerUsers++
+	sharedEmbeddedUsers++
 	released := false
-	serial := sharedContainerSerial
+	serial := sharedEmbeddedSerial
 	release := func() {
-		sharedContainerMu.Lock()
-		defer sharedContainerMu.Unlock()
+		sharedEmbeddedMu.Lock()
+		defer sharedEmbeddedMu.Unlock()
 		if released {
 			return
 		}
 		released = true
-		sharedContainerUsers--
-		if sharedContainerUsers != 0 || sharedContainer == nil || sharedContainerSerial != serial {
+		sharedEmbeddedUsers--
+		if sharedEmbeddedUsers != 0 || sharedEmbedded == nil || sharedEmbeddedSerial != serial {
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := sharedContainer.Terminate(ctx); err != nil {
-			slog.Error("failed to terminate shared test postgres container", "err", err)
+		if err := sharedEmbedded.Stop(); err != nil {
+			slog.Error("failed to stop shared embedded postgres", "err", err)
 		}
 		sharedTemplatesMu.Lock()
 		for key := range sharedTemplates {
-			if strings.HasPrefix(key, sharedContainerURL+"|") {
+			if strings.HasPrefix(key, sharedEmbeddedURL+"|") {
 				delete(sharedTemplates, key)
 			}
 		}
 		sharedTemplatesMu.Unlock()
-		sharedContainer = nil
-		sharedContainerURL = ""
+		sharedEmbedded = nil
+		sharedEmbeddedURL = ""
 	}
 
-	return sharedContainerURL, release, nil
+	return sharedEmbeddedURL, release, nil
 }
 
-func createTestcontainer(ctx context.Context) (*postgres.PostgresContainer, string, error) {
-	pgContainer, err := postgres.Run(
-		ctx,
-		"postgres:16-alpine",
-		postgres.WithDatabase("postgres"),
-		postgres.WithUsername("postgres"),
-		postgres.WithPassword("postgres"),
-		postgres.WithSQLDriver("pgx"),
-		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).WithStartupTimeout(15*time.Second),
-		),
-	)
-	if err != nil {
-		return nil, "", err
-	}
-	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		_ = pgContainer.Terminate(ctx)
-		return nil, "", err
-	}
-	return pgContainer, connStr, nil
-}
-
-func createSharedDatabase(ctx context.Context, adminURL string) (*PostgresContainer, error) {
+func createSharedDatabase(ctx context.Context, adminURL string) (*TestDatabase, error) {
 	templateName, err := sharedTemplateDatabase(ctx, adminURL)
 	if err != nil {
 		return nil, err
@@ -192,7 +164,7 @@ func createSharedDatabase(ctx context.Context, adminURL string) (*PostgresContai
 	if err != nil {
 		return nil, err
 	}
-	return &PostgresContainer{
+	return &TestDatabase{
 		ConnectionString: connStr,
 		Pool:             pool,
 		Queries:          queries,
@@ -489,9 +461,9 @@ func quoteIdent(name string) string {
 	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }
 
-// Close releases the pool and tears down the database: it drops the per-test
-// database in shared-server mode, or terminates the container in local mode.
-func (pc *PostgresContainer) Close(ctx context.Context) {
+// Close releases the pool, drops the per-test database, and releases the shared
+// Postgres instance (embedded or external) once the last test using it finishes.
+func (pc *TestDatabase) Close(ctx context.Context) {
 	if pc.Pool != nil {
 		pc.Pool.Close()
 	}
@@ -502,13 +474,6 @@ func (pc *PostgresContainer) Close(ctx context.Context) {
 		}
 		if pc.releaseShared != nil {
 			pc.releaseShared()
-		}
-		return
-	}
-
-	if pc.PostgresContainer != nil {
-		if err := pc.Terminate(ctx); err != nil {
-			slog.Error("failed to terminate container", "err", err)
 		}
 	}
 }

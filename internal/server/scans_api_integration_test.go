@@ -15,7 +15,7 @@ import (
 func seedScanRow(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	tenantID int32,
 	d store.DomainsInsertRow,
 	source store.ScanSource,
@@ -39,7 +39,7 @@ func seedScanRow(
 func seedObs(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	tenantID int32,
 	d store.DomainsInsertRow,
 	scanID int64,
@@ -115,7 +115,7 @@ func (r scansDetailResp) hasObservation(entityKey, changeType string) bool {
 func TestScansAPI(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}

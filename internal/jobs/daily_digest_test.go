@@ -28,7 +28,7 @@ func (f *fakeEmailEnqueuer) EnqueueEmail(_ context.Context, _ pgx.Tx, msg mailer
 
 func digestTestWorker(
 	q *store.Queries,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	enq notify.EmailEnqueuer,
 ) *DailyDigestWorker {
 	cfg := config.AppConfig()
@@ -101,7 +101,7 @@ func enableDigest(
 func seedObservation(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	tenantID, domainID int32,
 	domainName, entityType, changeType, payload string,
 ) {
@@ -146,7 +146,7 @@ func watermarkOf(
 func TestDailyDigestWorker_EnqueueDueDigests(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create postgres container: %v", err)
 	}
@@ -266,7 +266,7 @@ func TestDailyDigestWorker_EnqueueDueDigests(t *testing.T) {
 func TestDailyDigestWorker_HighImpactToggleOff(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create postgres container: %v", err)
 	}

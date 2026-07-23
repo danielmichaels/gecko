@@ -94,7 +94,7 @@ func principalWithRole(tenantID int32, role string) *auth.Principal {
 }
 
 func newTestService(
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	sched service.DomainScanScheduler,
 ) *service.Service {
 	cfg := config.AppConfig()
@@ -110,7 +110,7 @@ func newTestService(
 func seedDomain(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	tenantID int32,
 	name string,
 ) store.DomainsInsertRow {
@@ -133,7 +133,7 @@ func seedDomain(
 func seedDomainWith(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	tenantID int32,
 	name string,
 	domainType store.DomainType,
@@ -157,7 +157,7 @@ func seedDomainWith(
 func createTenant(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	email string,
 ) int32 {
 	t.Helper()
@@ -184,7 +184,7 @@ func createTenant(
 func TestDomainsService_List_TenantScoped(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -218,7 +218,7 @@ func TestDomainsService_List_TenantScoped(t *testing.T) {
 func TestDomainsService_List_Search(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -252,7 +252,7 @@ func TestDomainsService_List_Search(t *testing.T) {
 func TestDomainsService_List_FilterBySource(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -331,7 +331,7 @@ func TestDomainsService_List_FilterBySource(t *testing.T) {
 func TestDomainsService_List_FilterByType(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -387,7 +387,7 @@ func TestDomainsService_List_FilterByType(t *testing.T) {
 func TestDomainsService_List_FilterBySourceAndType(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -446,7 +446,7 @@ func TestDomainsService_List_FilterBySourceAndType(t *testing.T) {
 func TestDomainsService_List_InvalidEnumReturnsInvalidInput(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -474,7 +474,7 @@ func TestDomainsService_List_InvalidEnumReturnsInvalidInput(t *testing.T) {
 func TestDomainsService_Get_HappyPath(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -499,7 +499,7 @@ func TestDomainsService_Get_HappyPath(t *testing.T) {
 func TestDomainsService_Get_CrossTenantReturnsNotFound(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -522,7 +522,7 @@ func TestDomainsService_Get_CrossTenantReturnsNotFound(t *testing.T) {
 func TestDomainsService_Create_SchedulesCalled(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -550,7 +550,7 @@ func TestDomainsService_Create_SchedulesCalled(t *testing.T) {
 func TestDomainsService_Create_DuplicateReturnsConflict(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -582,7 +582,7 @@ func TestDomainsService_Create_DuplicateReturnsConflict(t *testing.T) {
 func TestDomainsService_Update_HappyPath(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -615,7 +615,7 @@ func TestDomainsService_Update_HappyPath(t *testing.T) {
 func TestDomainsService_Update_CrossTenantReturnsNotFound(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -643,7 +643,7 @@ func TestDomainsService_Update_CrossTenantReturnsNotFound(t *testing.T) {
 func TestDomainsService_Delete_HappyPath(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -676,7 +676,7 @@ func TestDomainsService_Delete_HappyPath(t *testing.T) {
 func TestDomainsService_Delete_CrossTenantReturnsNotFound(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -698,7 +698,7 @@ func TestDomainsService_Delete_CrossTenantReturnsNotFound(t *testing.T) {
 func TestDomainsService_DeletionImpact_HappyPath(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -723,7 +723,7 @@ func TestDomainsService_DeletionImpact_HappyPath(t *testing.T) {
 func TestDomainsService_Create_ViewerForbidden(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -759,7 +759,7 @@ func TestDomainsService_Create_ViewerForbidden(t *testing.T) {
 func TestDomainsService_Create_ManagerSucceeds(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -790,7 +790,7 @@ func TestDomainsService_Create_ManagerSucceeds(t *testing.T) {
 func TestDomainsService_Update_ViewerForbidden(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -828,7 +828,7 @@ func TestDomainsService_Update_ViewerForbidden(t *testing.T) {
 func TestDomainsService_Update_ManagerSucceeds(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -858,7 +858,7 @@ func TestDomainsService_Update_ManagerSucceeds(t *testing.T) {
 func TestDomainsService_Delete_ViewerForbidden(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -889,7 +889,7 @@ func TestDomainsService_Delete_ViewerForbidden(t *testing.T) {
 func TestDomainsService_Delete_ManagerSucceeds(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -913,7 +913,7 @@ func TestDomainsService_Delete_ManagerSucceeds(t *testing.T) {
 func TestDomainsService_DeletionImpact_CrossTenantReturnsNotFound(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}

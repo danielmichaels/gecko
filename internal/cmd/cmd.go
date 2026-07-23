@@ -14,10 +14,12 @@ import (
 	"github.com/alecthomas/kong"
 
 	"github.com/danielmichaels/gecko/internal/config"
+	"github.com/danielmichaels/gecko/internal/embeddedpg"
 	"github.com/danielmichaels/gecko/internal/jobs"
 	"github.com/danielmichaels/gecko/internal/logging"
 	"github.com/danielmichaels/gecko/internal/mailer"
 	"github.com/danielmichaels/gecko/internal/store"
+	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
@@ -47,14 +49,15 @@ func validateAPIAccess(g *Globals) error {
 }
 
 type Setup struct {
-	Config  *config.Conf
-	Logger  *slog.Logger
-	PgxPool *pgxpool.Pool
-	Store   *store.Queries
-	Ctx     context.Context
-	Cancel  context.CancelFunc
-	RC      *river.Client[pgx.Tx]
-	Mailer  mailer.Mailer
+	Config     *config.Conf
+	Logger     *slog.Logger
+	PgxPool    *pgxpool.Pool
+	Store      *store.Queries
+	Ctx        context.Context
+	Cancel     context.CancelFunc
+	RC         *river.Client[pgx.Tx]
+	Mailer     mailer.Mailer
+	embeddedPG *embeddedpg.Server
 }
 type SetupOption func(*Setup)
 
@@ -97,9 +100,41 @@ func NewSetup(service string, opts ...SetupOption) (*Setup, error) {
 	logger, lctx := logging.SetupLogger(service, cfg)
 	ctx, cancel := context.WithCancel(lctx)
 
+	var emb *embeddedpg.Server
+	if config.ShouldStartEmbedded(cfg) {
+		srv, err := embeddedpg.Start(embeddedpg.Options{
+			User:     cfg.Db.User,
+			Password: cfg.Db.Password,
+			Database: cfg.Db.Db,
+			Port:     uint32(cfg.Db.Port),
+			DataDir:  cfg.Db.EmbeddedStoreDir,
+			Version:  embeddedpostgres.V18,
+			Logger:   logger,
+		})
+		if err != nil {
+			logger.Error("embedded postgres error", "error", err)
+			cancel()
+			return nil, err
+		}
+		// The embedded instance always listens on localhost with TLS disabled; force
+		// these so store.NewDatabasePool rebuilds a DSN pointing at it.
+		cfg.Db.Host, cfg.Db.SSLMode = "localhost", "disable"
+		if err := store.MigrateUp(srv.DSN, logger); err != nil {
+			logger.Error("embedded postgres migration error", "error", err)
+			_ = srv.Stop()
+			cancel()
+			return nil, err
+		}
+		logger.Info("embedded postgres started", "dsn", srv.DSN)
+		emb = srv
+	}
+
 	db, err := store.NewDatabasePool(ctx, cfg)
 	if err != nil {
 		logger.Error("database error", "error", err)
+		if emb != nil {
+			_ = emb.Stop()
+		}
 		cancel()
 		return nil, err
 	}
@@ -107,6 +142,9 @@ func NewSetup(service string, opts ...SetupOption) (*Setup, error) {
 	if err := db.Ping(ctx); err != nil {
 		logger.Error("database ping error", "error", err)
 		db.Close()
+		if emb != nil {
+			_ = emb.Stop()
+		}
 		cancel()
 		return nil, err
 	}
@@ -114,17 +152,21 @@ func NewSetup(service string, opts ...SetupOption) (*Setup, error) {
 	if err != nil {
 		logger.Error("mailer error", "error", err)
 		db.Close()
+		if emb != nil {
+			_ = emb.Stop()
+		}
 		cancel()
 		return nil, err
 	}
 	s := &Setup{
-		Config:  cfg,
-		Logger:  logger,
-		PgxPool: db,
-		Store:   store.New(db),
-		Ctx:     ctx,
-		Cancel:  cancel,
-		Mailer:  m,
+		Config:     cfg,
+		Logger:     logger,
+		PgxPool:    db,
+		Store:      store.New(db),
+		Ctx:        ctx,
+		Cancel:     cancel,
+		Mailer:     m,
+		embeddedPG: emb,
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -141,6 +183,11 @@ func (s *Setup) Close() {
 	}
 	s.Cancel()
 	s.PgxPool.Close()
+	if s.embeddedPG != nil {
+		if err := s.embeddedPG.Stop(); err != nil {
+			s.Logger.Error("failed to stop embedded postgres", "error", err)
+		}
+	}
 	s.Logger.Info("shutdown complete")
 }
 

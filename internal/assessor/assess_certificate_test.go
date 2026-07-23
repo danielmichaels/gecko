@@ -29,7 +29,7 @@ func findingByIssueType(
 
 func TestAssessCertificate(t *testing.T) {
 	ctx := context.Background()
-	pgContainer, err := testhelpers.CreatePostgresContainer(ctx)
+	pgContainer, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("Failed to create postgres container: %v", err)
 	}

@@ -15,7 +15,7 @@ import (
 func TestFindingsService_ListByTenant(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestFindingsService_ListByTenant(t *testing.T) {
 func TestFindingsService_ListByTenantFlat(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}

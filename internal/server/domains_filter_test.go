@@ -26,7 +26,7 @@ type domainListResp struct {
 func seedDomainTyped(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	tenantID int32,
 	name string,
 	domainType store.DomainType,
@@ -53,7 +53,7 @@ func seedDomainTyped(
 func TestDomainsListFilterAPI(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}

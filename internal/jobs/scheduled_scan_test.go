@@ -12,7 +12,7 @@ import (
 func scanCountBySource(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	domainID int32,
 	source store.ScanSource,
 ) int {
@@ -32,7 +32,7 @@ func scanCountBySource(
 func TestScheduledScanWorker_EnqueueDueScans(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create postgres container: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestScheduledScanWorker_EnqueueDueScans(t *testing.T) {
 func TestScheduledScanWorker_BatchCap(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create postgres container: %v", err)
 	}

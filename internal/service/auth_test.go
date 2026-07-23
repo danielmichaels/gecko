@@ -17,7 +17,7 @@ import (
 )
 
 // newAuthSvc builds a real AuthService backed by a test container.
-func newAuthSvc(t *testing.T, pc *testhelpers.PostgresContainer) *service.AuthService {
+func newAuthSvc(t *testing.T, pc *testhelpers.TestDatabase) *service.AuthService {
 	t.Helper()
 	cfg := config.AppConfig()
 	cfg.Auth.BcryptCost = 4
@@ -44,7 +44,7 @@ func newAuthSvc(t *testing.T, pc *testhelpers.PostgresContainer) *service.AuthSe
 func TestAuthService_ChangePassword_HappyPath(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestAuthService_ChangePassword_HappyPath(t *testing.T) {
 func TestAuthService_ChangePassword_WrongCurrent(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestAuthService_ChangePassword_WrongCurrent(t *testing.T) {
 func TestAuthService_ChangePassword_WeakNew(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -142,7 +142,7 @@ func signupUser(
 func tenantOf(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	u store.Users,
 ) int32 {
 	t.Helper()
@@ -153,7 +153,7 @@ func tenantOf(
 func roleOf(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	u store.Users,
 ) string {
 	t.Helper()
@@ -164,7 +164,7 @@ func roleOf(
 func seedInvitation(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	tenantID int32,
 	email string,
 	role store.UserRole,
@@ -192,7 +192,7 @@ func seedInvitation(
 func TestAuthService_Login_Valid(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -223,7 +223,7 @@ func TestAuthService_Login_Valid(t *testing.T) {
 func TestAuthService_Login_Invalid(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -252,7 +252,7 @@ func TestAuthService_Login_Invalid(t *testing.T) {
 func TestAuthService_Signup_HappyPath(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -283,7 +283,7 @@ func TestAuthService_Signup_HappyPath(t *testing.T) {
 func TestAuthService_Signup_DuplicateEmail(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -307,7 +307,7 @@ func TestAuthService_Signup_DuplicateEmail(t *testing.T) {
 func TestAuthService_AcceptInvite_HappyPath(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -350,7 +350,7 @@ func TestAuthService_AcceptInvite_HappyPath(t *testing.T) {
 func TestAuthService_InviteContextFromToken_InviterEmail(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -401,7 +401,7 @@ func TestAuthService_InviteContextFromToken_InviterEmail(t *testing.T) {
 func TestAuthService_AcceptInvite_InvalidToken(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -424,7 +424,7 @@ func TestAuthService_AcceptInvite_InvalidToken(t *testing.T) {
 func TestAuthService_AcceptInvite_DuplicateEmail(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -459,7 +459,7 @@ func TestAuthService_AcceptInvite_DuplicateEmail(t *testing.T) {
 func TestAuthService_Session_MintAndResolve(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -533,7 +533,7 @@ func TestAuthService_Session_MintAndResolve(t *testing.T) {
 func TestAuthService_Session_LastUsedAtAdvances(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -598,7 +598,7 @@ func TestAuthService_Session_LastUsedAtAdvances(t *testing.T) {
 func TestAuthService_Session_ExpiredToken(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -639,7 +639,7 @@ func TestAuthService_Session_ExpiredToken(t *testing.T) {
 func TestAuthService_Session_BogusToken(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -659,7 +659,7 @@ func TestAuthService_Session_BogusToken(t *testing.T) {
 func TestAuthService_Session_Revoke(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -725,7 +725,7 @@ func TestAuthService_Session_Revoke(t *testing.T) {
 func TestAuthService_Session_RawTokenNotStored(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -769,7 +769,7 @@ func TestAuthService_Session_RawTokenNotStored(t *testing.T) {
 func TestAuthService_Authenticate_Valid(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -796,7 +796,7 @@ func TestAuthService_Authenticate_Valid(t *testing.T) {
 func TestAuthService_Authenticate_Invalid(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -817,7 +817,7 @@ func TestAuthService_Authenticate_Invalid(t *testing.T) {
 func TestAuthService_AcceptInviteWeb_Valid(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -869,7 +869,7 @@ func TestAuthService_AcceptInviteWeb_Valid(t *testing.T) {
 func TestAuthService_AcceptInviteWeb_InvalidToken(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -899,7 +899,7 @@ func isErr(err, target error) bool {
 // tests can assert what was queued.
 func newAuthSvcWithEmailer(
 	t *testing.T,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 ) (*service.AuthService, *fakeScheduler) {
 	t.Helper()
 	cfg := config.AppConfig()
@@ -927,7 +927,7 @@ func newAuthSvcWithEmailer(
 func seedResetToken(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	userID int32,
 	expiresAt time.Time,
 ) string {
@@ -950,7 +950,7 @@ func seedResetToken(
 func TestAuthService_SignupWeb_HappyPath(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -991,7 +991,7 @@ func TestAuthService_SignupWeb_HappyPath(t *testing.T) {
 func TestAuthService_SignupWeb_DuplicateEmail(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -1012,7 +1012,7 @@ func TestAuthService_SignupWeb_DuplicateEmail(t *testing.T) {
 func TestAuthService_SignupWeb_SendsWelcomeEmail(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -1045,7 +1045,7 @@ func TestAuthService_SignupWeb_SendsWelcomeEmail(t *testing.T) {
 func TestAuthService_Signup_SendsWelcomeEmail(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -1069,7 +1069,7 @@ func TestAuthService_Signup_SendsWelcomeEmail(t *testing.T) {
 func TestAuthService_RequestPasswordReset_UnknownEmail(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -1095,7 +1095,7 @@ func TestAuthService_RequestPasswordReset_UnknownEmail(t *testing.T) {
 func TestAuthService_RequestPasswordReset_KnownEmail(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -1131,7 +1131,7 @@ func TestAuthService_RequestPasswordReset_KnownEmail(t *testing.T) {
 func TestAuthService_ResetPassword_HappyPath(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -1187,7 +1187,7 @@ func TestAuthService_ResetPassword_HappyPath(t *testing.T) {
 func TestAuthService_ResetPassword_InvalidToken(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -1205,7 +1205,7 @@ func TestAuthService_ResetPassword_InvalidToken(t *testing.T) {
 func TestAuthService_ResetPassword_ExpiredToken(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -1227,7 +1227,7 @@ func TestAuthService_ResetPassword_ExpiredToken(t *testing.T) {
 func TestAuthService_ResetPassword_WeakPassword(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -1251,7 +1251,7 @@ func TestAuthService_ResetPassword_WeakPassword(t *testing.T) {
 func TestAuthService_CreateWorkspace(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -1295,7 +1295,7 @@ func TestAuthService_CreateWorkspace(t *testing.T) {
 func TestAuthService_AttachInviteWeb(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -1346,7 +1346,7 @@ func TestAuthService_AttachInviteWeb(t *testing.T) {
 func TestAuthService_SwitchTenant_NonMemberForbidden(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}

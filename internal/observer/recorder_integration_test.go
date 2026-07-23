@@ -17,7 +17,7 @@ import (
 func TestRecorderRecordA(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("failed to create postgres container: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestRecorderRecordA(t *testing.T) {
 func TestNoLegacyHistoryTablesRemain(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("failed to create postgres container: %v", err)
 	}
@@ -206,7 +206,7 @@ func TestNoLegacyHistoryTablesRemain(t *testing.T) {
 func TestRecorderRecordSRV(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("failed to create postgres container: %v", err)
 	}
@@ -309,7 +309,7 @@ func TestRecorderRecordSRV(t *testing.T) {
 func TestRecordFindingChange_SuppressesNoOpObservations(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("failed to create postgres container: %v", err)
 	}

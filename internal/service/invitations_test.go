@@ -17,7 +17,7 @@ import (
 
 func setupInvitationsService(
 	t *testing.T,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 ) (authSvc *service.AuthService, invSvc *service.InvitationsService) {
 	t.Helper()
 	cfg := config.AppConfig()
@@ -43,7 +43,7 @@ func setupInvitationsService(
 func TestInvitationsService_Create_HappyPath(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestInvitationsService_Create_HappyPath(t *testing.T) {
 func TestInvitationsService_Create_ViewerForbidden(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestInvitationsService_Create_ViewerForbidden(t *testing.T) {
 func TestInvitationsService_Create_ManagerCannotGrantOwner(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestInvitationsService_Create_ManagerCannotGrantOwner(t *testing.T) {
 func TestInvitationsService_Create_ExistingUserOtherTenant(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestInvitationsService_Create_ExistingUserOtherTenant(t *testing.T) {
 func TestInvitationsService_Create_DuplicatePendingInvite(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -212,7 +212,7 @@ func TestInvitationsService_Create_DuplicatePendingInvite(t *testing.T) {
 func TestInvitationsService_List_TenantScoped(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -254,7 +254,7 @@ func TestInvitationsService_List_TenantScoped(t *testing.T) {
 func TestInvitationsService_Revoke_HappyPath(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -287,7 +287,7 @@ func TestInvitationsService_Revoke_HappyPath(t *testing.T) {
 func TestInvitationsService_Revoke_ViewerForbidden(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -312,7 +312,7 @@ func TestInvitationsService_Revoke_ViewerForbidden(t *testing.T) {
 func TestInvitationsService_Revoke_CrossTenant(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -355,7 +355,7 @@ func TestInvitationsService_Revoke_CrossTenant(t *testing.T) {
 func TestInvitationsService_TokenUsable(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}

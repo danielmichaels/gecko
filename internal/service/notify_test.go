@@ -56,7 +56,7 @@ func awaitDomainNotify(
 func TestDomainsService_Delete_NotifiesUI(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestDomainsService_Delete_NotifiesUI(t *testing.T) {
 func TestDomainsService_Create_NotifiesUI(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestDomainsService_Create_NotifiesUI(t *testing.T) {
 func TestDomainsService_Update_NotifiesUI(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}

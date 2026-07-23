@@ -8,7 +8,7 @@ name: gecko
 
 services:
   db:
-    image: postgres:16
+    image: postgres:18
     restart: always
     env_file: [.env]
     networks: [gecko]
@@ -20,7 +20,7 @@ services:
       timeout: 5s
       retries: 5
     volumes:
-      - gecko_db:/var/lib/postgresql/data
+      - gecko_db:/var/lib/postgresql   # postgres:18+ stores data in a version subdir here
 
   riverui:                             # job dashboard — NO built-in auth (localhost only)
     image: ghcr.io/riverqueue/riverui:latest   # pin to a release tag for stability
@@ -54,6 +54,7 @@ services:
     environment:                       # reach the bundled db on the compose network,
       POSTGRES_HOST: db                # overriding host-oriented values in .env
       POSTGRES_PORT: "5432"            # (dev uses localhost:<published> for host processes)
+      POSTGRES_EMBEDDED: "false"       # never self-host inside the container, even if .env sets it
     networks: [gecko]
     restart: "no"
     depends_on:
@@ -67,6 +68,7 @@ services:
     environment:
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"
+      POSTGRES_EMBEDDED: "false"
     networks: [gecko]
     restart: always
     ports:
@@ -89,6 +91,7 @@ services:
     environment:
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"
+      POSTGRES_EMBEDDED: "false"
     networks: [gecko]
     restart: always
     depends_on:

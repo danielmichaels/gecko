@@ -18,7 +18,7 @@ import (
 // (for inviting members) and the usersService.
 func setupTenantWithUsers(
 	t *testing.T,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 ) (authSvc *service.AuthService, usersSvc *service.UsersService) {
 	t.Helper()
 	cfg := config.AppConfig()
@@ -43,7 +43,7 @@ func setupTenantWithUsers(
 func principalForEmail(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	email string,
 ) *auth.Principal {
 	t.Helper()
@@ -54,7 +54,7 @@ func principalForEmail(
 func inviteMember(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	authSvc *service.AuthService,
 	inviterP *auth.Principal,
 	email, role string,
@@ -75,7 +75,7 @@ func inviteMember(
 func TestUsersService_List_TenantScoped(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestUsersService_List_TenantScoped(t *testing.T) {
 func TestUsersService_Update_HappyPath(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestUsersService_Update_HappyPath(t *testing.T) {
 func TestUsersService_Update_ViewerForbidden(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -178,7 +178,7 @@ func TestUsersService_Update_ViewerForbidden(t *testing.T) {
 func TestUsersService_Update_ManagerCannotGrantOwner(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -211,7 +211,7 @@ func TestUsersService_Update_ManagerCannotGrantOwner(t *testing.T) {
 func TestUsersService_Update_ManagerCannotModifyOwner(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -243,7 +243,7 @@ func TestUsersService_Update_ManagerCannotModifyOwner(t *testing.T) {
 func TestUsersService_Update_CrossTenant(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -273,7 +273,7 @@ func TestUsersService_Update_CrossTenant(t *testing.T) {
 func TestUsersService_Update_LastOwnerDemote(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -303,7 +303,7 @@ func TestUsersService_Update_LastOwnerDemote(t *testing.T) {
 func TestUsersService_Delete_HappyPath(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -328,7 +328,7 @@ func TestUsersService_Delete_HappyPath(t *testing.T) {
 func TestUsersService_Delete_ViewerForbidden(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -358,7 +358,7 @@ func TestUsersService_Delete_ViewerForbidden(t *testing.T) {
 func TestUsersService_Delete_ManagerCannotDeleteOwner(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -388,7 +388,7 @@ func TestUsersService_Delete_ManagerCannotDeleteOwner(t *testing.T) {
 func TestUsersService_Delete_CrossTenant(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -416,7 +416,7 @@ func TestUsersService_Delete_CrossTenant(t *testing.T) {
 func TestUsersService_Delete_LastOwner(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -443,7 +443,7 @@ func TestUsersService_Delete_LastOwner(t *testing.T) {
 func TestUsersService_ManagerSelfPromote(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
