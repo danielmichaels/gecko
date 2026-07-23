@@ -12,7 +12,7 @@ import (
 func TestNotificationsService_GetDefaultsWhenNoRow(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -34,7 +34,7 @@ func TestNotificationsService_GetDefaultsWhenNoRow(t *testing.T) {
 func TestNotificationsService_SetAndGet(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestNotificationsService_SetAndGet(t *testing.T) {
 func TestNotificationsService_SetRequiresOwnerOrManager(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestNotificationsService_SetRequiresOwnerOrManager(t *testing.T) {
 func TestNotificationsService_AlertToggleRoundTrips(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestNotificationsService_AlertToggleRoundTrips(t *testing.T) {
 func TestNotificationsService_PerUserOptOut(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}

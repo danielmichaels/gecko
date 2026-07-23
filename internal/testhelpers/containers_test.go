@@ -6,13 +6,13 @@ import (
 	"time"
 )
 
-func TestPostgresContainer(t *testing.T) {
+func TestTestDatabase(t *testing.T) {
 	// Create a context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	// Create the Postgres container
-	pgContainer, err := CreatePostgresContainer(ctx)
+	pgContainer, err := CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("failed to create postgres container: %v", err)
 	}

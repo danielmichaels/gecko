@@ -28,7 +28,7 @@ var TestLogger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 	Level: slog.LevelDebug,
 }))
 
-type PostgresContainer struct {
+type TestDatabase struct {
 	Pool             *pgxpool.Pool
 	Queries          *store.Queries
 	ConnectionString string
@@ -55,18 +55,18 @@ var (
 	sharedEmbeddedSerial int
 )
 
-// CreatePostgresContainer provisions an isolated Postgres database for a test by
+// CreateTestDatabase provisions an isolated Postgres database for a test by
 // cloning a migrated template database. By default it boots one shared in-process
 // embedded Postgres for the test binary (no Docker required); set TEST_DATABASE_URL
 // to run against an external server instead (Dagger/CI, or an explicit local one).
-func CreatePostgresContainer(ctx context.Context) (*PostgresContainer, error) {
+func CreateTestDatabase(ctx context.Context) (*TestDatabase, error) {
 	if adminURL := os.Getenv("TEST_DATABASE_URL"); adminURL != "" {
 		return createSharedDatabase(ctx, adminURL)
 	}
 	return createSharedEmbeddedDatabase(ctx)
 }
 
-// ParallelDBTest opts a DB-backed test into parallel execution. CreatePostgresContainer
+// ParallelDBTest opts a DB-backed test into parallel execution. CreateTestDatabase
 // keeps per-test database isolation by cloning a migrated template database.
 type parallelTest interface {
 	Helper()
@@ -78,7 +78,7 @@ func ParallelDBTest(t parallelTest) {
 	t.Parallel()
 }
 
-func createSharedEmbeddedDatabase(ctx context.Context) (*PostgresContainer, error) {
+func createSharedEmbeddedDatabase(ctx context.Context) (*TestDatabase, error) {
 	adminURL, release, err := sharedEmbeddedAdminURL()
 	if err != nil {
 		return nil, err
@@ -140,7 +140,7 @@ func sharedEmbeddedAdminURL() (string, func(), error) {
 	return sharedEmbeddedURL, release, nil
 }
 
-func createSharedDatabase(ctx context.Context, adminURL string) (*PostgresContainer, error) {
+func createSharedDatabase(ctx context.Context, adminURL string) (*TestDatabase, error) {
 	templateName, err := sharedTemplateDatabase(ctx, adminURL)
 	if err != nil {
 		return nil, err
@@ -164,7 +164,7 @@ func createSharedDatabase(ctx context.Context, adminURL string) (*PostgresContai
 	if err != nil {
 		return nil, err
 	}
-	return &PostgresContainer{
+	return &TestDatabase{
 		ConnectionString: connStr,
 		Pool:             pool,
 		Queries:          queries,
@@ -463,7 +463,7 @@ func quoteIdent(name string) string {
 
 // Close releases the pool, drops the per-test database, and releases the shared
 // Postgres instance (embedded or external) once the last test using it finishes.
-func (pc *PostgresContainer) Close(ctx context.Context) {
+func (pc *TestDatabase) Close(ctx context.Context) {
 	if pc.Pool != nil {
 		pc.Pool.Close()
 	}

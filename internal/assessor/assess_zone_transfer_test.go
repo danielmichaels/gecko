@@ -20,7 +20,7 @@ import (
 // Constrained by the test DNS server not supporting AXFR/IXFR zone transfers.
 func TestAssessZoneTransfer(t *testing.T) {
 	ctx := context.Background()
-	pgContainer, err := testhelpers.CreatePostgresContainer(ctx)
+	pgContainer, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("Failed to create postgres container: %v", err)
 	}
@@ -206,7 +206,7 @@ func TestAssessZoneTransfer(t *testing.T) {
 // nameserver refuses (b), and link the finding to its NS record (c).
 func TestAssessZoneTransferRefusedNonDefaultTenant(t *testing.T) {
 	ctx := context.Background()
-	pgContainer, err := testhelpers.CreatePostgresContainer(ctx)
+	pgContainer, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("Failed to create postgres container: %v", err)
 	}

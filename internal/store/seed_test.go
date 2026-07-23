@@ -13,7 +13,7 @@ import (
 // idempotent.
 func TestSeedDemo(t *testing.T) {
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create db: %v", err)
 	}

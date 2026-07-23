@@ -19,7 +19,7 @@ func inviteBody(email, role string) []byte {
 func TestHandlerTeam_Get_OwnerSeesRoster(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -44,7 +44,7 @@ func TestHandlerTeam_Get_OwnerSeesRoster(t *testing.T) {
 func TestHandlerTeam_InviteCreate_RevealsOneTimeLink(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestHandlerTeam_InviteCreate_RevealsOneTimeLink(t *testing.T) {
 func TestHandlerTeam_RemoveLastOwner_SurfacesConflict(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}

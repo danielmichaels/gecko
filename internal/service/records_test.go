@@ -16,7 +16,7 @@ import (
 func recordAObservation(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	d store.DomainsInsertRow,
 	tenantID int32,
 	ips []string,
@@ -55,7 +55,7 @@ func recordAObservation(
 func TestRecordsService_List_HappyPath(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestRecordsService_List_HappyPath(t *testing.T) {
 func TestRecordsService_List_CrossTenantReturnsNotFound(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestRecordsService_List_CrossTenantReturnsNotFound(t *testing.T) {
 func TestRecordsService_List_InvalidQTypeReturnsInvalidInput(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestRecordsService_List_InvalidQTypeReturnsInvalidInput(t *testing.T) {
 func TestRecordsService_History_HappyPath(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestRecordsService_History_HappyPath(t *testing.T) {
 func TestRecordsService_History_CrossTenantReturnsNotFound(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestRecordsService_History_CrossTenantReturnsNotFound(t *testing.T) {
 func TestRecordsService_History_InvalidQTypeReturnsInvalidInput(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -194,7 +194,7 @@ func TestRecordsService_History_InvalidQTypeReturnsInvalidInput(t *testing.T) {
 func TestRecordsService_History_QtypeFilter(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -229,7 +229,7 @@ func TestRecordsService_History_QtypeFilter(t *testing.T) {
 func TestRecordsService_Timeline_HappyPath(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -255,7 +255,7 @@ func TestRecordsService_Timeline_HappyPath(t *testing.T) {
 func TestRecordsService_Timeline_CrossTenantReturnsNotFound(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -280,7 +280,7 @@ func TestRecordsService_Timeline_CrossTenantReturnsNotFound(t *testing.T) {
 func TestDomainsService_RecordCountsForPage(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}

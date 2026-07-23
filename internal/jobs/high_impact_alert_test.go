@@ -40,7 +40,7 @@ func enableAlerts(
 
 func alertTestWorker(
 	q *store.Queries,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	enq *fakeEmailEnqueuer,
 ) *HighImpactAlertWorker {
 	w := digestTestWorker(q, pc, enq)
@@ -60,7 +60,7 @@ func alertTestWorker(
 func TestHighImpactAlertWorker_EnqueueDueAlerts(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create postgres container: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestHighImpactAlertWorker_EnqueueDueAlerts(t *testing.T) {
 func optOut(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	email string,
 ) {
 	t.Helper()

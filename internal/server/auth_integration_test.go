@@ -24,7 +24,7 @@ import (
 // auth/read/delete paths under test never enqueue a job.
 func newAuthAPI(
 	t *testing.T,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	sched ...service.DomainScanScheduler,
 ) (*Server, string) {
 	t.Helper()
@@ -135,7 +135,7 @@ func signup(t *testing.T, base, email, password string) tokenResp {
 func tenantIDByEmail(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	email string,
 ) int32 {
 	t.Helper()
@@ -146,7 +146,7 @@ func tenantIDByEmail(
 func seedDomain(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	tenantID int32,
 	name string,
 ) store.DomainsInsertRow {
@@ -167,7 +167,7 @@ func seedDomain(
 func TestAuth_SignupLoginMe(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -217,7 +217,7 @@ func TestAuth_SignupLoginMe(t *testing.T) {
 func TestAuth_SignupDisabled(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -234,7 +234,7 @@ func TestAuth_SignupDisabled(t *testing.T) {
 func TestAuth_MissingOrInvalidKey(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}

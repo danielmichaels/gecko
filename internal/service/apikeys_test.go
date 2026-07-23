@@ -14,7 +14,7 @@ import (
 
 func setupAPIKeysService(
 	t *testing.T,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 ) (authSvc *service.AuthService, keysSvc *service.APIKeysService) {
 	t.Helper()
 	cfg := config.AppConfig()
@@ -39,7 +39,7 @@ func setupAPIKeysService(
 func TestAPIKeysService_Create_HappyPath(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestAPIKeysService_Create_HappyPath(t *testing.T) {
 func TestAPIKeysService_Create_ViewerForbidden(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestAPIKeysService_Create_ViewerForbidden(t *testing.T) {
 func TestAPIKeysService_Create_ManagerAllowed(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestAPIKeysService_Create_ManagerAllowed(t *testing.T) {
 func TestAPIKeysService_List_TenantScoped(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestAPIKeysService_List_TenantScoped(t *testing.T) {
 func TestAPIKeysService_ListMine_UserScoped(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -223,7 +223,7 @@ func TestAPIKeysService_ListMine_UserScoped(t *testing.T) {
 func TestAPIKeysService_Revoke_HappyPath(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -247,7 +247,7 @@ func TestAPIKeysService_Revoke_HappyPath(t *testing.T) {
 func TestAPIKeysService_Revoke_ViewerForbidden(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -272,7 +272,7 @@ func TestAPIKeysService_Revoke_ViewerForbidden(t *testing.T) {
 func TestAPIKeysService_Revoke_CrossTenant(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -304,7 +304,7 @@ func TestAPIKeysService_Revoke_CrossTenant(t *testing.T) {
 func TestAPIKeysService_Revoke_NotFound(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -327,7 +327,7 @@ func TestAPIKeysService_Revoke_NotFound(t *testing.T) {
 func TestAPIKeysService_Create_KeyIsUsable(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}

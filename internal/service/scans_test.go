@@ -14,7 +14,7 @@ import (
 func seedScan(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	tenantID int32,
 	d store.DomainsInsertRow,
 	source store.ScanSource,
@@ -38,7 +38,7 @@ func seedScan(
 func seedObservation(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	tenantID int32,
 	d store.DomainsInsertRow,
 	scanID int64,
@@ -82,7 +82,7 @@ func flatScanByUID(res service.FlatScansResult, uid string) (service.FlatScanVie
 
 func TestScansService_ListByTenantFlat(t *testing.T) {
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestScansService_ListByTenantFlat(t *testing.T) {
 
 func TestScansService_ListByTenant_IsolationAndAggregates(t *testing.T) {
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -236,7 +236,7 @@ func TestScansService_ListByTenant_IsolationAndAggregates(t *testing.T) {
 
 func TestScansService_ListByTenant_SourceFilterAndWindow(t *testing.T) {
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}

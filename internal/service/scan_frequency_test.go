@@ -18,7 +18,7 @@ func freqPtr(f store.ScanFrequency) *store.ScanFrequency { return &f }
 func readNextScan(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	uid string,
 ) (time.Time, bool) {
 	t.Helper()
@@ -40,7 +40,7 @@ func readNextScan(
 func TestDomainsService_SetScanFrequency_ForbiddenForViewer(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create postgres container: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestDomainsService_SetScanFrequency_ForbiddenForViewer(t *testing.T) {
 func TestDomainsService_SetScanFrequency_OwnerRecomputes(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create postgres container: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestDomainsService_SetScanFrequency_OwnerRecomputes(t *testing.T) {
 func TestDomainsService_SetScanFrequency_NotFound(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create postgres container: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestDomainsService_SetScanFrequency_NotFound(t *testing.T) {
 func TestSettingsService_SetDefaultScanFrequency_ForbiddenForViewer(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create postgres container: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestSettingsService_SetDefaultScanFrequency_ForbiddenForViewer(t *testing.T
 func TestSettingsService_SetDefaultScanFrequency_RecomputesInheriting(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create postgres container: %v", err)
 	}

@@ -13,7 +13,7 @@ import (
 func seedSPFFinding(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	domainID int32,
 	severity store.FindingSeverity,
 	issueType string,
@@ -33,7 +33,7 @@ func seedSPFFinding(
 func seedDMARCFinding(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	domainID int32,
 	severity store.FindingSeverity,
 	issueType string,
@@ -81,7 +81,7 @@ type domainFindingsResp struct {
 func TestFindingsAPI(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}

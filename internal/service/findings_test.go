@@ -14,7 +14,7 @@ import (
 func seedDMARCFinding(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	domainID int32,
 	severity store.FindingSeverity,
 	status store.FindingStatus,
@@ -35,7 +35,7 @@ func seedDMARCFinding(
 func seedSPFFinding(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	domainID int32,
 	severity store.FindingSeverity,
 	status store.FindingStatus,
@@ -56,7 +56,7 @@ func seedSPFFinding(
 func seedDKIMFinding(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	domainID int32,
 	severity store.FindingSeverity,
 	status store.FindingStatus,
@@ -77,7 +77,7 @@ func seedDKIMFinding(
 func seedZoneTransferFinding(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	domainID int32,
 	nameserver string,
 	possible bool,
@@ -99,7 +99,7 @@ func seedZoneTransferFinding(
 func seedCertificateFinding(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	domainID int32,
 	severity store.FindingSeverity,
 	status store.FindingStatus,
@@ -132,7 +132,7 @@ func hasFindingKind(findings []service.FindingView, kind string) bool {
 func TestDomainsService_FindingsSummaryForPage(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
@@ -231,7 +231,7 @@ func TestDomainsService_FindingsSummaryForPage(t *testing.T) {
 func TestFindingsService_ListByDomain(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}

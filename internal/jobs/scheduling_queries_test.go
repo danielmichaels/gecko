@@ -16,7 +16,7 @@ import (
 func setNextScan(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	id int32,
 	offset string,
 ) {
@@ -35,7 +35,7 @@ func setNextScan(
 func setScanFrequency(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	id int32,
 	freq store.ScanFrequency,
 ) {
@@ -47,7 +47,7 @@ func setScanFrequency(
 }
 
 // setInactive flips a domain to inactive.
-func setInactive(t *testing.T, ctx context.Context, pc *testhelpers.PostgresContainer, id int32) {
+func setInactive(t *testing.T, ctx context.Context, pc *testhelpers.TestDatabase, id int32) {
 	t.Helper()
 	_, err := pc.Pool.Exec(ctx, "UPDATE domains SET status = 'inactive' WHERE id = $1", id)
 	if err != nil {
@@ -58,7 +58,7 @@ func setInactive(t *testing.T, ctx context.Context, pc *testhelpers.PostgresCont
 func nextScanAt(
 	t *testing.T,
 	ctx context.Context,
-	pc *testhelpers.PostgresContainer,
+	pc *testhelpers.TestDatabase,
 	id int32,
 ) pgtype.Timestamptz {
 	t.Helper()
@@ -76,7 +76,7 @@ func nextScanAt(
 func TestDomainsListDueForScan(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create postgres container: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestDomainsListDueForScan(t *testing.T) {
 func TestDomainsMarkScanned(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create postgres container: %v", err)
 	}
@@ -195,7 +195,7 @@ func TestDomainsMarkScanned(t *testing.T) {
 func TestDomainsRecomputeNextScanByTenantDefault(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create postgres container: %v", err)
 	}
@@ -259,7 +259,7 @@ func TestDomainsRecomputeNextScanByTenantDefault(t *testing.T) {
 func TestDomainsGetScanFrequencies(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create postgres container: %v", err)
 	}
@@ -313,7 +313,7 @@ func TestDomainsGetScanFrequencies(t *testing.T) {
 func TestTenantSettingsUpsertGet(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create postgres container: %v", err)
 	}

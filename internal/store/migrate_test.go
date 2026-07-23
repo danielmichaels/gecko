@@ -13,7 +13,7 @@ import (
 // (embedded FS + dialect) against a real Postgres and proves re-running is safe.
 func TestMigrateUp_Idempotent(t *testing.T) {
 	ctx := context.Background()
-	pc, err := testhelpers.CreatePostgresContainer(ctx)
+	pc, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("create db: %v", err)
 	}

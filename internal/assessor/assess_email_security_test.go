@@ -19,7 +19,7 @@ import (
 // failed with "get domain ... no rows".
 func TestAssessEmailSecurity_UsesIdentityTenant(t *testing.T) {
 	ctx := context.Background()
-	pgContainer, err := testhelpers.CreatePostgresContainer(ctx)
+	pgContainer, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("Failed to create postgres container: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestAssessEmailSecurity_UsesIdentityTenant(t *testing.T) {
 
 func TestAssessEmailSecurity_SPFIssues(t *testing.T) {
 	ctx := context.Background()
-	pgContainer, err := testhelpers.CreatePostgresContainer(ctx)
+	pgContainer, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("Failed to create postgres container: %v", err)
 	}
@@ -266,7 +266,7 @@ func TestAssessEmailSecurity_SPFIssues(t *testing.T) {
 
 func TestAssessEmailSecurity_SPFHardening(t *testing.T) {
 	ctx := context.Background()
-	pgContainer, err := testhelpers.CreatePostgresContainer(ctx)
+	pgContainer, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("Failed to create postgres container: %v", err)
 	}
@@ -343,7 +343,7 @@ func TestAssessEmailSecurity_SPFHardening(t *testing.T) {
 
 func TestAssessEmailSecurity_DKIM(t *testing.T) {
 	ctx := context.Background()
-	pgContainer, err := testhelpers.CreatePostgresContainer(ctx)
+	pgContainer, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("Failed to create postgres container: %v", err)
 	}
@@ -583,7 +583,7 @@ func TestAssessEmailSecurity_DKIM(t *testing.T) {
 
 func TestAssessEmailSecurity_DMARC(t *testing.T) {
 	ctx := context.Background()
-	pgContainer, err := testhelpers.CreatePostgresContainer(ctx)
+	pgContainer, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("Failed to create postgres container: %v", err)
 	}
@@ -832,7 +832,7 @@ func TestAssessEmailSecurity_DMARC(t *testing.T) {
 // are reported not-applicable rather than missing.
 func TestAssessEmailSecurity_NullMX(t *testing.T) {
 	ctx := context.Background()
-	pgContainer, err := testhelpers.CreatePostgresContainer(ctx)
+	pgContainer, err := testhelpers.CreateTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("Failed to create postgres container: %v", err)
 	}
