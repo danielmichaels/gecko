@@ -4,7 +4,7 @@ go 1.26.3
 
 require (
 	github.com/MatusOllah/slogcolor v1.5.0
-	github.com/a-h/templ v0.3.977
+	github.com/a-h/templ v0.3.1020
 	github.com/alecthomas/kong v1.8.1
 	github.com/alecthomas/kong-yaml v0.2.0
 	github.com/briandowns/spinner v1.23.2
