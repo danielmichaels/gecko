@@ -2,8 +2,6 @@ package assessor
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -22,15 +20,8 @@ const recommendedNameserverCount = 2
 // zone-apex concepts, so subdomains are skipped. Inputs come from already-stored
 // records; only the SOA MNAME resolvability check performs a (rate-limited) lookup.
 func (a *Assessor) AssessMinimumRecordSet(ctx context.Context, domainUID string) error {
-	domain, err := a.store.DomainsGetByIdentifier(ctx, store.DomainsGetByIdentifierParams{
-		Uid:      domainUID,
-		TenantID: pgtype.Int4{Int32: a.identity.TenantID, Valid: true},
-	})
+	domain, err := a.getDomain(ctx, domainUID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("domain %s not found in database", domainUID)
-		}
-		a.logger.ErrorContext(ctx, "Error looking up domain", "domain", domainUID, "error", err)
 		return err
 	}
 

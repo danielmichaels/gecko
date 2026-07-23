@@ -2,6 +2,8 @@ package assessor
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -13,6 +15,7 @@ import (
 	"github.com/danielmichaels/gecko/internal/observer"
 
 	"github.com/danielmichaels/gecko/internal/store"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // resolutionString maps the resolver's tri-state onto the detect package's string
@@ -85,6 +88,29 @@ func NewAssessor(cfg Config) *Assessor {
 		nsProber:  nsProber,
 		identity:  cfg.Identity,
 	}
+}
+
+// getDomain loads a domain by its UID within the assessor's tenant, mapping a
+// missing row to a caller-friendly not-found error.
+func (a *Assessor) getDomain(
+	ctx context.Context,
+	domainUID string,
+) (store.DomainsGetByIdentifierRow, error) {
+	domain, err := a.store.DomainsGetByIdentifier(ctx, store.DomainsGetByIdentifierParams{
+		Uid:      domainUID,
+		TenantID: pgtype.Int4{Int32: a.identity.TenantID, Valid: true},
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return store.DomainsGetByIdentifierRow{}, fmt.Errorf(
+				"domain %s not found in database",
+				domainUID,
+			)
+		}
+		a.logger.ErrorContext(ctx, "Error looking up domain", "domain", domainUID, "error", err)
+		return store.DomainsGetByIdentifierRow{}, err
+	}
+	return domain, nil
 }
 
 // reconcile resolves the domain's asset and persists the detector output via the

@@ -4,10 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 
 	"github.com/danielmichaels/gecko/internal/detect"
-	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -17,15 +15,8 @@ import (
 // compliance findings (CAA required for cert-bearing domains, missing iodef).
 // It reads structured records from caa_records; no DNS egress occurs here.
 func (a *Assessor) AssessCAA(ctx context.Context, domainUID string) error {
-	domain, err := a.store.DomainsGetByIdentifier(ctx, store.DomainsGetByIdentifierParams{
-		Uid:      domainUID,
-		TenantID: pgtype.Int4{Int32: a.identity.TenantID, Valid: true},
-	})
+	domain, err := a.getDomain(ctx, domainUID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("domain %s not found in database", domainUID)
-		}
-		a.logger.ErrorContext(ctx, "Error looking up domain", "domain", domainUID, "error", err)
 		return err
 	}
 

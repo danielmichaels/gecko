@@ -10,6 +10,7 @@ import (
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/miekg/dns"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -99,37 +100,56 @@ func (a *Assessor) collectEmailSecurity(
 			ev.SPFRecords = append(ev.SPFRecords, t.Value)
 		}
 	}
-
-	ev.DKIMSelectorsChecked = knownDkimSelectors
-	for _, selector := range knownDkimSelectors {
-		recs, st := a.dnsClient.LookupWithStatus(
-			fmt.Sprintf("%s._domainkey.%s", selector, name), dns.TypeTXT,
-		)
-		ev.DKIMSelectors = append(ev.DKIMSelectors, detect.DKIMSelectorEvidence{
-			Selector: selector,
-			Status:   resolutionString(st),
-			Records:  recs,
-		})
-	}
-
-	dmarcRecs, dmarcSt := a.dnsClient.LookupWithStatus("_dmarc."+name, dns.TypeTXT)
-	ev.DMARCStatus = resolutionString(dmarcSt)
-	ev.DMARCRecords = dmarcRecs
-
-	ev.BIMIRecord = a.lookupBIMIRecord(name)
-
-	if a.lookupTXTPrefixed("_mta-sts."+name, "v=STSv1") != "" {
-		ev.MTASTSConfigured = true
-		res := a.prober.Get(ctx, "https://mta-sts."+name+"/.well-known/mta-sts.txt")
-		ev.MTASTSPolicyReached = res.Reached
-		ev.MTASTSPolicyStatus = res.StatusCode
-		ev.MTASTSPolicyBody = res.Body
-	}
 	for _, m := range mx {
 		ev.MXTargets = append(ev.MXTargets, m.Target)
 	}
+	ev.DKIMSelectorsChecked = knownDkimSelectors
 
-	ev.TLSRPTRecord = a.lookupTXTPrefixed("_smtp._tls."+name, "v=TLSRPTv1")
+	// The five remaining sub-checks each hit the network and write disjoint
+	// evidence fields, so run them concurrently (restoring the pre-refactor
+	// errgroup fan-out). The DKIM selector loop is the long pole. _dmarc is still
+	// looked up once here and shared with the detector's BIMI enforcement check.
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		for _, selector := range knownDkimSelectors {
+			recs, st := a.dnsClient.LookupWithStatus(
+				fmt.Sprintf("%s._domainkey.%s", selector, name), dns.TypeTXT,
+			)
+			ev.DKIMSelectors = append(ev.DKIMSelectors, detect.DKIMSelectorEvidence{
+				Selector: selector,
+				Status:   resolutionString(st),
+				Records:  recs,
+			})
+		}
+		return nil
+	})
+	g.Go(func() error {
+		dmarcRecs, dmarcSt := a.dnsClient.LookupWithStatus("_dmarc."+name, dns.TypeTXT)
+		ev.DMARCStatus = resolutionString(dmarcSt)
+		ev.DMARCRecords = dmarcRecs
+		return nil
+	})
+	g.Go(func() error {
+		ev.BIMIRecord = a.lookupBIMIRecord(name)
+		return nil
+	})
+	g.Go(func() error {
+		if a.lookupTXTPrefixed("_mta-sts."+name, "v=STSv1") != "" {
+			ev.MTASTSConfigured = true
+			res := a.prober.Get(gctx, "https://mta-sts."+name+"/.well-known/mta-sts.txt")
+			ev.MTASTSPolicyReached = res.Reached
+			ev.MTASTSPolicyStatus = res.StatusCode
+			ev.MTASTSPolicyBody = res.Body
+		}
+		return nil
+	})
+	g.Go(func() error {
+		ev.TLSRPTRecord = a.lookupTXTPrefixed("_smtp._tls."+name, "v=TLSRPTv1")
+		return nil
+	})
+	if err := g.Wait(); err != nil {
+		return detect.EmailSecurityEvidence{}, err
+	}
 
 	return ev, nil
 }

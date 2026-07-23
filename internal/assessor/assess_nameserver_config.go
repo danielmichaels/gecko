@@ -2,9 +2,6 @@ package assessor
 
 import (
 	"context"
-	"database/sql"
-	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/danielmichaels/gecko/internal/detect"
@@ -31,15 +28,8 @@ const nsRecommendedCount = 2
 // diversity. This v1 approximates provider diversity by the registrable apex of
 // each nameserver hostname, which catches the common all-NS-at-one-provider case.
 func (a *Assessor) AssessNameserverConfig(ctx context.Context, domainUID string) error {
-	domain, err := a.store.DomainsGetByIdentifier(ctx, store.DomainsGetByIdentifierParams{
-		Uid:      domainUID,
-		TenantID: pgtype.Int4{Int32: a.identity.TenantID, Valid: true},
-	})
+	domain, err := a.getDomain(ctx, domainUID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("domain %s not found in database", domainUID)
-		}
-		a.logger.ErrorContext(ctx, "Error looking up domain", "domain", domainUID, "error", err)
 		return err
 	}
 

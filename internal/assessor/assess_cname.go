@@ -2,9 +2,6 @@ package assessor
 
 import (
 	"context"
-	"database/sql"
-	"errors"
-	"fmt"
 	"net"
 	"strings"
 
@@ -13,12 +10,15 @@ import (
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/miekg/dns"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
 	// longChainThreshold and maxChainDepth bound CNAME chain-hygiene analysis.
 	longChainThreshold = 8
 	maxChainDepth      = 16
+	// probeConcurrency bounds concurrent outbound CNAME-target probes per assess.
+	probeConcurrency = 4
 )
 
 // AssessCNAMEDangling reads the domain's persisted CNAME records, re-resolves each
@@ -27,15 +27,8 @@ const (
 // target over HTTP(S) to confirm or suppress the finding. It records dangling
 // findings and CNAME chain-hygiene findings with observations.
 func (a *Assessor) AssessCNAMEDangling(ctx context.Context, domainUID string) error {
-	domain, err := a.store.DomainsGetByIdentifier(ctx, store.DomainsGetByIdentifierParams{
-		Uid:      domainUID,
-		TenantID: pgtype.Int4{Int32: a.identity.TenantID, Valid: true},
-	})
+	domain, err := a.getDomain(ctx, domainUID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("domain %s not found in database", domainUID)
-		}
-		a.logger.ErrorContext(ctx, "Error looking up domain", "domain", domainUID, "error", err)
 		return err
 	}
 
@@ -48,9 +41,19 @@ func (a *Assessor) AssessCNAMEDangling(ctx context.Context, domainUID string) er
 		return err
 	}
 
-	ev := detect.CNAMEEvidence{}
-	for _, record := range records {
-		ev.Targets = append(ev.Targets, a.collectCNAMETarget(ctx, record))
+	// Each target's live lookups + conditional HTTP probe are independent; fan out
+	// with a bounded worker pool and index-assign to keep evidence order stable.
+	ev := detect.CNAMEEvidence{Targets: make([]detect.CNAMETargetEvidence, len(records))}
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(probeConcurrency)
+	for i, record := range records {
+		g.Go(func() error {
+			ev.Targets[i] = a.collectCNAMETarget(gctx, record)
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return err
 	}
 	found, err := detect.CNAMEDetector{LongChainThreshold: longChainThreshold}.Detect(ev)
 	if err != nil {

@@ -119,13 +119,12 @@ func (s *FindingsService) ListByDomain(
 		return FindingsResult{}, err
 	}
 
+	// Rows arrive worst-first from FindingsListByDomainUID's ORDER BY; no Go-side
+	// re-sort needed.
 	findings := make([]FindingView, 0, len(rows))
 	for _, row := range rows {
 		findings = append(findings, mapDomainFinding(row))
 	}
-	sort.SliceStable(findings, func(i, j int) bool {
-		return severityRank(findings[i].Severity) < severityRank(findings[j].Severity)
-	})
 
 	res := FindingsResult{Findings: findings, TotalCount: len(findings)}
 	for _, f := range findings {
@@ -286,41 +285,56 @@ func groupWorstRank(g DomainFindingGroup) int {
 	}
 }
 
+// newFindingView builds the presentation view shared by the per-domain and
+// tenant-wide reads; the tenant read sets DomainUID/DomainName on the result.
+func newFindingView(
+	checkKind, severity, title, details, findingUID string,
+	evidence []byte,
+	seenAt pgtype.Timestamptz,
+) FindingView {
+	class := severityClass(severity)
+	return FindingView{
+		Kind:        checkKind,
+		Severity:    severity,
+		SevClass:    class,
+		Tier:        severityTier(severity),
+		Icon:        severityIcon(class),
+		Title:       title,
+		Description: details,
+		Evidence:    evidenceString(evidence),
+		FindingUID:  findingUID,
+		FirstSeen:   firstSeen(seenAt),
+	}
+}
+
 // mapDomainFinding maps a generic findings row (per-domain read) to a FindingView.
 func mapDomainFinding(f store.Findings) FindingView {
-	class := severityClass(f.Severity)
-	return FindingView{
-		Kind:        f.CheckKind,
-		Severity:    f.Severity,
-		SevClass:    class,
-		Tier:        severityTier(f.Severity),
-		Icon:        severityIcon(class),
-		Title:       f.Title,
-		Description: f.Details,
-		Evidence:    evidenceString(f.Evidence),
-		FindingUID:  f.Uid,
-		FirstSeen:   firstSeen(f.FirstSeen),
-	}
+	return newFindingView(
+		f.CheckKind,
+		f.Severity,
+		f.Title,
+		f.Details,
+		f.Uid,
+		f.Evidence,
+		f.FirstSeen,
+	)
 }
 
 // mapTenantFinding maps a FindingsListTenantOpen row (tenant-wide read, carrying
 // domain identity) to a FindingView.
 func mapTenantFinding(row store.FindingsListTenantOpenRow) FindingView {
-	class := severityClass(row.Severity)
-	return FindingView{
-		Kind:        row.CheckKind,
-		Severity:    row.Severity,
-		SevClass:    class,
-		Tier:        severityTier(row.Severity),
-		Icon:        severityIcon(class),
-		Title:       row.Title,
-		Description: row.Details,
-		Evidence:    evidenceString(row.Evidence),
-		DomainUID:   row.DomainUid,
-		DomainName:  row.DomainName,
-		FindingUID:  row.FindingUid,
-		FirstSeen:   firstSeen(row.FirstSeen),
-	}
+	v := newFindingView(
+		row.CheckKind,
+		row.Severity,
+		row.Title,
+		row.Details,
+		row.FindingUid,
+		row.Evidence,
+		row.FirstSeen,
+	)
+	v.DomainUID = row.DomainUid
+	v.DomainName = row.DomainName
+	return v
 }
 
 // evidenceString renders a finding's JSONB evidence column as a string, empty
@@ -383,22 +397,5 @@ func severityIcon(class string) string {
 		return "ℹ"
 	default:
 		return "✓"
-	}
-}
-
-func severityRank(severity string) int {
-	switch severity {
-	case "critical":
-		return 1
-	case "high":
-		return 2
-	case "medium":
-		return 3
-	case "low":
-		return 4
-	case "info":
-		return 5
-	default:
-		return 6
 	}
 }
