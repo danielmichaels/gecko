@@ -69,10 +69,11 @@ func TestDNSSECDetect(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := d.Detect(tt.ev)
+			detRes, err := d.Detect(tt.ev)
 			if err != nil {
 				t.Fatal(err)
 			}
+			got := detRes.Found
 			if tt.wantIT == "" {
 				if len(got) != 0 {
 					t.Fatalf("got %d findings, want 0: %+v", len(got), got)

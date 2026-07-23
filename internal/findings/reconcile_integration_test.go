@@ -39,7 +39,7 @@ func TestReconcileLifecycle(t *testing.T) {
 
 	reconcile := func(finds ...checks.Finding) {
 		t.Helper()
-		if err := findings.Reconcile(ctx, pc.Queries, tenantID, assetID, checkKind, finds); err != nil {
+		if err := findings.Reconcile(ctx, pc.Queries, tenantID, assetID, checkKind, checks.DetectResult{Found: finds}); err != nil {
 			t.Fatalf("reconcile: %v", err)
 		}
 	}
@@ -156,11 +156,11 @@ func TestReconcileScopeIsolation(t *testing.T) {
 	}
 
 	f := mkFinding("shared_issue", "", "low")
-	if err := findings.Reconcile(ctx, pc.Queries, tenantID, asset.ID, "check_one", []checks.Finding{f}); err != nil {
+	if err := findings.Reconcile(ctx, pc.Queries, tenantID, asset.ID, "check_one", checks.DetectResult{Found: []checks.Finding{f}}); err != nil {
 		t.Fatal(err)
 	}
 	// Reconcile a DIFFERENT check with empty output; check_one's finding must survive.
-	if err := findings.Reconcile(ctx, pc.Queries, tenantID, asset.ID, "check_two", nil); err != nil {
+	if err := findings.Reconcile(ctx, pc.Queries, tenantID, asset.ID, "check_two", checks.DetectResult{}); err != nil {
 		t.Fatal(err)
 	}
 	var status string
@@ -170,5 +170,66 @@ func TestReconcileScopeIsolation(t *testing.T) {
 	}
 	if status != "open" {
 		t.Fatalf("check_one finding = %s, want open (check_two must not touch it)", status)
+	}
+}
+
+// TestReconcileProtectsIndeterminate is the guard against a transient lookup
+// failure closing a real finding: a key the detector could not evaluate this run
+// (DetectResult.Indeterminate) must stay open, while a key that is authoritatively
+// absent (in neither Found nor Indeterminate) resolves.
+func TestReconcileProtectsIndeterminate(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreateTestDatabase(ctx)
+	if err != nil {
+		t.Fatalf("container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	const tenantID = int32(1)
+	asset, err := pc.Queries.AssetsUpsertDomain(ctx, store.AssetsUpsertDomainParams{
+		TenantID: tenantID, Value: "indet.example.com", Source: "user_supplied",
+	})
+	if err != nil {
+		t.Fatalf("upsert asset: %v", err)
+	}
+	const kind = "indet_check"
+	key := checks.Key{IssueType: "issue_x", EntityKey: "e1"}
+
+	statusOf := func() string {
+		t.Helper()
+		var status string
+		if err := pc.Pool.QueryRow(ctx,
+			`SELECT status FROM findings WHERE asset_id=$1 AND check_kind=$2 AND issue_type=$3 AND entity_key=$4`,
+			asset.ID, kind, key.IssueType, key.EntityKey).Scan(&status); err != nil {
+			t.Fatalf("get finding: %v", err)
+		}
+		return status
+	}
+
+	// 1. Open the finding.
+	if err := findings.Reconcile(ctx, pc.Queries, tenantID, asset.ID, kind,
+		checks.DetectResult{Found: []checks.Finding{mkFinding(key.IssueType, key.EntityKey, "high")}}); err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. Next run: the detector emits nothing for the key but reports it as
+	// Indeterminate (its lookup SERVFAILed). It must stay open.
+	if err := findings.Reconcile(ctx, pc.Queries, tenantID, asset.ID, kind,
+		checks.DetectResult{Indeterminate: []checks.Key{key}}); err != nil {
+		t.Fatal(err)
+	}
+	if s := statusOf(); s != "open" {
+		t.Fatalf("indeterminate key was resolved (status=%s), want still open", s)
+	}
+
+	// 3. Contrast: an authoritatively-absent key (neither Found nor Indeterminate)
+	// resolves as before.
+	if err := findings.Reconcile(ctx, pc.Queries, tenantID, asset.ID, kind,
+		checks.DetectResult{}); err != nil {
+		t.Fatal(err)
+	}
+	if s := statusOf(); s != "resolved" {
+		t.Fatalf("authoritatively-absent key = %s, want resolved", s)
 	}
 }

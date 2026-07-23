@@ -57,14 +57,19 @@ type MinimumRecordSetDetector struct {
 func (MinimumRecordSetDetector) Kind() string                { return CheckMinimumRecordSet }
 func (MinimumRecordSetDetector) Scope() checks.EvidenceScope { return checks.SingleAsset }
 
-func (d MinimumRecordSetDetector) Detect(ev MinimumRecordSetEvidence) ([]checks.Finding, error) {
+func (d MinimumRecordSetDetector) Detect(
+	ev MinimumRecordSetEvidence,
+) (checks.DetectResult, error) {
 	if !ev.IsApex {
-		return nil, nil
+		return checks.DetectResult{}, nil
 	}
-	var out []checks.Finding
+	var res checks.DetectResult
 
-	if ev.NSLookedUp && ev.NSCount < d.MinNameservers {
-		out = append(out, checks.Finding{
+	if !ev.NSLookedUp {
+		res.Indeterminate = append(res.Indeterminate,
+			checks.Key{IssueType: IssueInsufficientNameservers})
+	} else if ev.NSCount < d.MinNameservers {
+		res.Found = append(res.Found, checks.Finding{
 			IssueType: IssueInsufficientNameservers,
 			Severity:  "high",
 			Title:     "Insufficient nameservers",
@@ -76,26 +81,39 @@ func (d MinimumRecordSetDetector) Detect(ev MinimumRecordSetEvidence) ([]checks.
 		})
 	}
 
-	if ev.ALookedUp && ev.AAAALookedUp && !ev.HasA && !ev.HasAAAA {
-		out = append(out, checks.Finding{
+	switch {
+	case ev.HasA || ev.HasAAAA:
+		// Apex resolves to an address: authoritatively not missing.
+	case ev.ALookedUp && ev.AAAALookedUp:
+		res.Found = append(res.Found, checks.Finding{
 			IssueType: IssueMissingApexAddress,
 			Severity:  "medium",
 			Title:     "Apex has no address record",
 			Details:   "Apex publishes no A or AAAA record, so it does not resolve to an address",
 		})
+	default:
+		res.Indeterminate = append(res.Indeterminate,
+			checks.Key{IssueType: IssueMissingApexAddress})
 	}
 
-	if ev.HasA && ev.AAAALookedUp && !ev.HasAAAA {
-		out = append(out, checks.Finding{
-			IssueType: IssueMissingIPv6,
-			Severity:  "info",
-			Title:     "Apex missing IPv6 address",
-			Details:   "Apex resolves over IPv4 but publishes no AAAA record",
-		})
+	if ev.HasA {
+		if !ev.AAAALookedUp {
+			res.Indeterminate = append(res.Indeterminate,
+				checks.Key{IssueType: IssueMissingIPv6})
+		} else if !ev.HasAAAA {
+			res.Found = append(res.Found, checks.Finding{
+				IssueType: IssueMissingIPv6,
+				Severity:  "info",
+				Title:     "Apex missing IPv6 address",
+				Details:   "Apex resolves over IPv4 but publishes no AAAA record",
+			})
+		}
 	}
 
-	if ev.SOALookedUp && !ev.SOAPresent {
-		out = append(out, checks.Finding{
+	if !ev.SOALookedUp {
+		res.Indeterminate = append(res.Indeterminate, checks.Key{IssueType: IssueMissingSOA})
+	} else if !ev.SOAPresent {
+		res.Found = append(res.Found, checks.Finding{
 			IssueType: IssueMissingSOA,
 			Severity:  "medium",
 			Title:     "Missing SOA record",
@@ -105,7 +123,7 @@ func (d MinimumRecordSetDetector) Detect(ev MinimumRecordSetEvidence) ([]checks.
 
 	if ev.SOAPresent {
 		if offenders := soaTimerOffenders(ev); len(offenders) > 0 {
-			out = append(out, checks.Finding{
+			res.Found = append(res.Found, checks.Finding{
 				IssueType: IssueSOATimersOutOfRange,
 				Severity:  "low",
 				Title:     "SOA timers outside recommended range",
@@ -116,7 +134,7 @@ func (d MinimumRecordSetDetector) Detect(ev MinimumRecordSetEvidence) ([]checks.
 			})
 		}
 		if !serialLooksDateBased(ev.SOASerial) {
-			out = append(out, checks.Finding{
+			res.Found = append(res.Found, checks.Finding{
 				IssueType: IssueSOASerialFormat,
 				Severity:  "info",
 				Title:     "SOA serial not date-based",
@@ -126,8 +144,11 @@ func (d MinimumRecordSetDetector) Detect(ev MinimumRecordSetEvidence) ([]checks.
 				),
 			})
 		}
-		if ev.SOAMNameLookedUp && !ev.SOAMNameResolves {
-			out = append(out, checks.Finding{
+		if !ev.SOAMNameLookedUp {
+			res.Indeterminate = append(res.Indeterminate,
+				checks.Key{IssueType: IssueSOAMNameUnresolvable})
+		} else if !ev.SOAMNameResolves {
+			res.Found = append(res.Found, checks.Finding{
 				IssueType: IssueSOAMNameUnresolvable,
 				Severity:  "medium",
 				Title:     "SOA MNAME does not resolve",
@@ -138,7 +159,7 @@ func (d MinimumRecordSetDetector) Detect(ev MinimumRecordSetEvidence) ([]checks.
 			})
 		}
 		if !rnameWellFormed(ev.SOARName) {
-			out = append(out, checks.Finding{
+			res.Found = append(res.Found, checks.Finding{
 				IssueType: IssueSOARNameMalformed,
 				Severity:  "low",
 				Title:     "SOA RNAME malformed",
@@ -150,16 +171,20 @@ func (d MinimumRecordSetDetector) Detect(ev MinimumRecordSetEvidence) ([]checks.
 		}
 	}
 
-	if ev.MXLookedUp && !ev.HasMX && !ev.HasNullMX && hasEmailIntent(ev.TXTValues) {
-		out = append(out, checks.Finding{
-			IssueType: IssueMissingMX,
-			Severity:  "low",
-			Title:     "Missing MX despite email-auth records",
-			Details:   "Domain publishes email-authentication records (SPF/DMARC) but no MX or null-MX",
-		})
+	if hasEmailIntent(ev.TXTValues) {
+		if !ev.MXLookedUp {
+			res.Indeterminate = append(res.Indeterminate, checks.Key{IssueType: IssueMissingMX})
+		} else if !ev.HasMX && !ev.HasNullMX {
+			res.Found = append(res.Found, checks.Finding{
+				IssueType: IssueMissingMX,
+				Severity:  "low",
+				Title:     "Missing MX despite email-auth records",
+				Details:   "Domain publishes email-authentication records (SPF/DMARC) but no MX or null-MX",
+			})
+		}
 	}
 
-	return out, nil
+	return res, nil
 }
 
 type soaTimerRange struct {

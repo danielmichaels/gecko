@@ -38,7 +38,7 @@ func (ZoneTransferDetector) Scope() checks.EvidenceScope { return checks.SingleA
 
 // Detect emits one critical finding per nameserver that allowed a zone transfer.
 // A refused transfer is compliant and yields nothing (absence).
-func (ZoneTransferDetector) Detect(ev ZoneTransferEvidence) ([]checks.Finding, error) {
+func (ZoneTransferDetector) Detect(ev ZoneTransferEvidence) (checks.DetectResult, error) {
 	var out []checks.Finding
 	for _, at := range ev.Attempts {
 		if !at.Successful {
@@ -75,7 +75,7 @@ func (ZoneTransferDetector) Detect(ev ZoneTransferEvidence) ([]checks.Finding, e
 			Evidence:  evJSON,
 		})
 	}
-	return out, nil
+	return checks.DetectResult{Found: out}, nil
 }
 
 // --- pure zone-transfer analysis (lifted verbatim from the assessor) ---

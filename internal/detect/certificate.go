@@ -53,9 +53,9 @@ func (CertificateDetector) Scope() checks.EvidenceScope { return checks.SingleAs
 
 // Detect returns the certificate problems true now. A cert that could not be
 // fetched yields no findings (unknown, not "fine"); a healthy cert yields none.
-func (d CertificateDetector) Detect(ev CertificateEvidence) ([]checks.Finding, error) {
+func (d CertificateDetector) Detect(ev CertificateEvidence) (checks.DetectResult, error) {
 	if !ev.Fetched {
-		return nil, nil
+		return checks.DetectResult{}, nil
 	}
 	var out []checks.Finding
 	if f, ok := d.expiryFinding(ev); ok {
@@ -92,7 +92,7 @@ func (d CertificateDetector) Detect(ev CertificateEvidence) ([]checks.Finding, e
 			),
 		})
 	}
-	return out, nil
+	return checks.DetectResult{Found: out}, nil
 }
 
 // expiryFinding maps the not_after date onto a severity tier relative to the

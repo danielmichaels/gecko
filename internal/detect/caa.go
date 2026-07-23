@@ -52,14 +52,14 @@ type CAADetector struct{}
 func (CAADetector) Kind() string                { return CheckCAA }
 func (CAADetector) Scope() checks.EvidenceScope { return checks.SingleAsset }
 
-func (CAADetector) Detect(ev CAAEvidence) ([]checks.Finding, error) {
+func (CAADetector) Detect(ev CAAEvidence) (checks.DetectResult, error) {
 	if !ev.LookedUp {
-		return nil, nil
+		return checks.DetectResult{}, nil
 	}
 	if len(ev.Records) == 0 {
-		return caaMissingFindings(ev.HasCert), nil
+		return checks.DetectResult{Found: caaMissingFindings(ev.HasCert)}, nil
 	}
-	return caaPresentFindings(ev), nil
+	return checks.DetectResult{Found: caaPresentFindings(ev)}, nil
 }
 
 func caaMissingFindings(hasCert bool) []checks.Finding {

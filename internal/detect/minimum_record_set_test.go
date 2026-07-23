@@ -117,10 +117,11 @@ func TestMinimumRecordSetDetect(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ev := healthyApex()
 			tt.mutate(&ev)
-			got, err := d.Detect(ev)
+			detRes, err := d.Detect(ev)
 			if err != nil {
 				t.Fatal(err)
 			}
+			got := detRes.Found
 			want := append([]string(nil), tt.want...)
 			sort.Strings(want)
 			if !equalStrings(minRecordIssues(got), want) {

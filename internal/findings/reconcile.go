@@ -30,18 +30,21 @@ func keyOf(issueType, entityKey string) string {
 
 // Reconcile diffs the Detect output for one asset+check against the stored open
 // findings and makes them match. q MUST be transaction-scoped so the upserts,
-// resolves, and event rows commit atomically. found is "problems true now"; an
-// empty slice resolves every open finding for the scope.
+// resolves, and event rows commit atomically. res.Found is "problems true now"
+// (opened/reopened); res.Indeterminate is "keys the detector could not evaluate
+// this run" and is protected from resolution. An open finding is resolved only
+// when its key is authoritatively absent -- in neither set -- so a transient
+// lookup failure never closes (or churns) a real finding.
 func Reconcile(
 	ctx context.Context,
 	q *store.Queries,
 	tenantID int32,
 	assetID int64,
 	checkKind string,
-	found []checks.Finding,
+	res checks.DetectResult,
 ) error {
-	present := make(map[string]struct{}, len(found))
-	for _, f := range found {
+	present := make(map[string]struct{}, len(res.Found))
+	for _, f := range res.Found {
 		present[keyOf(f.IssueType, f.EntityKey)] = struct{}{}
 
 		row, err := q.FindingsUpsert(ctx, store.FindingsUpsertParams{
@@ -72,6 +75,11 @@ func Reconcile(
 		}
 	}
 
+	protected := make(map[string]struct{}, len(res.Indeterminate))
+	for _, k := range res.Indeterminate {
+		protected[keyOf(k.IssueType, k.EntityKey)] = struct{}{}
+	}
+
 	open, err := q.FindingsListOpenByAssetCheck(ctx, store.FindingsListOpenByAssetCheckParams{
 		AssetID:   assetID,
 		CheckKind: checkKind,
@@ -80,7 +88,11 @@ func Reconcile(
 		return fmt.Errorf("list open findings %s: %w", checkKind, err)
 	}
 	for _, o := range open {
-		if _, ok := present[keyOf(o.IssueType, o.EntityKey)]; ok {
+		key := keyOf(o.IssueType, o.EntityKey)
+		if _, ok := present[key]; ok {
+			continue
+		}
+		if _, ok := protected[key]; ok {
 			continue
 		}
 		if err := q.FindingsResolve(ctx, o.ID); err != nil {

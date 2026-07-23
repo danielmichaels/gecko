@@ -26,7 +26,7 @@ func txtRecord(name string, values ...string) dnsrecords.SerializedRecord {
 }
 
 func TestZoneTransferRefusedYieldsNothing(t *testing.T) {
-	got, err := ZoneTransferDetector{}.Detect(ZoneTransferEvidence{
+	detRes, err := ZoneTransferDetector{}.Detect(ZoneTransferEvidence{
 		Attempts: []ZoneTransferAttemptEvidence{
 			{Nameserver: "ns1.example.com:53", TransferType: "AXFR", Successful: false},
 		},
@@ -34,13 +34,14 @@ func TestZoneTransferRefusedYieldsNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	got := detRes.Found
 	if len(got) != 0 {
 		t.Fatalf("refused transfer produced %d findings, want 0", len(got))
 	}
 }
 
 func TestZoneTransferExposed(t *testing.T) {
-	got, _ := ZoneTransferDetector{}.Detect(ZoneTransferEvidence{
+	got := findingsOf(ZoneTransferDetector{}.Detect(ZoneTransferEvidence{
 		Attempts: []ZoneTransferAttemptEvidence{
 			{
 				Nameserver: "ns1.example.com:53", TransferType: "AXFR", Successful: true,
@@ -49,7 +50,7 @@ func TestZoneTransferExposed(t *testing.T) {
 				),
 			},
 		},
-	})
+	}))
 	if len(got) != 1 {
 		t.Fatalf("got %d findings, want 1", len(got))
 	}
@@ -70,7 +71,7 @@ func TestZoneTransferExposed(t *testing.T) {
 }
 
 func TestZoneTransferUnparseableStillFires(t *testing.T) {
-	got, _ := ZoneTransferDetector{}.Detect(ZoneTransferEvidence{
+	got := findingsOf(ZoneTransferDetector{}.Detect(ZoneTransferEvidence{
 		Attempts: []ZoneTransferAttemptEvidence{
 			{
 				Nameserver:   "ns1.example.com:53",
@@ -79,7 +80,7 @@ func TestZoneTransferUnparseableStillFires(t *testing.T) {
 				ResponseData: []byte("not json"),
 			},
 		},
-	})
+	}))
 	if len(got) != 1 {
 		t.Fatalf(
 			"unparseable-but-successful transfer produced %d findings, want 1 (the transfer succeeded)",
@@ -89,7 +90,7 @@ func TestZoneTransferUnparseableStillFires(t *testing.T) {
 }
 
 func TestZoneTransferMixedAttempts(t *testing.T) {
-	got, _ := ZoneTransferDetector{}.Detect(ZoneTransferEvidence{
+	got := findingsOf(ZoneTransferDetector{}.Detect(ZoneTransferEvidence{
 		Attempts: []ZoneTransferAttemptEvidence{
 			{
 				Nameserver:   "ns1.example.com:53",
@@ -99,7 +100,7 @@ func TestZoneTransferMixedAttempts(t *testing.T) {
 			},
 			{Nameserver: "ns2.example.com:53", TransferType: "AXFR", Successful: false},
 		},
-	})
+	}))
 	if len(got) != 1 {
 		t.Fatalf("got %d findings, want 1 (only the successful ns)", len(got))
 	}

@@ -48,46 +48,67 @@ type NameserverConfigDetector struct {
 func (NameserverConfigDetector) Kind() string                { return CheckNameserverConfig }
 func (NameserverConfigDetector) Scope() checks.EvidenceScope { return checks.SingleAsset }
 
-func (d NameserverConfigDetector) Detect(ev NameserverConfigEvidence) ([]checks.Finding, error) {
-	var out []checks.Finding
+func (d NameserverConfigDetector) Detect(
+	ev NameserverConfigEvidence,
+) (checks.DetectResult, error) {
+	var res checks.DetectResult
 
 	for _, ns := range ev.Nameservers {
-		if ns.CNAMEStatus == ResolutionData {
-			out = append(out, checks.Finding{
+		switch ns.CNAMEStatus {
+		case ResolutionData:
+			res.Found = append(res.Found, checks.Finding{
 				IssueType: IssueNSIsCNAME,
 				EntityKey: ns.Host,
 				Severity:  "medium",
 				Title:     "Nameserver is a CNAME",
 				Details:   "Nameserver target is a CNAME, which is illegal for NS records (RFC 2181 §10.3)",
 			})
+		case ResolutionIndeterminate:
+			res.Indeterminate = append(res.Indeterminate,
+				checks.Key{IssueType: IssueNSIsCNAME, EntityKey: ns.Host})
 		}
-		if ns.AStatus == ResolutionEmpty && ns.AAAAStatus == ResolutionEmpty &&
-			ns.CNAMEStatus != ResolutionData {
-			out = append(out, checks.Finding{
-				IssueType: IssueNSNotResolvable,
-				EntityKey: ns.Host,
-				Severity:  "medium",
-				Title:     "Nameserver does not resolve",
-				Details:   "Nameserver does not resolve to any A or AAAA address (missing glue or lame delegation)",
-			})
+
+		if ns.CNAMEStatus != ResolutionData {
+			switch {
+			case ns.AStatus == ResolutionEmpty && ns.AAAAStatus == ResolutionEmpty:
+				res.Found = append(res.Found, checks.Finding{
+					IssueType: IssueNSNotResolvable,
+					EntityKey: ns.Host,
+					Severity:  "medium",
+					Title:     "Nameserver does not resolve",
+					Details:   "Nameserver does not resolve to any A or AAAA address (missing glue or lame delegation)",
+				})
+			case ns.AStatus != ResolutionData && ns.AAAAStatus != ResolutionData:
+				// Neither resolves nor authoritatively empty: an address lookup was
+				// indeterminate, so resolvability is unknown -- protect the key.
+				res.Indeterminate = append(res.Indeterminate,
+					checks.Key{IssueType: IssueNSNotResolvable, EntityKey: ns.Host})
+			}
 		}
-		if !ns.InBailiwick && ns.ApexStatus == ResolutionEmpty {
-			out = append(out, checks.Finding{
-				IssueType: IssueDanglingNS,
-				EntityKey: ns.Host,
-				Severity:  "high",
-				Title:     "Dangling nameserver delegation",
-				Details: fmt.Sprintf(
-					"Nameserver parent domain %q does not exist (NXDOMAIN); it may be registerable and used to hijack this delegation",
-					nsProviderApex(ns.Host),
-				),
-			})
+
+		if !ns.InBailiwick {
+			switch ns.ApexStatus {
+			case ResolutionEmpty:
+				res.Found = append(res.Found, checks.Finding{
+					IssueType: IssueDanglingNS,
+					EntityKey: ns.Host,
+					Severity:  "high",
+					Title:     "Dangling nameserver delegation",
+					Details: fmt.Sprintf(
+						"Nameserver parent domain %q does not exist (NXDOMAIN); it may be registerable and used to hijack this delegation",
+						nsProviderApex(ns.Host),
+					),
+				})
+			case ResolutionIndeterminate:
+				res.Indeterminate = append(res.Indeterminate,
+					checks.Key{IssueType: IssueDanglingNS, EntityKey: ns.Host})
+			}
 		}
 	}
 
 	count := len(ev.Nameservers)
 	if count < d.RecommendedCount {
-		out = append(out, checks.Finding{
+		res.Found = append(res.Found, checks.Finding{
 			IssueType: IssueInsufficientNameservers,
 			Severity:  "high",
 			Title:     "Insufficient nameservers",
@@ -97,7 +118,7 @@ func (d NameserverConfigDetector) Detect(ev NameserverConfigEvidence) ([]checks.
 			),
 		})
 	} else if distinctProviders(ev.Nameservers) <= 1 {
-		out = append(out, checks.Finding{
+		res.Found = append(res.Found, checks.Finding{
 			IssueType: IssueSameProvider,
 			Severity:  "medium",
 			Title:     "Single nameserver provider",
@@ -106,15 +127,21 @@ func (d NameserverConfigDetector) Detect(ev NameserverConfigEvidence) ([]checks.
 	}
 
 	if count > 0 && !anyIPv6(ev.Nameservers) {
-		out = append(out, checks.Finding{
-			IssueType: IssueNoIPv6,
-			Severity:  "low",
-			Title:     "No IPv6 nameserver coverage",
-			Details:   "No nameserver in the set is reachable over IPv6; IPv6-only resolvers cannot reach the zone",
-		})
+		// "No IPv6" is authoritative only when every AAAA lookup actually completed.
+		// If any AAAA lookup was indeterminate, we cannot claim the set lacks IPv6.
+		if anyAAAAIndeterminate(ev.Nameservers) {
+			res.Indeterminate = append(res.Indeterminate, checks.Key{IssueType: IssueNoIPv6})
+		} else {
+			res.Found = append(res.Found, checks.Finding{
+				IssueType: IssueNoIPv6,
+				Severity:  "low",
+				Title:     "No IPv6 nameserver coverage",
+				Details:   "No nameserver in the set is reachable over IPv6; IPv6-only resolvers cannot reach the zone",
+			})
+		}
 	}
 
-	return out, nil
+	return res, nil
 }
 
 // distinctProviders counts unique registrable apexes across the nameserver set,
@@ -130,6 +157,17 @@ func distinctProviders(nss []NameserverEvidence) int {
 func anyIPv6(nss []NameserverEvidence) bool {
 	for _, ns := range nss {
 		if ns.AAAAStatus == ResolutionData {
+			return true
+		}
+	}
+	return false
+}
+
+// anyAAAAIndeterminate reports whether any nameserver's AAAA lookup failed to
+// complete, so a "no IPv6" verdict over the set would be unsafe.
+func anyAAAAIndeterminate(nss []NameserverEvidence) bool {
+	for _, ns := range nss {
+		if ns.AAAAStatus == ResolutionIndeterminate {
 			return true
 		}
 	}

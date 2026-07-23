@@ -40,11 +40,11 @@ func (a *Assessor) AssessCAA(ctx context.Context, domainUID string) error {
 			detect.CAARecord{Tag: r.Tag, Value: r.Value, Flags: r.Flags},
 		)
 	}
-	found, err := detect.CAADetector{}.Detect(ev)
+	res, err := detect.CAADetector{}.Detect(ev)
 	if err != nil {
 		return err
 	}
-	return a.reconcile(ctx, domain.Name, detect.CheckCAA, found)
+	return a.reconcile(ctx, domain.ID, domain.Name, detect.CheckCAA, res)
 }
 
 func (a *Assessor) domainHasCertificate(ctx context.Context, domainID int32) bool {

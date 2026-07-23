@@ -89,7 +89,7 @@ func TestCNAMEDanglingVerdict(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, _ := d.Detect(CNAMEEvidence{Targets: []CNAMETargetEvidence{tt.ev}})
+			got := findingsOf(d.Detect(CNAMEEvidence{Targets: []CNAMETargetEvidence{tt.ev}}))
 			f := danglingOf(got)
 			if tt.wantIT == "" {
 				if f != nil {
@@ -157,7 +157,7 @@ func TestCNAMEChainHygiene(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, _ := d.Detect(CNAMEEvidence{Targets: []CNAMETargetEvidence{tt.ev}})
+			got := findingsOf(d.Detect(CNAMEEvidence{Targets: []CNAMETargetEvidence{tt.ev}}))
 			var chainIT string
 			for _, f := range got {
 				switch f.IssueType {
@@ -187,7 +187,7 @@ func TestCNAMEMultipleTargets(t *testing.T) {
 		},
 		target("c.example.com"),
 	}}
-	got, _ := d.Detect(ev)
+	got := findingsOf(d.Detect(ev))
 	var keys []string
 	for _, f := range got {
 		keys = append(keys, f.EntityKey+"/"+f.IssueType)

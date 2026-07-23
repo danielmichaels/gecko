@@ -16,6 +16,7 @@ import (
 
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // resolutionString maps the resolver's tri-state onto the detect package's string
@@ -33,8 +34,12 @@ func resolutionString(s dnsclient.ResolutionStatus) string {
 }
 
 type Config struct {
-	Logger    *slog.Logger
-	Store     *store.Queries
+	Logger *slog.Logger
+	Store  *store.Queries
+	// Pool backs the reconcile transaction so a finding upsert and its
+	// findings_events row commit atomically. Left nil in unit tests (which run
+	// with a zero identity and skip reconcile).
+	Pool      *pgxpool.Pool
 	DNSClient dnsclient.Resolver
 	// HTTPProber probes CNAME targets for the dangling/takeover assessor. Left nil
 	// outside tests; NewAssessor supplies the default outbound prober.
@@ -51,6 +56,7 @@ type Config struct {
 type Assessor struct {
 	logger    *slog.Logger
 	store     *store.Queries
+	pool      *pgxpool.Pool
 	dnsClient dnsclient.Resolver
 	prober    HTTPProber
 	nsProber  NameserverProber
@@ -82,6 +88,7 @@ func NewAssessor(cfg Config) *Assessor {
 
 	return &Assessor{
 		store:     cfg.Store,
+		pool:      cfg.Pool,
 		logger:    logger,
 		dnsClient: dnsClient,
 		prober:    prober,
@@ -114,25 +121,51 @@ func (a *Assessor) getDomain(
 }
 
 // reconcile resolves the domain's asset and persists the detector output via the
-// desired-state reconciler. It is a no-op without a real scan identity (unit tests
-// exercise detectors directly), so callers need not guard it. The reconcile runs
-// on the pool store; it is idempotent and self-heals a partial run on the next
-// scan (tx-wrapping is a Phase 2 follow-up).
+// desired-state reconciler, inside one transaction so a finding and its
+// findings_events row commit together. It is a no-op without a real scan identity
+// (unit tests exercise detectors directly), so callers need not guard it.
 func (a *Assessor) reconcile(
 	ctx context.Context,
+	domainID int32,
 	domainName, checkKind string,
-	found []checks.Finding,
+	res checks.DetectResult,
 ) error {
 	if a.identity.TenantID == 0 {
 		return nil
 	}
-	asset, err := a.store.AssetsUpsertDomain(ctx, store.AssetsUpsertDomainParams{
+	if a.pool == nil {
+		// No pool wired (should not happen in a real scan): fall back to the
+		// non-atomic pool store rather than dropping the reconcile.
+		return a.reconcileWith(ctx, a.store, domainID, domainName, checkKind, res)
+	}
+	tx, err := a.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin reconcile tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := a.reconcileWith(ctx, a.store.WithTx(tx), domainID, domainName, checkKind, res); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// reconcileWith runs the asset upsert and reconciler against q, which is either the
+// pool store or a transaction-scoped store.
+func (a *Assessor) reconcileWith(
+	ctx context.Context,
+	q *store.Queries,
+	domainID int32,
+	domainName, checkKind string,
+	res checks.DetectResult,
+) error {
+	asset, err := q.AssetsUpsertDomain(ctx, store.AssetsUpsertDomainParams{
 		TenantID: a.identity.TenantID,
 		Value:    domainName,
+		DomainID: pgtype.Int4{Int32: domainID, Valid: true},
 		Source:   "discovered",
 	})
 	if err != nil {
 		return fmt.Errorf("resolve asset for %s: %w", domainName, err)
 	}
-	return findings.Reconcile(ctx, a.store, a.identity.TenantID, asset.ID, checkKind, found)
+	return findings.Reconcile(ctx, q, a.identity.TenantID, asset.ID, checkKind, res)
 }

@@ -1,7 +1,8 @@
 -- Generic finding readers, sourced from the single `findings` table (replacing
 -- the 19 typed per-check tables). A finding's domain is resolved via
--- findings.asset_id -> assets (kind='domain') -> domains (name=value,
--- tenant_id=tenant_id). Tenant isolation is enforced directly on
+-- findings.asset_id -> assets (kind='domain') -> domains (assets.domain_id = d.id):
+-- a lifecycle FK, not the reusable name, so a deleted-then-recreated domain never
+-- inherits the prior domain's findings. Tenant isolation is enforced directly on
 -- findings.tenant_id, which is denormalized onto the row at write time.
 
 -- name: FindingsListByDomainUID :many
@@ -10,7 +11,7 @@
 SELECT f.*
 FROM findings f
          JOIN assets a ON a.id = f.asset_id AND a.kind = 'domain'
-         JOIN domains d ON d.name = a.value AND d.tenant_id = a.tenant_id
+         JOIN domains d ON d.id = a.domain_id
 WHERE d.uid = @uid
   AND f.tenant_id = @tenant_id
   AND f.status = 'open'
@@ -43,7 +44,7 @@ SELECT f.uid        AS finding_uid,
        d.name        AS domain_name
 FROM findings f
          JOIN assets a ON a.id = f.asset_id AND a.kind = 'domain'
-         JOIN domains d ON d.name = a.value AND d.tenant_id = a.tenant_id
+         JOIN domains d ON d.id = a.domain_id
 WHERE f.tenant_id = @tenant_id
   AND f.status = 'open'
 ORDER BY d.name ASC,
@@ -65,7 +66,7 @@ WITH ids AS (SELECT unnest(@domain_ids::int[]) AS domain_id),
      open_findings AS (SELECT d.id AS domain_id, f.severity
                         FROM findings f
                                  JOIN assets a ON a.id = f.asset_id AND a.kind = 'domain'
-                                 JOIN domains d ON d.name = a.value AND d.tenant_id = a.tenant_id
+                                 JOIN domains d ON d.id = a.domain_id
                         WHERE f.status = 'open'
                           AND d.id = ANY (@domain_ids::int[]))
 SELECT ids.domain_id::int                    AS domain_id,
@@ -87,9 +88,9 @@ GROUP BY ids.domain_id;
 -- critical/high (critical_count) vs medium/low (warning_count), the total open
 -- finding count, and the distinct domain count with at least one open finding.
 -- tenant_id narrows to a single tenant; NULL rolls up every tenant in one pass
--- (the periodic all-fleet refresh). Joined through assets/domains (rather than
--- trusting findings.tenant_id alone) so a finding whose domain has since been
--- deleted — assets/findings have no FK cascade from domains — drops out.
+-- (the periodic all-fleet refresh). Joined through assets/domains on the
+-- assets.domain_id FK so a finding whose domain was deleted (the FK cascade removes
+-- its asset + findings) never appears.
 WITH per_domain AS (SELECT f.tenant_id,
                             f.asset_id,
                             MIN(CASE f.severity
@@ -103,7 +104,7 @@ WITH per_domain AS (SELECT f.tenant_id,
                             COUNT(*) AS finding_count
                      FROM findings f
                               JOIN assets a ON a.id = f.asset_id AND a.kind = 'domain'
-                              JOIN domains d ON d.name = a.value AND d.tenant_id = a.tenant_id
+                              JOIN domains d ON d.id = a.domain_id
                      WHERE f.status = 'open'
                        AND (sqlc.narg('tenant_id')::int IS NULL OR f.tenant_id = sqlc.narg('tenant_id'))
                      GROUP BY f.tenant_id, f.asset_id)

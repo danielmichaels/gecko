@@ -34,7 +34,7 @@ func TestNameserverConfigDetect(t *testing.T) {
 		ev := NameserverConfigEvidence{DomainName: "example.com", Nameservers: []NameserverEvidence{
 			healthyNS("ns1.provider-a.com"), healthyNS("ns1.provider-b.net"),
 		}}
-		got, _ := d.Detect(ev)
+		got := findingsOf(d.Detect(ev))
 		if len(got) != 0 {
 			t.Fatalf("got %v, want none", nsConfigIssues(got))
 		}
@@ -117,9 +117,9 @@ func mustDetect(
 	ev NameserverConfigEvidence,
 ) []checks.Finding {
 	t.Helper()
-	got, err := d.Detect(ev)
+	res, err := d.Detect(ev)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return got
+	return res.Found
 }

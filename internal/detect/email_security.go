@@ -84,15 +84,65 @@ type EmailSecurityDetector struct {
 func (EmailSecurityDetector) Kind() string                { return CheckEmailSecurity }
 func (EmailSecurityDetector) Scope() checks.EvidenceScope { return checks.SingleAsset }
 
-func (d EmailSecurityDetector) Detect(ev EmailSecurityEvidence) ([]checks.Finding, error) {
-	var out []checks.Finding
-	out = append(out, d.spfFindings(ev)...)
-	out = append(out, d.dkimFindings(ev)...)
-	out = append(out, dmarcFindings(ev)...)
-	out = append(out, bimiFindings(ev)...)
-	out = append(out, d.mtaStsFindings(ev)...)
-	out = append(out, tlsRptFindings(ev)...)
-	return out, nil
+func (d EmailSecurityDetector) Detect(ev EmailSecurityEvidence) (checks.DetectResult, error) {
+	var res checks.DetectResult
+	res.Found = append(res.Found, d.spfFindings(ev)...)
+	res.Found = append(res.Found, d.dkimFindings(ev)...)
+	res.Found = append(res.Found, dmarcFindings(ev)...)
+	res.Found = append(res.Found, bimiFindings(ev)...)
+	res.Found = append(res.Found, d.mtaStsFindings(ev)...)
+	res.Found = append(res.Found, tlsRptFindings(ev)...)
+	res.Indeterminate = emailIndeterminate(ev)
+	return res, nil
+}
+
+// emailIndeterminate reports the keys whose live lookup did not authoritatively
+// complete this run, so the reconciler leaves them alone instead of resolving a
+// real finding on a transient SERVFAIL. Only DKIM and DMARC carry a 3-way
+// resolution status today; SPF reads stored TXT (always determinate), and
+// BIMI/MTA-STS/TLS-RPT use presence-only lookups (a tracked follow-up to upgrade).
+func emailIndeterminate(ev EmailSecurityEvidence) []checks.Key {
+	var keys []checks.Key
+
+	if ev.DMARCStatus == ResolutionIndeterminate {
+		// The _dmarc lookup failed: every DMARC verdict is unknown this run.
+		keys = append(
+			keys,
+			checks.Key{IssueType: IssueDMARCMissing},
+			checks.Key{IssueType: IssueDMARCWeakPolicy},
+			checks.Key{IssueType: IssueDMARCQuarantine},
+			checks.Key{IssueType: IssueDMARCReducedPct},
+			checks.Key{IssueType: IssueDMARCWeakSubPol},
+			checks.Key{IssueType: IssueDMARCMissingTags},
+		)
+	}
+
+	if ev.HandlesEmail && !dkimSawAuthoritative(ev) {
+		keys = append(keys, checks.Key{IssueType: IssueDKIMMissing})
+	}
+	for _, sel := range ev.DKIMSelectors {
+		if sel.Status == ResolutionIndeterminate {
+			keys = append(
+				keys,
+				checks.Key{IssueType: IssueDKIMWeakKey, EntityKey: sel.Selector},
+				checks.Key{IssueType: IssueDKIMTestMode, EntityKey: sel.Selector},
+				checks.Key{IssueType: IssueDKIMMissingTags, EntityKey: sel.Selector},
+			)
+		}
+	}
+	return keys
+}
+
+// dkimSawAuthoritative reports whether at least one selector lookup completed
+// (data or authoritative NXDOMAIN), the precondition for concluding DKIM is
+// missing rather than merely unresolved.
+func dkimSawAuthoritative(ev EmailSecurityEvidence) bool {
+	for _, sel := range ev.DKIMSelectors {
+		if sel.Status == ResolutionEmpty || sel.Status == ResolutionData {
+			return true
+		}
+	}
+	return false
 }
 
 func ef(issueType, entityKey, severity, title, details string) checks.Finding {
@@ -190,11 +240,8 @@ func countSPFDNSLookups(record string) int {
 
 func (d EmailSecurityDetector) dkimFindings(ev EmailSecurityEvidence) []checks.Finding {
 	var out []checks.Finding
-	foundValid, sawAuthoritative := false, false
+	foundValid := false
 	for _, sel := range ev.DKIMSelectors {
-		if sel.Status == ResolutionEmpty || sel.Status == ResolutionData {
-			sawAuthoritative = true
-		}
 		seen := map[string]bool{}
 		for _, value := range sel.Records {
 			if !strings.Contains(value, "v=DKIM") {
@@ -225,7 +272,7 @@ func (d EmailSecurityDetector) dkimFindings(ev EmailSecurityEvidence) []checks.F
 			}
 		}
 	}
-	if !foundValid && ev.HandlesEmail && sawAuthoritative {
+	if !foundValid && ev.HandlesEmail && dkimSawAuthoritative(ev) {
 		out = append(out, ef(
 			IssueDKIMMissing,
 			"",

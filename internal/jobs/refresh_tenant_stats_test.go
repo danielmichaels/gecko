@@ -67,9 +67,17 @@ func seedStatsFinding(
 	domainName, severity string,
 ) {
 	t.Helper()
+	domain, err := q.DomainsGetByName(ctx, store.DomainsGetByNameParams{
+		TenantID: pgtype.Int4{Int32: tenantID, Valid: true},
+		Name:     domainName,
+	})
+	if err != nil {
+		t.Fatalf("seed finding: lookup domain (%s): %v", domainName, err)
+	}
 	asset, err := q.AssetsUpsertDomain(ctx, store.AssetsUpsertDomainParams{
 		TenantID: tenantID,
 		Value:    domainName,
+		DomainID: pgtype.Int4{Int32: domain.ID, Valid: true},
 		Source:   "discovered",
 	})
 	if err != nil {

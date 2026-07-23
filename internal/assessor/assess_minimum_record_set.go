@@ -32,7 +32,7 @@ func (a *Assessor) AssessMinimumRecordSet(ctx context.Context, domainUID string)
 		}
 	}
 
-	found, err := detect.MinimumRecordSetDetector{
+	res, err := detect.MinimumRecordSetDetector{
 		MinNameservers: recommendedNameserverCount,
 	}.Detect(
 		ev,
@@ -40,7 +40,7 @@ func (a *Assessor) AssessMinimumRecordSet(ctx context.Context, domainUID string)
 	if err != nil {
 		return err
 	}
-	return a.reconcile(ctx, domain.Name, detect.CheckMinimumRecordSet, found)
+	return a.reconcile(ctx, domain.ID, domain.Name, detect.CheckMinimumRecordSet, res)
 }
 
 // collectMinimumRecordSet fills the apex-hygiene evidence from stored records plus

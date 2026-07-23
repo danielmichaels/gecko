@@ -58,6 +58,25 @@ type Finding struct {
 	Evidence json.RawMessage
 }
 
+// Key is the identity of a finding within one (asset, check) scope: the same
+// (issue_type, entity_key) pair the reconciler keys on.
+type Key struct {
+	IssueType string
+	EntityKey string
+}
+
+// DetectResult is a Detector's verdict over one asset's evidence. Found is the set
+// of problems TRUE NOW. Indeterminate is the set of keys the detector could NOT
+// authoritatively evaluate this run -- because the underlying lookup failed
+// (SERVFAIL/timeout) or a probe was denied -- as distinct from keys it evaluated
+// and found clean. The reconciler resolves an open finding only when its key is
+// authoritatively absent (in neither Found nor Indeterminate), so a transient
+// failure never closes (or churns) a real finding.
+type DetectResult struct {
+	Found         []Finding
+	Indeterminate []Key
+}
+
 // Observation is one piece of evidence a Collector records into the append-only
 // evidence log. Used by the Phase 2 River wiring; detectors never see it.
 type Observation struct {
@@ -83,7 +102,7 @@ type Collector[E any] interface {
 type Detector[E any] interface {
 	Kind() string
 	Scope() EvidenceScope
-	Detect(ev E) ([]Finding, error)
+	Detect(ev E) (DetectResult, error)
 }
 
 // Deps bundles every outbound-I/O seam a Collector may use, so each collector takes
@@ -128,7 +147,7 @@ type TLSDialer interface {
 // round-trips here is guaranteed to round-trip through the log.
 type Registered struct {
 	collect func(ctx context.Context, d Deps, a Asset) (json.RawMessage, error)
-	detect  func(raw json.RawMessage) ([]Finding, error)
+	detect  func(raw json.RawMessage) (DetectResult, error)
 	Kind    string
 	Accepts []string
 	Scope   EvidenceScope
@@ -140,7 +159,7 @@ func (r *Registered) Collect(ctx context.Context, d Deps, a Asset) (json.RawMess
 }
 
 // Detect runs the pure detector over already-collected evidence JSON.
-func (r *Registered) Detect(raw json.RawMessage) ([]Finding, error) {
+func (r *Registered) Detect(raw json.RawMessage) (DetectResult, error) {
 	return r.detect(raw)
 }
 
@@ -172,10 +191,10 @@ func Register[E any](c Collector[E], d Detector[E]) {
 			}
 			return json.Marshal(ev)
 		},
-		detect: func(raw json.RawMessage) ([]Finding, error) {
+		detect: func(raw json.RawMessage) (DetectResult, error) {
 			var ev E
 			if err := json.Unmarshal(raw, &ev); err != nil {
-				return nil, err
+				return DetectResult{}, err
 			}
 			return d.Detect(ev)
 		},

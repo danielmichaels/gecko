@@ -8,12 +8,14 @@ import (
 	"github.com/danielmichaels/gecko/internal/service"
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/danielmichaels/gecko/internal/testhelpers"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // seedFinding writes a row directly into the generic findings table, upserting
 // the backing asset first (assets aren't auto-created for a domain outside the
-// migration backfill). This is what both FindingsService (ListByDomain,
-// ListByTenant) and DomainsService.FindingsSummaryForPage read.
+// migration backfill) with its domain_id FK set, exactly as the assessor does.
+// This is what both FindingsService (ListByDomain, ListByTenant) and
+// DomainsService.FindingsSummaryForPage read (through the assets.domain_id join).
 func seedFinding(
 	t *testing.T,
 	ctx context.Context,
@@ -22,9 +24,17 @@ func seedFinding(
 	domainName, checkKind, issueType, severity, title string,
 ) {
 	t.Helper()
+	domain, err := pc.Queries.DomainsGetByName(ctx, store.DomainsGetByNameParams{
+		TenantID: pgtype.Int4{Int32: tenantID, Valid: true},
+		Name:     domainName,
+	})
+	if err != nil {
+		t.Fatalf("seed finding: lookup domain (%s): %v", domainName, err)
+	}
 	asset, err := pc.Queries.AssetsUpsertDomain(ctx, store.AssetsUpsertDomainParams{
 		TenantID: tenantID,
 		Value:    domainName,
+		DomainID: pgtype.Int4{Int32: domain.ID, Valid: true},
 		Source:   "discovered",
 	})
 	if err != nil {

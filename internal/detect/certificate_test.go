@@ -4,6 +4,8 @@ import (
 	"sort"
 	"testing"
 	"time"
+
+	"github.com/danielmichaels/gecko/internal/checks"
 )
 
 func certDetector() CertificateDetector {
@@ -119,10 +121,11 @@ func TestCertificateDetect(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ev := healthyCert(now)
 			tt.mutate(&ev)
-			got, err := d.Detect(ev)
+			detRes, err := d.Detect(ev)
 			if err != nil {
 				t.Fatalf("Detect: %v", err)
 			}
+			got := detRes.Found
 
 			gotIssues := make([]string, len(got))
 			sevByIssue := map[string]string{}
@@ -145,6 +148,10 @@ func TestCertificateDetect(t *testing.T) {
 		})
 	}
 }
+
+// findingsOf returns just the Found slice of a Detect result, for tests that
+// assert only on findings. The detectors here never return an error.
+func findingsOf(res checks.DetectResult, _ error) []checks.Finding { return res.Found }
 
 func equalStrings(a, b []string) bool {
 	if len(a) != len(b) {

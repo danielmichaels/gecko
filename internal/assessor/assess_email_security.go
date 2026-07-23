@@ -63,7 +63,7 @@ func (a *Assessor) AssessEmailSecurity(ctx context.Context, domainID int) error 
 	if err != nil {
 		return err
 	}
-	found, err := detect.EmailSecurityDetector{
+	res, err := detect.EmailSecurityDetector{
 		MaxSPFLookups:    MaxSPFLookups,
 		MinDKIMKeyLength: MinDKIMKeyLength,
 		MTASTSMinMaxAge:  mtaStsMinMaxAge,
@@ -71,7 +71,7 @@ func (a *Assessor) AssessEmailSecurity(ctx context.Context, domainID int) error 
 	if err != nil {
 		return err
 	}
-	return a.reconcile(ctx, domain.Name, detect.CheckEmailSecurity, found)
+	return a.reconcile(ctx, domain.ID, domain.Name, detect.CheckEmailSecurity, res)
 }
 
 // collectEmailSecurity gathers evidence for all six email sub-checks: SPF from the

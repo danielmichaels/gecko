@@ -88,10 +88,11 @@ func TestCAADetect(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := d.Detect(tt.ev)
+			detRes, err := d.Detect(tt.ev)
 			if err != nil {
 				t.Fatal(err)
 			}
+			got := detRes.Found
 			want := append([]string(nil), tt.want...)
 			sort.Strings(want)
 			if !equalStrings(caaIssues(got), want) {

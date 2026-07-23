@@ -40,9 +40,9 @@ func (a *Assessor) AssessDNSSEC(ctx context.Context, domainUID string) error {
 		ev.Algorithms = result.Algorithms
 	}
 
-	found, err := detect.DNSSECDetector{}.Detect(ev)
+	res, err := detect.DNSSECDetector{}.Detect(ev)
 	if err != nil {
 		return err
 	}
-	return a.reconcile(ctx, domain.Name, detect.CheckDNSSEC, found)
+	return a.reconcile(ctx, domain.ID, domain.Name, detect.CheckDNSSEC, res)
 }

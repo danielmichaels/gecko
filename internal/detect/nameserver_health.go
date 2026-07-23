@@ -51,20 +51,38 @@ type NameserverHealthDetector struct {
 func (NameserverHealthDetector) Kind() string                { return CheckNameserverHealth }
 func (NameserverHealthDetector) Scope() checks.EvidenceScope { return checks.SingleAsset }
 
-func (d NameserverHealthDetector) Detect(ev NameserverHealthEvidence) ([]checks.Finding, error) {
-	var out []checks.Finding
+func (d NameserverHealthDetector) Detect(
+	ev NameserverHealthEvidence,
+) (checks.DetectResult, error) {
+	var res checks.DetectResult
 	for _, ns := range ev.Nameservers {
-		if ns.Probed && !ns.Reached {
-			out = append(out, checks.Finding{
+		if !ns.Probed {
+			// Probe denied (fleet rate limiter): this nameserver's health is unknown
+			// this run, so none of its keys may be asserted or resolved.
+			res.Indeterminate = append(
+				res.Indeterminate,
+				checks.Key{IssueType: IssueNSUnreachable, EntityKey: ns.Nameserver},
+				checks.Key{IssueType: IssueNSNoTCPSupport, EntityKey: ns.Nameserver},
+				checks.Key{IssueType: IssueNSNoEDNSSupport, EntityKey: ns.Nameserver},
+				checks.Key{
+					IssueType: IssueNSHighLatency,
+					EntityKey: ns.Nameserver + "|" + ev.RecordType,
+				},
+			)
+			continue
+		}
+		if !ns.Reached {
+			res.Found = append(res.Found, checks.Finding{
 				IssueType: IssueNSUnreachable,
 				EntityKey: ns.Nameserver,
 				Severity:  "high",
 				Title:     "Nameserver is unreachable",
 				Details:   "Nameserver did not answer a direct UDP query (unreachable or timing out)",
 			})
+			continue
 		}
-		if ns.Reached && ns.TCPProbed && !ns.TCPOK {
-			out = append(out, checks.Finding{
+		if ns.TCPProbed && !ns.TCPOK {
+			res.Found = append(res.Found, checks.Finding{
 				IssueType: IssueNSNoTCPSupport,
 				EntityKey: ns.Nameserver,
 				Severity:  "medium",
@@ -72,8 +90,8 @@ func (d NameserverHealthDetector) Detect(ev NameserverHealthEvidence) ([]checks.
 				Details:   "Nameserver does not answer over TCP, which is required for large responses and DNSSEC",
 			})
 		}
-		if ns.Reached && !ns.HasEDNS {
-			out = append(out, checks.Finding{
+		if !ns.HasEDNS {
+			res.Found = append(res.Found, checks.Finding{
 				IssueType: IssueNSNoEDNSSupport,
 				EntityKey: ns.Nameserver,
 				Severity:  "info",
@@ -81,27 +99,40 @@ func (d NameserverHealthDetector) Detect(ev NameserverHealthEvidence) ([]checks.
 				Details:   "Nameserver does not support EDNS0, limiting modern DNS features and UDP payload size",
 			})
 		}
-		if ns.Reached {
-			if sev, threshold, ok := d.latencyTier(ns.LatencyMs); ok {
-				out = append(out, checks.Finding{
-					IssueType: IssueNSHighLatency,
-					EntityKey: ns.Nameserver + "|" + ev.RecordType,
-					Severity:  sev,
-					Title:     "Nameserver response is slow",
-					Details: fmt.Sprintf(
-						"Nameserver responded in %dms (exceeds %dms)",
-						ns.LatencyMs,
-						threshold,
-					),
-				})
-			}
+		if sev, threshold, ok := d.latencyTier(ns.LatencyMs); ok {
+			res.Found = append(res.Found, checks.Finding{
+				IssueType: IssueNSHighLatency,
+				EntityKey: ns.Nameserver + "|" + ev.RecordType,
+				Severity:  sev,
+				Title:     "Nameserver response is slow",
+				Details: fmt.Sprintf(
+					"Nameserver responded in %dms (exceeds %dms)",
+					ns.LatencyMs,
+					threshold,
+				),
+			})
 		}
 	}
 
 	if f, ok := d.consistencyFinding(ev); ok {
-		out = append(out, f)
+		res.Found = append(res.Found, f)
+	} else if !anyReachedAnswer(ev) {
+		// No nameserver produced an apex serial, so answer consistency is unknown.
+		res.Indeterminate = append(res.Indeterminate,
+			checks.Key{IssueType: IssueNSResolverMismatch, EntityKey: ev.RecordType})
 	}
-	return out, nil
+	return res, nil
+}
+
+// anyReachedAnswer reports whether at least one nameserver returned an apex serial,
+// the minimum needed to say anything about cross-nameserver consistency.
+func anyReachedAnswer(ev NameserverHealthEvidence) bool {
+	for _, ns := range ev.Nameservers {
+		if ns.Reached && ns.ApexSerial != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // latencyTier maps a latency onto its exceeded threshold tier, or ok=false when

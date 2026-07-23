@@ -402,6 +402,7 @@ type Assets struct {
 	Source        string             `json:"source"`
 	FirstSeen     pgtype.Timestamptz `json:"first_seen"`
 	LastSeen      pgtype.Timestamptz `json:"last_seen"`
+	DomainID      pgtype.Int4        `json:"domain_id"`
 }
 
 type CaaRecords struct {

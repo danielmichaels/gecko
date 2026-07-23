@@ -32,11 +32,11 @@ type fakeDetector struct {
 
 func (d fakeDetector) Kind() string         { return d.kind }
 func (d fakeDetector) Scope() EvidenceScope { return d.scope }
-func (d fakeDetector) Detect(ev fakeEvidence) ([]Finding, error) {
+func (d fakeDetector) Detect(ev fakeEvidence) (DetectResult, error) {
 	if ev.LookedUp && ev.Record == "weak" {
-		return []Finding{{IssueType: "weak_record", Severity: "medium"}}, nil
+		return DetectResult{Found: []Finding{{IssueType: "weak_record", Severity: "medium"}}}, nil
 	}
-	return nil, nil
+	return DetectResult{}, nil
 }
 
 func mustPanic(t *testing.T, name string, fn func()) {
@@ -95,12 +95,12 @@ func TestRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("collect: %v", err)
 	}
-	finds, err := r.Detect(raw)
+	res, err := r.Detect(raw)
 	if err != nil {
 		t.Fatalf("detect: %v", err)
 	}
-	if len(finds) != 1 || finds[0].IssueType != "weak_record" {
-		t.Fatalf("findings = %+v, want one weak_record", finds)
+	if len(res.Found) != 1 || res.Found[0].IssueType != "weak_record" {
+		t.Fatalf("findings = %+v, want one weak_record", res.Found)
 	}
 }
 
@@ -108,12 +108,12 @@ func TestRoundTrip(t *testing.T) {
 // asset produces an empty result, not a positive "OK" finding.
 func TestCompliantEvidenceYieldsNoFinding(t *testing.T) {
 	d := fakeDetector{kind: "compliant_check", scope: SingleAsset}
-	finds, err := d.Detect(fakeEvidence{LookedUp: true, Record: "strong"})
+	res, err := d.Detect(fakeEvidence{LookedUp: true, Record: "strong"})
 	if err != nil {
 		t.Fatalf("detect: %v", err)
 	}
-	if len(finds) != 0 {
-		t.Fatalf("compliant asset returned %d findings, want 0", len(finds))
+	if len(res.Found) != 0 {
+		t.Fatalf("compliant asset returned %d findings, want 0", len(res.Found))
 	}
 }
 
@@ -124,12 +124,12 @@ func TestDetectDistinguishesAbsentFromUnknown(t *testing.T) {
 
 	// looked up, no weak record -> compliant (no finding). Represents "record absent
 	// but check ran" for this fake; real detectors emit missing_* here.
-	if finds, _ := d.Detect(fakeEvidence{LookedUp: true, Record: ""}); len(finds) != 0 {
-		t.Fatalf("looked-up-absent returned %d findings", len(finds))
+	if res, _ := d.Detect(fakeEvidence{LookedUp: true, Record: ""}); len(res.Found) != 0 {
+		t.Fatalf("looked-up-absent returned %d findings", len(res.Found))
 	}
 	// never looked up -> unknown -> also no finding (never auto-resolve on failure).
-	if finds, _ := d.Detect(fakeEvidence{LookedUp: false}); len(finds) != 0 {
-		t.Fatalf("not-looked-up returned %d findings", len(finds))
+	if res, _ := d.Detect(fakeEvidence{LookedUp: false}); len(res.Found) != 0 {
+		t.Fatalf("not-looked-up returned %d findings", len(res.Found))
 	}
 }
 

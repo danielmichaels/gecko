@@ -55,11 +55,11 @@ func (a *Assessor) AssessCNAMEDangling(ctx context.Context, domainUID string) er
 	if err := g.Wait(); err != nil {
 		return err
 	}
-	found, err := detect.CNAMEDetector{LongChainThreshold: longChainThreshold}.Detect(ev)
+	res, err := detect.CNAMEDetector{LongChainThreshold: longChainThreshold}.Detect(ev)
 	if err != nil {
 		return err
 	}
-	return a.reconcile(ctx, domain.Name, detect.CheckCNAME, found)
+	return a.reconcile(ctx, domain.ID, domain.Name, detect.CheckCNAME, res)
 }
 
 // collectCNAMETarget gathers one CNAME target's live resolution, takeover-provider

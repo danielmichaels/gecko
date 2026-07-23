@@ -45,9 +45,9 @@ func (DNSSECDetector) Scope() checks.EvidenceScope { return checks.SingleAsset }
 // and an unsigned zone are both compliant states that yield nothing; only a broken
 // chain (validation failure or partial deployment) or a deprecated algorithm on an
 // otherwise-signed zone is a finding.
-func (DNSSECDetector) Detect(ev DNSSECEvidence) ([]checks.Finding, error) {
+func (DNSSECDetector) Detect(ev DNSSECEvidence) (checks.DetectResult, error) {
 	if !ev.Fetched || ev.NotApplicable {
-		return nil, nil
+		return checks.DetectResult{}, nil
 	}
 	var out []checks.Finding
 	switch {
@@ -81,7 +81,7 @@ func (DNSSECDetector) Detect(ev DNSSECEvidence) ([]checks.Finding, error) {
 			Details:   "DNSSEC is partially deployed: missing DNSKEY, DS, or RRSIG records",
 		})
 	}
-	return out, nil
+	return checks.DetectResult{Found: out}, nil
 }
 
 // deprecatedAlgorithmNames returns the names of any deprecated signing algorithms

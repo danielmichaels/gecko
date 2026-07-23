@@ -83,7 +83,7 @@ func (a *Assessor) AssessNameserverHealth(ctx context.Context, domainUID string)
 		})
 	}
 
-	found, err := detect.NameserverHealthDetector{
+	res, err := detect.NameserverHealthDetector{
 		LatencyInfoMs:   nsLatencyInfoMs,
 		LatencyLowMs:    nsLatencyLowMs,
 		LatencyMediumMs: nsLatencyMediumMs,
@@ -91,5 +91,5 @@ func (a *Assessor) AssessNameserverHealth(ctx context.Context, domainUID string)
 	if err != nil {
 		return err
 	}
-	return a.reconcile(ctx, domain.Name, detect.CheckNameserverHealth, found)
+	return a.reconcile(ctx, domain.ID, domain.Name, detect.CheckNameserverHealth, res)
 }

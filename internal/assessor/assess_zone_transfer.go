@@ -49,9 +49,9 @@ func (a *Assessor) AssessZoneTransfer(ctx context.Context, domainUID string) err
 			ResponseData: attempt.ResponseData,
 		})
 	}
-	found, err := detect.ZoneTransferDetector{}.Detect(ev)
+	res, err := detect.ZoneTransferDetector{}.Detect(ev)
 	if err != nil {
 		return err
 	}
-	return a.reconcile(ctx, domain.Name, detect.CheckZoneTransfer, found)
+	return a.reconcile(ctx, domain.ID, domain.Name, detect.CheckZoneTransfer, res)
 }

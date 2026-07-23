@@ -7,10 +7,12 @@ package store
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const assetsGetByDomainName = `-- name: AssetsGetByDomainName :one
-SELECT id, uid, tenant_id, kind, value, parent_asset_id, is_cdn, source, first_seen, last_seen
+SELECT id, uid, tenant_id, kind, value, parent_asset_id, is_cdn, source, first_seen, last_seen, domain_id
 FROM assets
 WHERE tenant_id = $1
   AND kind = 'domain'
@@ -36,12 +38,13 @@ func (q *Queries) AssetsGetByDomainName(ctx context.Context, arg AssetsGetByDoma
 		&i.Source,
 		&i.FirstSeen,
 		&i.LastSeen,
+		&i.DomainID,
 	)
 	return i, err
 }
 
 const assetsGetByID = `-- name: AssetsGetByID :one
-SELECT id, uid, tenant_id, kind, value, parent_asset_id, is_cdn, source, first_seen, last_seen
+SELECT id, uid, tenant_id, kind, value, parent_asset_id, is_cdn, source, first_seen, last_seen, domain_id
 FROM assets
 WHERE id = $1
 `
@@ -60,28 +63,36 @@ func (q *Queries) AssetsGetByID(ctx context.Context, id int64) (Assets, error) {
 		&i.Source,
 		&i.FirstSeen,
 		&i.LastSeen,
+		&i.DomainID,
 	)
 	return i, err
 }
 
 const assetsUpsertDomain = `-- name: AssetsUpsertDomain :one
-INSERT INTO assets (tenant_id, kind, value, source, last_seen)
-VALUES ($1, 'domain', $2, $3, NOW())
+INSERT INTO assets (tenant_id, kind, value, source, domain_id, last_seen)
+VALUES ($1, 'domain', $2, $3, $4, NOW())
 ON CONFLICT (tenant_id, kind, value)
-    DO UPDATE SET last_seen = NOW()
-RETURNING id, uid, tenant_id, kind, value, parent_asset_id, is_cdn, source, first_seen, last_seen
+    DO UPDATE SET last_seen = NOW(), domain_id = EXCLUDED.domain_id
+RETURNING id, uid, tenant_id, kind, value, parent_asset_id, is_cdn, source, first_seen, last_seen, domain_id
 `
 
 type AssetsUpsertDomainParams struct {
-	TenantID int32  `json:"tenant_id"`
-	Value    string `json:"value"`
-	Source   string `json:"source"`
+	TenantID int32       `json:"tenant_id"`
+	Value    string      `json:"value"`
+	Source   string      `json:"source"`
+	DomainID pgtype.Int4 `json:"domain_id"`
 }
 
-// Ensure the asset row for a domain exists (1:1), bumping last_seen. Idempotent
-// so domains created after the backfill self-register on their first scan.
+// Ensure the asset row for a domain exists (1:1), bumping last_seen and keeping the
+// domain_id FK current. Idempotent so domains created after the backfill
+// self-register on their first scan; the FK re-link heals any pre-FK asset row.
 func (q *Queries) AssetsUpsertDomain(ctx context.Context, arg AssetsUpsertDomainParams) (Assets, error) {
-	row := q.db.QueryRow(ctx, assetsUpsertDomain, arg.TenantID, arg.Value, arg.Source)
+	row := q.db.QueryRow(ctx, assetsUpsertDomain,
+		arg.TenantID,
+		arg.Value,
+		arg.Source,
+		arg.DomainID,
+	)
 	var i Assets
 	err := row.Scan(
 		&i.ID,
@@ -94,6 +105,7 @@ func (q *Queries) AssetsUpsertDomain(ctx context.Context, arg AssetsUpsertDomain
 		&i.Source,
 		&i.FirstSeen,
 		&i.LastSeen,
+		&i.DomainID,
 	)
 	return i, err
 }

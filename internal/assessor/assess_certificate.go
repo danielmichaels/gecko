@@ -46,7 +46,7 @@ func (a *Assessor) AssessCertificate(ctx context.Context, domainUID string) erro
 	}
 
 	cfg := config.AppConfig()
-	found, err := detect.CertificateDetector{
+	res, err := detect.CertificateDetector{
 		ExpiryHighDays:   cfg.AppConf.CertExpiryHighDays,
 		ExpiryMediumDays: cfg.AppConf.CertExpiryMediumDays,
 		MinRSAKeyBits:    MinRSAKeyStrength,
@@ -54,5 +54,5 @@ func (a *Assessor) AssessCertificate(ctx context.Context, domainUID string) erro
 	if err != nil {
 		return err
 	}
-	return a.reconcile(ctx, domain.Name, detect.CheckCertificate, found)
+	return a.reconcile(ctx, domain.ID, domain.Name, detect.CheckCertificate, res)
 }

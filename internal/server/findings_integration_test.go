@@ -7,6 +7,7 @@ import (
 
 	"github.com/danielmichaels/gecko/internal/store"
 	"github.com/danielmichaels/gecko/internal/testhelpers"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // seedFinding writes a row directly into the generic findings table (the source
@@ -20,9 +21,17 @@ func seedFinding(
 	domainName, checkKind, issueType, severity string,
 ) {
 	t.Helper()
+	domain, err := pc.Queries.DomainsGetByName(ctx, store.DomainsGetByNameParams{
+		TenantID: pgtype.Int4{Int32: tenantID, Valid: true},
+		Name:     domainName,
+	})
+	if err != nil {
+		t.Fatalf("seed finding: lookup domain (%s): %v", domainName, err)
+	}
 	asset, err := pc.Queries.AssetsUpsertDomain(ctx, store.AssetsUpsertDomainParams{
 		TenantID: tenantID,
 		Value:    domainName,
+		DomainID: pgtype.Int4{Int32: domain.ID, Valid: true},
 		Source:   "discovered",
 	})
 	if err != nil {

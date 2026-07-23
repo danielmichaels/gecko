@@ -50,11 +50,11 @@ func (a *Assessor) AssessNameserverConfig(ctx context.Context, domainUID string)
 	}
 
 	ev := a.collectNameserverConfig(domain.Name, records)
-	found, err := detect.NameserverConfigDetector{RecommendedCount: nsRecommendedCount}.Detect(ev)
+	res, err := detect.NameserverConfigDetector{RecommendedCount: nsRecommendedCount}.Detect(ev)
 	if err != nil {
 		return err
 	}
-	return a.reconcile(ctx, domain.Name, detect.CheckNameserverConfig, found)
+	return a.reconcile(ctx, domain.ID, domain.Name, detect.CheckNameserverConfig, res)
 }
 
 // collectNameserverConfig resolves each delegated nameserver (CNAME/A/AAAA via the
