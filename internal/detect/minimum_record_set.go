@@ -21,9 +21,6 @@ const (
 	IssueMissingMX               = "missing_mx"
 )
 
-// MinimumRecordSetEvidence is the collected apex-hygiene state. Each *LookedUp
-// flag separates a genuine authoritative absence (a real finding) from a failed
-// lookup (emit nothing). Only meaningful when IsApex.
 type MinimumRecordSetEvidence struct {
 	SOAMName         string   `json:"soa_mname"`
 	SOARName         string   `json:"soa_rname"`
@@ -49,7 +46,6 @@ type MinimumRecordSetEvidence struct {
 	HasNullMX        bool     `json:"has_null_mx"`
 }
 
-// MinimumRecordSetDetector judges apex zone hygiene. Only runs for apex domains.
 type MinimumRecordSetDetector struct {
 	MinNameservers int
 }
@@ -83,7 +79,6 @@ func (d MinimumRecordSetDetector) Detect(
 
 	switch {
 	case ev.HasA || ev.HasAAAA:
-		// Apex resolves to an address: authoritatively not missing.
 	case ev.ALookedUp && ev.AAAALookedUp:
 		res.Found = append(res.Found, checks.Finding{
 			IssueType: IssueMissingApexAddress,
@@ -193,7 +188,6 @@ type soaTimerRange struct {
 	lo, hi int32
 }
 
-// soaTimerOffenders returns the RFC 1912 timer violations, formatted for details.
 func soaTimerOffenders(ev MinimumRecordSetEvidence) []string {
 	ranges := []soaTimerRange{
 		{"refresh", ev.SOARefresh, 1200, 86400},
@@ -211,8 +205,6 @@ func soaTimerOffenders(ev MinimumRecordSetEvidence) []string {
 	return offenders
 }
 
-// serialLooksDateBased reports whether a SOA serial plausibly follows the advisory
-// YYYYMMDDnn convention (RFC 1912).
 func serialLooksDateBased(serial int64) bool {
 	if serial < 1900010100 || serial > 2999123199 {
 		return false
@@ -224,8 +216,6 @@ func serialLooksDateBased(serial int64) bool {
 	return year >= 1970 && year <= 2100 && month >= 1 && month <= 12 && day >= 1 && day <= 31
 }
 
-// rnameWellFormed reports whether a SOA RNAME converts to a plausible email: a
-// non-empty local part and a dotted domain part.
 func rnameWellFormed(rname string) bool {
 	r := strings.TrimSuffix(strings.TrimSpace(rname), ".")
 	if r == "" {

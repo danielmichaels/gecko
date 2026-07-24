@@ -18,9 +18,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// fakeScheduler records Schedule calls and per-tenant stat-refresh enqueues for
-// assertion; safe for concurrent use. It implements both DomainScanScheduler and
-// TenantStatsRefresher so the service wires it as the refresher too.
 type fakeScheduler struct {
 	mu             sync.Mutex
 	calls          int
@@ -73,7 +70,6 @@ func (f *fakeScheduler) Emails() []mailer.Message {
 	return append([]mailer.Message(nil), f.emails...)
 }
 
-// ownerPrincipal returns a synthetic owner principal for the given tenant.
 func ownerPrincipal(tenantID int32) *auth.Principal {
 	return &auth.Principal{
 		UserID:   1,
@@ -83,7 +79,6 @@ func ownerPrincipal(tenantID int32) *auth.Principal {
 	}
 }
 
-// principalWithRole returns a synthetic principal for the given tenant and role.
 func principalWithRole(tenantID int32, role string) *auth.Principal {
 	return &auth.Principal{
 		UserID:   1,
@@ -128,8 +123,6 @@ func seedDomain(
 	return d
 }
 
-// seedDomainWith inserts a domain with an explicit type and source, for the
-// list-filter tests that need provenance/structure variety.
 func seedDomainWith(
 	t *testing.T,
 	ctx context.Context,
@@ -153,7 +146,6 @@ func seedDomainWith(
 	return d
 }
 
-// createTenant inserts a tenant + owner user directly (mirroring signup) and returns the tenant ID.
 func createTenant(
 	t *testing.T,
 	ctx context.Context,
@@ -291,7 +283,6 @@ func TestDomainsService_List_FilterBySource(t *testing.T) {
 		store.DomainTypeSubdomain,
 		store.DomainSourceDiscovered,
 	)
-	// Another tenant's discovered domain must not leak into A's discovered filter.
 	seedDomainWith(
 		t,
 		ctx,
@@ -397,8 +388,6 @@ func TestDomainsService_List_FilterBySourceAndType(t *testing.T) {
 	ds := svc.DomainsService()
 
 	tenantA := createTenant(t, ctx, pc, "a@both-filter.com")
-	// Two user_supplied tlds, but only one is the user_supplied+tld intersection
-	// we expect the combined filter to isolate.
 	seedDomainWith(
 		t,
 		ctx,
@@ -604,9 +593,6 @@ func TestDomainsService_Update_HappyPath(t *testing.T) {
 	if updated.Status != store.DomainStatusInactive {
 		t.Errorf("status = %s, want inactive", updated.Status)
 	}
-	// The service always delegates to the scheduler; the active-status gate lives
-	// inside the production scheduler (jobs.EnqueueDomainScan). The fake records
-	// the call so we confirm the delegation happened exactly once.
 	if sched.Called() != 1 {
 		t.Errorf("scheduler called %d times, want 1", sched.Called())
 	}
@@ -659,15 +645,12 @@ func TestDomainsService_Delete_HappyPath(t *testing.T) {
 	if err := ds.Delete(ctx, ownerPrincipal(tenantA), d.Uid); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	// A successful delete enqueues a per-tenant stats refresh for that tenant.
 	if got := sched.StatsRefreshes(); len(got) != 1 || got[0] != tenantA {
 		t.Errorf("stats refreshes = %v, want [%d]", got, tenantA)
 	}
-	// Confirm it is gone.
 	if err := ds.Delete(ctx, ownerPrincipal(tenantA), d.Uid); !errors.Is(err, service.ErrNotFound) {
 		t.Errorf("second Delete = %v, want ErrNotFound", err)
 	}
-	// A no-op delete (already gone) does not enqueue another refresh.
 	if got := sched.StatsRefreshes(); len(got) != 1 {
 		t.Errorf("stats refreshes after no-op delete = %v, want 1", got)
 	}
@@ -746,7 +729,6 @@ func TestDomainsService_Create_ViewerForbidden(t *testing.T) {
 	if sched.Called() != 0 {
 		t.Errorf("scheduler called %d times on forbidden create, want 0", sched.Called())
 	}
-	// No domain was inserted.
 	result, err := ds.List(ctx, ownerPrincipal(tenantA), service.DomainsListParams{PageSize: 10})
 	if err != nil {
 		t.Fatalf("List: %v", err)
@@ -815,7 +797,6 @@ func TestDomainsService_Update_ViewerForbidden(t *testing.T) {
 	if sched.Called() != 0 {
 		t.Errorf("scheduler called %d times on forbidden update, want 0", sched.Called())
 	}
-	// The domain is unchanged.
 	got, err := ds.Get(ctx, ownerPrincipal(tenantA), d.Uid)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
@@ -880,7 +861,6 @@ func TestDomainsService_Delete_ViewerForbidden(t *testing.T) {
 	if got := sched.StatsRefreshes(); len(got) != 0 {
 		t.Errorf("stats refreshes on forbidden delete = %v, want none", got)
 	}
-	// The domain still exists.
 	if _, err := ds.Get(ctx, ownerPrincipal(tenantA), d.Uid); err != nil {
 		t.Errorf("domain missing after forbidden delete: %v", err)
 	}

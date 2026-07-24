@@ -56,9 +56,6 @@ func seedStatsARecord(
 	}
 }
 
-// seedStatsFinding writes a row directly into the generic findings table (the
-// source RefreshTenantStatsWorker now reads), upserting the backing asset first
-// since assets aren't auto-created for a domain outside the migration backfill.
 func seedStatsFinding(
 	t *testing.T,
 	ctx context.Context,
@@ -96,9 +93,6 @@ func seedStatsFinding(
 	}
 }
 
-// TestRefreshTenantStatsWorker_ComputesAndIsolatesTenants seeds records and
-// findings across two tenants, runs the refresh, and asserts each tenant's
-// cached rollups are correct and do not leak across the tenant boundary.
 func TestRefreshTenantStatsWorker_ComputesAndIsolatesTenants(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -113,9 +107,6 @@ func TestRefreshTenantStatsWorker_ComputesAndIsolatesTenants(t *testing.T) {
 	t1 := seedStatsTenant(t, ctx, q, "owner1@stats.test")
 	t2 := seedStatsTenant(t, ctx, q, "owner2@stats.test")
 
-	// Tenant 1: two domains. dCrit has 3 A records + a critical SPF finding;
-	// dWarn has 1 A record + a medium SPF finding. Record total = 4, critical = 1,
-	// warning = 1.
 	dCrit := seedStatsDomain(t, ctx, q, t1, "crit.t1.test")
 	dWarn := seedStatsDomain(t, ctx, q, t1, "warn.t1.test")
 	seedStatsARecord(t, ctx, q, dCrit, "192.0.2.1")
@@ -125,8 +116,6 @@ func TestRefreshTenantStatsWorker_ComputesAndIsolatesTenants(t *testing.T) {
 	seedStatsFinding(t, ctx, q, t1, "crit.t1.test", "critical")
 	seedStatsFinding(t, ctx, q, t1, "warn.t1.test", "medium")
 
-	// Tenant 2: one domain with 1 A record and no findings. Record total = 1,
-	// critical = 0, warning = 0.
 	dOther := seedStatsDomain(t, ctx, q, t2, "only.t2.test")
 	seedStatsARecord(t, ctx, q, dOther, "198.51.100.1")
 
@@ -164,7 +153,6 @@ func TestRefreshTenantStatsWorker_ComputesAndIsolatesTenants(t *testing.T) {
 		)
 	}
 
-	// Re-running is idempotent: counts do not double.
 	if err := w.Work(ctx, &river.Job[RefreshTenantStatsArgs]{Args: RefreshTenantStatsArgs{}}); err != nil {
 		t.Fatalf("worker Work (rerun): %v", err)
 	}
@@ -177,10 +165,6 @@ func TestRefreshTenantStatsWorker_ComputesAndIsolatesTenants(t *testing.T) {
 	}
 }
 
-// TestRefreshTenantStatsWorker_SingleTenant verifies the event-driven path: a
-// refresh scoped to one tenant computes that tenant's rollups, and once the
-// tenant's domains are deleted, a re-run overwrites the cached row with zeros
-// (the drop-to-zero case the periodic full pass can't self-heal).
 func TestRefreshTenantStatsWorker_SingleTenant(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -220,8 +204,6 @@ func TestRefreshTenantStatsWorker_SingleTenant(t *testing.T) {
 		)
 	}
 
-	// Delete the tenant's domains (cascading records/findings), then refresh just
-	// this tenant: the cached row must drop to zeros.
 	if _, err := pc.Pool.Exec(ctx, "DELETE FROM domains WHERE tenant_id = $1", tid); err != nil {
 		t.Fatalf("delete domains: %v", err)
 	}

@@ -25,10 +25,6 @@ func scanCountBySource(
 	return n
 }
 
-// TestScheduledScanWorker_EnqueueDueScans verifies the worker enqueues a
-// 'scheduled' scan for each due active domain, advances its cursor past now (so it
-// drops out of the next tick), and never touches off or inactive domains — and
-// that a back-to-back rerun does not double-enqueue.
 func TestScheduledScanWorker_EnqueueDueScans(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -57,7 +53,6 @@ func TestScheduledScanWorker_EnqueueDueScans(t *testing.T) {
 	setNextScan(t, ctx, pc, due, "-1 hour")
 	setNextScan(t, ctx, pc, inactive, "-1 hour")
 	setInactive(t, ctx, pc, inactive)
-	// off keeps next_scan_at NULL
 
 	w := &ScheduledScanWorker{Logger: *testhelpers.TestLogger, Store: q, PgxPool: pc.Pool}
 
@@ -78,12 +73,10 @@ func TestScheduledScanWorker_EnqueueDueScans(t *testing.T) {
 		t.Errorf("inactive domain scans = %d, want 0", got)
 	}
 
-	// The chokepoint advanced the cursor, so the domain is no longer due.
 	if ns := nextScanAt(t, ctx, pc, due); !ns.Valid || !ns.Time.After(time.Now()) {
 		t.Errorf("due domain next_scan_at = %v, want a future cursor", ns)
 	}
 
-	// Back-to-back rerun: nothing is due, so nothing is enqueued (no double-scan).
 	n2, err := w.EnqueueDueScans(ctx, rc)
 	if err != nil {
 		t.Fatalf("EnqueueDueScans rerun: %v", err)
@@ -96,8 +89,6 @@ func TestScheduledScanWorker_EnqueueDueScans(t *testing.T) {
 	}
 }
 
-// TestScheduledScanWorker_BatchCap verifies the per-tick batch cap bounds the
-// fan-out; the remaining due domains are picked up on the next tick.
 func TestScheduledScanWorker_BatchCap(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -136,7 +127,6 @@ func TestScheduledScanWorker_BatchCap(t *testing.T) {
 		t.Fatalf("first tick enqueued = %d, want 2 (batch cap)", n)
 	}
 
-	// The two oldest-due (a, b) were scanned; c remains due for the next tick.
 	n2, err := w.EnqueueDueScans(ctx, rc)
 	if err != nil {
 		t.Fatalf("EnqueueDueScans tick 2: %v", err)

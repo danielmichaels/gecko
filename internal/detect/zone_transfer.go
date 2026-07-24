@@ -15,11 +15,6 @@ const CheckZoneTransfer = "zone_transfer"
 
 const IssueZoneTransferExposed = "zone_transfer_exposed"
 
-// ZoneTransferAttemptEvidence is one nameserver's zone-transfer attempt outcome.
-// Successful is the load-bearing fact (a successful AXFR/IXFR is critical);
-// ResponseData carries the transferred zone (dnsrecords.ZoneTransferData) for the
-// deeper sensitive-data analysis and is best-effort -- a parse failure degrades
-// only the evidence detail, never the finding itself.
 type ZoneTransferAttemptEvidence struct {
 	Nameserver   string          `json:"nameserver"`
 	TransferType string          `json:"transfer_type"`
@@ -36,8 +31,6 @@ type ZoneTransferDetector struct{}
 func (ZoneTransferDetector) Kind() string                { return CheckZoneTransfer }
 func (ZoneTransferDetector) Scope() checks.EvidenceScope { return checks.SingleAsset }
 
-// Detect emits one critical finding per nameserver that allowed a zone transfer.
-// A refused transfer is compliant and yields nothing (absence).
 func (ZoneTransferDetector) Detect(ev ZoneTransferEvidence) (checks.DetectResult, error) {
 	var out []checks.Finding
 	for _, at := range ev.Attempts {
@@ -77,8 +70,6 @@ func (ZoneTransferDetector) Detect(ev ZoneTransferEvidence) (checks.DetectResult
 	}
 	return checks.DetectResult{Found: out}, nil
 }
-
-// --- pure zone-transfer analysis (lifted verbatim from the assessor) ---
 
 type findingsContainer struct {
 	RecordData       map[string][]any       `json:"raw_record_data"`

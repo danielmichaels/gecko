@@ -16,7 +16,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// newAuthSvc builds a real AuthService backed by a test container.
 func newAuthSvc(t *testing.T, pc *testhelpers.TestDatabase) *service.AuthService {
 	t.Helper()
 	cfg := config.AppConfig()
@@ -38,9 +37,6 @@ func newAuthSvc(t *testing.T, pc *testhelpers.TestDatabase) *service.AuthService
 	return svc.AuthService()
 }
 
-// TestAuthService_ChangePassword_HappyPath verifies a correct current password
-// lets the user set a new one, after which the new password authenticates and
-// the old one no longer does.
 func TestAuthService_ChangePassword_HappyPath(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -69,8 +65,6 @@ func TestAuthService_ChangePassword_HappyPath(t *testing.T) {
 	}
 }
 
-// TestAuthService_ChangePassword_WrongCurrent verifies an incorrect current
-// password is rejected as invalid input and leaves the password unchanged.
 func TestAuthService_ChangePassword_WrongCurrent(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -97,8 +91,6 @@ func TestAuthService_ChangePassword_WrongCurrent(t *testing.T) {
 	}
 }
 
-// TestAuthService_ChangePassword_WeakNew verifies a too-short new password is
-// rejected as invalid input.
 func TestAuthService_ChangePassword_WeakNew(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -121,7 +113,6 @@ func TestAuthService_ChangePassword_WeakNew(t *testing.T) {
 	}
 }
 
-// signupUser is a test helper that creates a user via Signup and returns the result.
 func signupUser(
 	t *testing.T,
 	svc *service.AuthService,
@@ -138,7 +129,6 @@ func signupUser(
 	return result
 }
 
-// tenantOf returns u's default-membership tenant id (tenant lives on memberships).
 func tenantOf(
 	t *testing.T,
 	ctx context.Context,
@@ -149,7 +139,6 @@ func tenantOf(
 	return testhelpers.PrincipalForEmail(t, ctx, pc, u.Email).TenantID
 }
 
-// roleOf returns u's default-membership role (role lives on memberships).
 func roleOf(
 	t *testing.T,
 	ctx context.Context,
@@ -160,7 +149,6 @@ func roleOf(
 	return testhelpers.PrincipalForEmail(t, ctx, pc, u.Email).Role
 }
 
-// seedInvitation inserts a live invitation directly into the DB for AcceptInvite tests.
 func seedInvitation(
 	t *testing.T,
 	ctx context.Context,
@@ -214,7 +202,6 @@ func TestAuthService_Login_Valid(t *testing.T) {
 	if result.Role != string(store.UserRoleOwner) {
 		t.Errorf("login role = %q, want %q", result.Role, string(store.UserRoleOwner))
 	}
-	// Login should mint a fresh key, not the same as signup's.
 	if result.RawKey == signup.RawKey {
 		t.Error("login should mint a fresh key distinct from the signup key")
 	}
@@ -341,7 +328,6 @@ func TestAuthService_AcceptInvite_HappyPath(t *testing.T) {
 	if result.Role != string(store.UserRoleViewer) {
 		t.Errorf("accept invite role = %q, want %q", result.Role, string(store.UserRoleViewer))
 	}
-	// Key should differ from the owner's.
 	if result.RawKey == owner.RawKey {
 		t.Error("accept invite key should be distinct from owner's key")
 	}
@@ -431,7 +417,6 @@ func TestAuthService_AcceptInvite_DuplicateEmail(t *testing.T) {
 	defer pc.Close(ctx)
 
 	svc := newAuthSvc(t, pc)
-	// Register a user in their own tenant first.
 	signupUser(t, svc, "existing@company.com", "password123")
 
 	ownerUser, err := pc.Queries.UserGetByEmail(ctx, "existing@company.com")
@@ -440,7 +425,6 @@ func TestAuthService_AcceptInvite_DuplicateEmail(t *testing.T) {
 	}
 	tenantID := tenantOf(t, ctx, pc, ownerUser)
 
-	// Seed an invitation for the already-registered email in the same tenant.
 	rawToken := seedInvitation(t, ctx, pc, tenantID, "existing@company.com",
 		store.UserRoleViewer, pgtype.Int4{Int32: ownerUser.ID, Valid: true})
 
@@ -494,7 +478,6 @@ func TestAuthService_Session_MintAndResolve(t *testing.T) {
 		t.Error("mint session: expiresAt is in the past")
 	}
 
-	// Verify the raw token is NOT stored in the DB (only its hash is).
 	var hash string
 	err = pc.Pool.QueryRow(
 		ctx,
@@ -511,7 +494,6 @@ func TestAuthService_Session_MintAndResolve(t *testing.T) {
 		t.Errorf("stored hash = %q, want %q", hash, expectedHash)
 	}
 
-	// Resolve the session.
 	principal, err := svc.ResolveSession(ctx, rawToken)
 	if err != nil {
 		t.Fatalf("resolve session: %v", err)
@@ -612,7 +594,6 @@ func TestAuthService_Session_ExpiredToken(t *testing.T) {
 		t.Fatalf("lookup user: %v", err)
 	}
 
-	// Insert an already-expired session directly.
 	rawToken, err := auth.GenerateToken()
 	if err != nil {
 		t.Fatalf("generate token: %v", err)
@@ -684,17 +665,14 @@ func TestAuthService_Session_Revoke(t *testing.T) {
 		t.Fatalf("mint: %v", err)
 	}
 
-	// Verify it resolves before revoke.
 	if _, err := svc.ResolveSession(ctx, rawToken); err != nil {
 		t.Fatalf("resolve before revoke: %v", err)
 	}
 
-	// Revoke.
 	if err := svc.RevokeSession(ctx, rawToken); err != nil {
 		t.Fatalf("revoke: %v", err)
 	}
 
-	// Row must be gone.
 	var count int
 	err = pc.Pool.QueryRow(
 		ctx,
@@ -707,7 +685,6 @@ func TestAuthService_Session_Revoke(t *testing.T) {
 		t.Errorf("session row still exists after revoke, count = %d", count)
 	}
 
-	// Resolve after revoke → ErrUnauthenticated.
 	_, err = svc.ResolveSession(ctx, rawToken)
 	if err == nil {
 		t.Fatal("expected ErrUnauthenticated after revoke, got nil")
@@ -716,7 +693,6 @@ func TestAuthService_Session_Revoke(t *testing.T) {
 		t.Errorf("after revoke: got %v, want ErrUnauthenticated", err)
 	}
 
-	// Second revoke is idempotent.
 	if err := svc.RevokeSession(ctx, rawToken); err != nil {
 		t.Errorf("second revoke should be idempotent, got: %v", err)
 	}
@@ -750,7 +726,6 @@ func TestAuthService_Session_RawTokenNotStored(t *testing.T) {
 		t.Fatalf("mint: %v", err)
 	}
 
-	// Scan ALL text columns for the raw token — it must not appear anywhere.
 	var count int
 	err = pc.Pool.QueryRow(
 		ctx,
@@ -852,7 +827,6 @@ func TestAuthService_AcceptInviteWeb_Valid(t *testing.T) {
 		t.Errorf("accept invite web role = %q, want %q", p.Role, string(store.UserRoleViewer))
 	}
 
-	// Confirm no api_keys row was created for this user.
 	var count int
 	err = pc.Pool.QueryRow(
 		ctx,
@@ -889,14 +863,10 @@ func TestAuthService_AcceptInviteWeb_InvalidToken(t *testing.T) {
 	}
 }
 
-// isErr is a small helper so test assertions stay concise.
 func isErr(err, target error) bool {
 	return errors.Is(err, target)
 }
 
-// newAuthSvcWithEmailer builds a real AuthService whose email-enqueue seam is the
-// returned recording fakeScheduler (defined in domains_test.go), so reset-request
-// tests can assert what was queued.
 func newAuthSvcWithEmailer(
 	t *testing.T,
 	pc *testhelpers.TestDatabase,
@@ -923,7 +893,6 @@ func newAuthSvcWithEmailer(
 	return svc.AuthService(), sched
 }
 
-// seedResetToken inserts a live password-reset token and returns the raw token.
 func seedResetToken(
 	t *testing.T,
 	ctx context.Context,
@@ -974,11 +943,9 @@ func TestAuthService_SignupWeb_HappyPath(t *testing.T) {
 	if p.UserID == 0 || p.TenantID == 0 {
 		t.Errorf("principal ids unset: %+v", p)
 	}
-	// New password authenticates.
 	if _, err := svc.Authenticate(ctx, "owner@example.com", "password123"); err != nil {
 		t.Errorf("authenticate after signup web: %v", err)
 	}
-	// No API key is minted by the web flow.
 	var keyCount int
 	if err := pc.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM api_keys`).Scan(&keyCount); err != nil {
 		t.Fatalf("count api keys: %v", err)
@@ -1103,7 +1070,6 @@ func TestAuthService_RequestPasswordReset_KnownEmail(t *testing.T) {
 
 	svc, sched := newAuthSvcWithEmailer(t, pc)
 	signupUser(t, svc, "real@example.com", "password123")
-	// Drop the welcome email enqueued by signup so we assert on the reset email only.
 	sched.emails = nil
 
 	if err := svc.RequestPasswordReset(ctx, "real@example.com", "https://app.test"); err != nil {
@@ -1149,7 +1115,6 @@ func TestAuthService_ResetPassword_HappyPath(t *testing.T) {
 		Email:    user.Email,
 		Role:     roleOf(t, ctx, pc, user),
 	}
-	// Two live sessions that must be revoked by the reset.
 	if _, _, err := svc.MintSession(ctx, p, "", ""); err != nil {
 		t.Fatalf("mint session 1: %v", err)
 	}
@@ -1178,7 +1143,6 @@ func TestAuthService_ResetPassword_HappyPath(t *testing.T) {
 	if sessCount != 0 {
 		t.Errorf("session count after reset = %d, want 0 (all revoked)", sessCount)
 	}
-	// Token is single-use.
 	if err := svc.ResetPassword(ctx, rawToken, "anotherpass1"); !isErr(err, service.ErrNotFound) {
 		t.Errorf("reusing token: got %v, want ErrNotFound", err)
 	}
@@ -1246,8 +1210,6 @@ func TestAuthService_ResetPassword_WeakPassword(t *testing.T) {
 	}
 }
 
-// TestAuthService_CreateWorkspace verifies an existing account can spin up an
-// additional workspace, becoming its owner and ending up with multiple memberships.
 func TestAuthService_CreateWorkspace(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -1289,9 +1251,6 @@ func TestAuthService_CreateWorkspace(t *testing.T) {
 	}
 }
 
-// TestAuthService_AttachInviteWeb verifies an already-registered user can accept an
-// invitation to another tenant while authenticated, gaining a second membership,
-// and that an invite addressed to a different identity is refused.
 func TestAuthService_AttachInviteWeb(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -1302,8 +1261,8 @@ func TestAuthService_AttachInviteWeb(t *testing.T) {
 	defer pc.Close(ctx)
 
 	svc := newAuthSvc(t, pc)
-	signupUser(t, svc, "owner@a.com", "supersecret")  // tenant A
-	signupUser(t, svc, "member@b.com", "supersecret") // their own tenant B
+	signupUser(t, svc, "owner@a.com", "supersecret")
+	signupUser(t, svc, "member@b.com", "supersecret")
 	pOwnerA := principalForEmail(t, ctx, pc, "owner@a.com")
 	pMemberB := principalForEmail(t, ctx, pc, "member@b.com")
 	tenantA := pOwnerA.TenantID
@@ -1311,12 +1270,10 @@ func TestAuthService_AttachInviteWeb(t *testing.T) {
 	token := seedInvitation(t, ctx, pc, tenantA, "member@b.com",
 		store.UserRoleViewer, pgtype.Int4{Int32: pOwnerA.UserID, Valid: true})
 
-	// An invite addressed to member@b.com cannot be claimed by a different identity.
 	if _, err := svc.AttachInviteWeb(ctx, pOwnerA, token); !isErr(err, service.ErrForbidden) {
 		t.Errorf("wrong-identity attach: got %v, want ErrForbidden", err)
 	}
 
-	// The matching identity attaches and gains a membership in tenant A.
 	got, err := svc.AttachInviteWeb(ctx, pMemberB, token)
 	if err != nil {
 		t.Fatalf("attach invite: %v", err)
@@ -1335,14 +1292,11 @@ func TestAuthService_AttachInviteWeb(t *testing.T) {
 		t.Errorf("attached role = %q, want viewer", role)
 	}
 
-	// Re-attaching is a conflict (already a member).
 	if _, err := svc.AttachInviteWeb(ctx, pMemberB, token); !isErr(err, service.ErrConflict) {
 		t.Errorf("re-attach: got %v, want ErrConflict", err)
 	}
 }
 
-// TestAuthService_SwitchTenant_NonMemberForbidden verifies switching to a tenant
-// the caller does not belong to is refused.
 func TestAuthService_SwitchTenant_NonMemberForbidden(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()

@@ -6,9 +6,6 @@ import (
 	"github.com/danielmichaels/gecko/internal/store"
 )
 
-// tenantRow builds a synthetic generic-findings tenant row for the pure grouping
-// tests. Status is always open (the only status FindingsListTenantOpen returns);
-// details/evidence carry placeholder text.
 func tenantRow(
 	domainUID, domainName, checkKind string,
 	severity string,
@@ -36,7 +33,6 @@ func domainNames(groups []DomainFindingGroup) []string {
 }
 
 func TestBuildTenantFindings_GroupingAndOrdering(t *testing.T) {
-	// Rows arrive pre-sorted domain-then-severity (as the SQL guarantees).
 	rows := []store.FindingsListTenantOpenRow{
 		tenantRow("a", "a.com", "DMARC", "high", "weak_dmarc_policy"),
 		tenantRow("b", "b.com", "SPF", "critical", "missing_spf"),
@@ -46,8 +42,6 @@ func TestBuildTenantFindings_GroupingAndOrdering(t *testing.T) {
 
 	got := buildTenantFindings(rows, FindingsListOptions{})
 
-	// Worst-first: b and c are both critical, tie broken by count desc (b has 2),
-	// then a (high) last.
 	want := []string{"b.com", "c.com", "a.com"}
 	names := domainNames(got.Groups)
 	if len(names) != len(want) {
@@ -108,8 +102,6 @@ func TestBuildTenantFindings_Filters(t *testing.T) {
 		if len(got.Groups) != 1 || got.Groups[0].DomainName != "acme.com" {
 			t.Errorf("groups = %v, want [acme.com]", domainNames(got.Groups))
 		}
-		// SeverityCounts is faceted: ignores the active severity filter, so all
-		// tiers keep their counts for the chips.
 		if got.SeverityCounts["high"] != 1 || got.SeverityCounts["med"] != 1 {
 			t.Errorf("SeverityCounts not faceted: %v", got.SeverityCounts)
 		}
@@ -120,7 +112,6 @@ func TestBuildTenantFindings_Filters(t *testing.T) {
 		if got.Totals.Open != 2 {
 			t.Errorf("open = %d, want 2 (two SPF)", got.Totals.Open)
 		}
-		// KindCounts ignores the kind filter so the dropdown stays populated.
 		if got.KindCounts["DKIM"] != 1 || got.KindCounts["DMARC"] != 1 {
 			t.Errorf("KindCounts not faceted: %v", got.KindCounts)
 		}
@@ -162,8 +153,6 @@ func TestBuildTenantFindings_InfoSeverityReadsHealthy(t *testing.T) {
 	if f.Tier != "ok" || f.SevClass != "info" {
 		t.Errorf("info finding tier/class = %q/%q, want ok/info", f.Tier, f.SevClass)
 	}
-	// info is not one of the four actionable tiers, so it doesn't land in any of
-	// the crit/high/med/low totals — only Open counts it.
 	if got.Totals.Critical != 0 || got.Totals.High != 0 || got.Totals.Medium != 0 ||
 		got.Totals.Low != 0 {
 		t.Errorf("info finding must not count toward any actionable tier: %+v", got.Totals)

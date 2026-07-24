@@ -46,14 +46,12 @@ const (
 
 var dmarcPrefix = regexp.MustCompile(`^v\s*=\s*DMARC1`)
 
-// DKIMSelectorEvidence includes resolution status for failed lookups.
 type DKIMSelectorEvidence struct {
 	Selector string   `json:"selector"`
 	Status   string   `json:"status"`
 	Records  []string `json:"records"`
 }
 
-// EmailSecurityEvidence is the collected state for all six email checks.
 type EmailSecurityEvidence struct {
 	DMARCStatus          string                 `json:"dmarc_status"`
 	BIMIStatus           string                 `json:"bimi_status"`
@@ -73,8 +71,6 @@ type EmailSecurityEvidence struct {
 	MTASTSPolicyReached  bool                   `json:"mta_sts_policy_reached"`
 }
 
-// EmailSecurityDetector runs SPF, DKIM, DMARC, BIMI, MTA-STS, and TLS-RPT as one
-// check. Thresholds are injected.
 type EmailSecurityDetector struct {
 	MaxSPFLookups    int
 	MinDKIMKeyLength int
@@ -96,12 +92,10 @@ func (d EmailSecurityDetector) Detect(ev EmailSecurityEvidence) (checks.DetectRe
 	return res, nil
 }
 
-// emailIndeterminate returns keys this run cannot safely resolve.
 func emailIndeterminate(ev EmailSecurityEvidence) []checks.Key {
 	var keys []checks.Key
 
 	if ev.DMARCStatus == ResolutionIndeterminate {
-		// The _dmarc lookup failed: every DMARC verdict is unknown this run.
 		keys = append(
 			keys,
 			checks.Key{IssueType: IssueDMARCMissing},
@@ -137,7 +131,6 @@ func emailIndeterminate(ev EmailSecurityEvidence) []checks.Key {
 			checks.Key{IssueType: IssueBIMIInvalidVMC},
 		)
 	} else if ev.BIMIRecord != "" && ev.DMARCStatus == ResolutionIndeterminate {
-		// BIMI enforcement depends on DMARC.
 		keys = append(keys, checks.Key{IssueType: IssueBIMIRequiresDMARC})
 	}
 	switch {
@@ -149,7 +142,6 @@ func emailIndeterminate(ev EmailSecurityEvidence) []checks.Key {
 			checks.Key{IssueType: IssueMTASTSShortMaxAge},
 		)
 	case ev.MTASTSConfigured && !ev.MTASTSPolicyReached:
-		// A failed fetch leaves policy contents unknown.
 		keys = append(keys,
 			checks.Key{IssueType: IssueMTASTSModeNotEnforcing},
 			checks.Key{IssueType: IssueMTASTSMXMismatch},
@@ -162,7 +154,6 @@ func emailIndeterminate(ev EmailSecurityEvidence) []checks.Key {
 	return keys
 }
 
-// dkimAllDeterminate reports whether every probed selector resolved.
 func dkimAllDeterminate(ev EmailSecurityEvidence) bool {
 	for _, sel := range ev.DKIMSelectors {
 		if sel.Status != ResolutionEmpty && sel.Status != ResolutionData {
@@ -172,7 +163,6 @@ func dkimAllDeterminate(ev EmailSecurityEvidence) bool {
 	return len(ev.DKIMSelectors) > 0
 }
 
-// dkimHasValidRecord reports whether any selector returned a DKIM record.
 func dkimHasValidRecord(ev EmailSecurityEvidence) bool {
 	for _, sel := range ev.DKIMSelectors {
 		for _, value := range sel.Records {
@@ -189,8 +179,6 @@ func ef(issueType, entityKey, severity, title, details string) checks.Finding {
 		IssueType: issueType, EntityKey: entityKey, Severity: severity, Title: title, Details: details,
 	}
 }
-
-// --- SPF ---
 
 func (d EmailSecurityDetector) spfFindings(ev EmailSecurityEvidence) []checks.Finding {
 	if len(ev.SPFRecords) == 0 {
@@ -211,8 +199,6 @@ func (d EmailSecurityDetector) spfFindings(ev EmailSecurityEvidence) []checks.Fi
 	return out
 }
 
-// spfVerdict grades one SPF record (first matching case wins). A record with none
-// of these problems is compliant and yields nothing.
 func (d EmailSecurityDetector) spfVerdict(v string, handlesEmail bool) (checks.Finding, bool) {
 	switch {
 	case spfPermitsAll(v):
@@ -245,8 +231,6 @@ func (d EmailSecurityDetector) spfVerdict(v string, handlesEmail bool) (checks.F
 	}
 }
 
-// spfPermitsAll reports whether an SPF record contains a permit-all mechanism
-// ('+all' or a bare 'all', which RFC 7208 treats as '+all').
 func spfPermitsAll(record string) bool {
 	for _, tok := range strings.Fields(record) {
 		if strings.EqualFold(tok, "all") || strings.EqualFold(tok, "+all") {
@@ -256,8 +240,6 @@ func spfPermitsAll(record string) bool {
 	return false
 }
 
-// countSPFDNSLookups counts the DNS-lookup-causing mechanisms (RFC 7208 §4.6.4).
-// It does not recurse into included records, so it under-counts nested policies.
 func countSPFDNSLookups(record string) int {
 	count := 0
 	for _, tok := range strings.Fields(record) {
@@ -274,8 +256,6 @@ func countSPFDNSLookups(record string) int {
 	}
 	return count
 }
-
-// --- DKIM ---
 
 func (d EmailSecurityDetector) dkimFindings(ev EmailSecurityEvidence) []checks.Finding {
 	var out []checks.Finding
@@ -324,7 +304,6 @@ func (d EmailSecurityDetector) dkimFindings(ev EmailSecurityEvidence) []checks.F
 	return out
 }
 
-// extractKeyFromDKIM returns the p= key material up to the next semicolon.
 func extractKeyFromDKIM(dkimRecord string) string {
 	if !strings.Contains(dkimRecord, "p=") {
 		return ""
@@ -339,8 +318,6 @@ func extractKeyFromDKIM(dkimRecord string) string {
 	}
 	return keyPart
 }
-
-// --- DMARC ---
 
 func dmarcFindings(ev EmailSecurityEvidence) []checks.Finding {
 	switch ev.DMARCStatus {
@@ -363,8 +340,6 @@ func dmarcFindings(ev EmailSecurityEvidence) []checks.Finding {
 	}
 }
 
-// dmarcRecordFindings grades one DMARC record; a clean p=reject with full coverage
-// and reporting tags yields nothing.
 func dmarcRecordFindings(record string) []checks.Finding {
 	var out []checks.Finding
 	tags := parseDMARCTags(record)
@@ -458,15 +433,12 @@ func dmarcPolicyRank(p string) int {
 	}
 }
 
-// --- BIMI ---
-
 func bimiFindings(ev EmailSecurityEvidence) []checks.Finding {
 	if !ev.HandlesEmail || ev.BIMIRecord == "" {
 		return nil
 	}
 	var out []checks.Finding
 	tags := parseKVTags(ev.BIMIRecord)
-	// A failed DMARC lookup leaves BIMI enforcement unknown.
 	if ev.DMARCStatus != ResolutionIndeterminate && !dmarcEnforced(ev.DMARCRecords) {
 		out = append(out, ef(IssueBIMIRequiresDMARC, "", "medium", "BIMI requires enforced DMARC",
 			"BIMI is published but DMARC is not enforced; BIMI requires p=quarantine or p=reject"))
@@ -492,7 +464,6 @@ func dmarcEnforced(dmarcRecords []string) bool {
 	return false
 }
 
-// parseKVTags parses "k=v; k=v" tag strings (BIMI, shares DMARC's grammar).
 func parseKVTags(record string) map[string]string { return parseDMARCTags(record) }
 
 func isHTTPSURL(u string) bool {
@@ -506,8 +477,6 @@ func isSVGURL(u string) bool {
 	}
 	return strings.HasSuffix(strings.ToLower(path), ".svg")
 }
-
-// --- MTA-STS ---
 
 func (d EmailSecurityDetector) mtaStsFindings(ev EmailSecurityEvidence) []checks.Finding {
 	if !ev.HandlesEmail || !ev.MTASTSConfigured {
@@ -564,8 +533,6 @@ type mtaStsPolicy struct {
 	maxAge int
 }
 
-// parseMTASTSPolicy parses the line-based policy body, reporting ok only when the
-// mandatory version/mode/mx fields are present.
 func parseMTASTSPolicy(body string) (mtaStsPolicy, bool) {
 	var p mtaStsPolicy
 	var version string
@@ -595,8 +562,6 @@ func parseMTASTSPolicy(body string) (mtaStsPolicy, bool) {
 	return p, true
 }
 
-// mxSetCovered reports whether every published MX host is matched by at least one
-// policy mx pattern. An empty published MX set is trivially covered.
 func mxSetCovered(patterns, mxTargets []string) bool {
 	for _, t := range mxTargets {
 		host := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(t)), ".")
@@ -624,8 +589,6 @@ func mtaStsMxMatch(pattern, host string) bool {
 	}
 	return pattern == host
 }
-
-// --- TLS-RPT ---
 
 func tlsRptFindings(ev EmailSecurityEvidence) []checks.Finding {
 	if !ev.HandlesEmail || ev.TLSRPTRecord == "" {

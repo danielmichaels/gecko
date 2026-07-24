@@ -35,7 +35,6 @@ type Config struct {
 	AddWorkers  bool
 }
 
-// New creates a new River client.
 func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 	migrator, err := rivermigrate.New(riverpgxv5.New(cfg.PgxPool), nil)
 	if err != nil {
@@ -56,9 +55,6 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 	}
 
 	if cfg.Resolver == nil {
-		// DNSClient holds the fleet-wide limiter and shared cache internally; both
-		// read their feature flags from config and no-op when disabled or when no
-		// store is supplied.
 		cfg.Resolver = dnsclient.New(
 			dnsclient.WithLimiter(dnsclient.NewPgRateLimiter(cfg.Store)),
 			dnsclient.WithCache(cfg.Store),
@@ -70,7 +66,6 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 	riverConfig.Hooks = []rivertype.Hook{&CorrelationInsertHook{}}
 	rw := river.NewWorkers()
 	if cfg.AddWorkers {
-		// scan workers
 		river.AddWorker(
 			rw,
 			&EnumerateSubdomainWorker{
@@ -125,7 +120,6 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 				Resolver: cfg.Resolver,
 			},
 		)
-		// assess workers
 		river.AddWorker(
 			rw,
 			&AssessCNAMEDanglingWorker{
@@ -216,16 +210,12 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 				Resolver: cfg.Resolver,
 			},
 		)
-		// maintenance
 		river.AddWorker(rw, &PurgeDNSCacheWorker{Logger: *cfg.Logger, Store: cfg.Store})
 		river.AddWorker(rw, &RefreshTenantStatsWorker{Logger: *cfg.Logger, Store: cfg.Store})
 		river.AddWorker(
 			rw,
 			&ScheduledScanWorker{Logger: *cfg.Logger, Store: cfg.Store, PgxPool: cfg.PgxPool},
 		)
-		// notifications — the daily digest and the near-real-time high-impact alert
-		// both dispatch across enabled channels; email is the only bearer today and
-		// reuses the send_email job below.
 		river.AddWorker(
 			rw,
 			&DailyDigestWorker{
@@ -246,7 +236,6 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 				Conf:       config.AppConfig(),
 			},
 		)
-		// email
 		emailerOut := cfg.Mailer
 		if emailerOut == nil {
 			emailerOut = &mailer.LogMailer{Logger: cfg.Logger}
@@ -260,20 +249,11 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 		riverConfig.MaxAttempts = 5
 		riverConfig.Queues = map[string]river.QueueConfig{
 			river.QueueDefault: {MaxWorkers: cfg.WorkerCount},
-			// reserved for DNS resolution only
-			queueResolver: {MaxWorkers: cfg.WorkerCount},
-			// reserved for subdomain enumeration; capped independently to bound
-			// pressure on subfinder's upstream providers under HA.
-			queueEnumeration: {MaxWorkers: enumerationWorkers(cfg.WorkerCount)},
-			// reserved for scanners
-			queueScanner: {MaxWorkers: cfg.WorkerCount},
-			// reserved for assessors
-			queueAssessor: {MaxWorkers: cfg.WorkerCount},
+			queueResolver:      {MaxWorkers: cfg.WorkerCount},
+			queueEnumeration:   {MaxWorkers: enumerationWorkers(cfg.WorkerCount)},
+			queueScanner:       {MaxWorkers: cfg.WorkerCount},
+			queueAssessor:      {MaxWorkers: cfg.WorkerCount},
 		}
-		// Safety-net recompute of every tenant's stat strip. Deletes (the only
-		// change the recompute can't self-heal, because a tenant can drop to zero)
-		// are handled promptly by an event-driven per-tenant refresh enqueued from
-		// the delete path, so this full pass can run on a relaxed interval.
 		riverConfig.PeriodicJobs = []*river.PeriodicJob{
 			river.NewPeriodicJob(
 				river.PeriodicInterval(5*time.Minute),
@@ -282,10 +262,6 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 				},
 				&river.PeriodicJobOpts{RunOnStart: true},
 			),
-			// Recurring scan scheduler: a leader-singleton tick that enqueues a scan
-			// for every domain whose cursor has come due. The 1-min tick has huge
-			// headroom over the smallest cadence (hourly); the partial index keeps an
-			// empty due-set cheap. Per-domain dedup is EnqueueDomainScan's job.
 			river.NewPeriodicJob(
 				river.PeriodicInterval(1*time.Minute),
 				func() (river.JobArgs, *river.InsertOpts) {
@@ -306,10 +282,6 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 				),
 			)
 		}
-		// Daily notification digest: a leader-singleton hourly tick that does work
-		// only on the configured send hour (the worker gates on it). RunOnStart is
-		// off so a deploy/restart never fires an off-hour digest. Gated by the global
-		// kill-switch; the per-tenant toggle is the fine-grained control.
 		if config.AppConfig().AppConf.NotifyDigestEnabled {
 			riverConfig.PeriodicJobs = append(
 				riverConfig.PeriodicJobs,
@@ -322,9 +294,6 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 				),
 			)
 		}
-		// Near-real-time high-impact alert sweep: a leader-singleton tick on a short
-		// interval that emails opted-in tenants about new critical/high findings.
-		// RunOnStart catches anything that landed while the fleet was down.
 		if config.AppConfig().AppConf.NotifyAlertsEnabled {
 			riverConfig.PeriodicJobs = append(
 				riverConfig.PeriodicJobs,
@@ -346,8 +315,6 @@ func New(ctx context.Context, cfg Config) (*river.Client[pgx.Tx], error) {
 	return rc, nil
 }
 
-// alertInterval returns the high-impact alert sweep interval from config, falling
-// back to 10 minutes when unset or non-positive.
 func alertInterval() time.Duration {
 	d := config.AppConfig().AppConf.NotifyAlertInterval
 	if d <= 0 {
@@ -356,9 +323,6 @@ func alertInterval() time.Duration {
 	return d
 }
 
-// enumerationWorkers returns the per-process cap for the enumeration queue,
-// falling back to the general worker count when ENUMERATION_WORKER_COUNT is unset
-// (0) or negative.
 func enumerationWorkers(fallback int) int {
 	n := config.AppConfig().AppConf.EnumerationWorkerCount
 	if n <= 0 {
@@ -367,9 +331,6 @@ func enumerationWorkers(fallback int) int {
 	return n
 }
 
-// seedRateLimitBucket ensures the fleet-wide token bucket row exists, seeding it
-// from config on first run. ON CONFLICT DO NOTHING preserves any values an operator
-// has since tuned via SQL.
 func seedRateLimitBucket(ctx context.Context, st *store.Queries, logger *slog.Logger) {
 	if st == nil {
 		return

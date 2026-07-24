@@ -16,22 +16,10 @@ import (
 	"github.com/riverqueue/river"
 )
 
-// HighImpactAlertArgs drives the near-real-time high-impact alert sweep. Like the
-// digest it is a leader-singleton periodic tick with no payload.
-//
-// "Near-real-time" rather than instant by design: a frequent periodic sweep keyed on
-// a per-tenant watermark is durable (a missed tick just widens the next window) and
-// reuses the digest's watermark/dispatcher machinery, where a LISTEN/NOTIFY consumer
-// would need its own reconnect and missed-event handling. The trade-off is up to one
-// tick of latency.
 type HighImpactAlertArgs struct{}
 
 func (HighImpactAlertArgs) Kind() string { return "high_impact_alert" }
 
-// HighImpactAlertWorker emails opted-in tenants the moment (within one tick) a
-// critical/high-severity finding appears, separate from the daily digest. It is
-// gated by the tenant's notify_high_impact_alerts toggle and tracked by its own
-// watermark, so the alert and digest cadences never interfere.
 type HighImpactAlertWorker struct {
 	river.WorkerDefaults[HighImpactAlertArgs]
 	Logger     slog.Logger
@@ -39,8 +27,7 @@ type HighImpactAlertWorker struct {
 	PgxPool    *pgxpool.Pool
 	Dispatcher *notify.Dispatcher
 	Conf       *config.Conf
-	// Channels names the bearers an alert is dispatched across. Defaults to email.
-	Channels []string
+	Channels   []string
 }
 
 func (w *HighImpactAlertWorker) Work(ctx context.Context, _ *river.Job[HighImpactAlertArgs]) error {
@@ -54,10 +41,6 @@ func (w *HighImpactAlertWorker) Work(ctx context.Context, _ *river.Job[HighImpac
 	return nil
 }
 
-// EnqueueDueAlerts is the worker's testable core: it dispatches an alert for each
-// opted-in tenant that had a critical/high finding in its window, advances every
-// processed tenant's alert watermark, and returns how many alerts were dispatched.
-// Each tenant runs in its own transaction so one failure leaves the batch intact.
 func (w *HighImpactAlertWorker) EnqueueDueAlerts(ctx context.Context) (int, error) {
 	now := time.Now()
 	until := pgtype.Timestamptz{Time: now, Valid: true}
@@ -117,7 +100,6 @@ func (w *HighImpactAlertWorker) alertOne(
 	if err != nil {
 		return digestSkippedEmpty, err
 	}
-	// No high-impact findings in the window: advance the watermark and send nothing.
 	if len(items) == 0 {
 		return digestSkippedEmpty, w.advanceAlertWatermark(ctx, w.Store, t.TenantID, until)
 	}

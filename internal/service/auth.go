@@ -16,12 +16,10 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// AuthService exposes authentication and session business logic.
 type AuthService struct {
 	*Service
 }
 
-// LoginResult holds the outcome of a successful Login call.
 type LoginResult struct {
 	RawKey    string
 	ExpiresAt pgtype.Timestamptz
@@ -29,7 +27,6 @@ type LoginResult struct {
 	Role      string
 }
 
-// SignupResult holds the outcome of a successful Signup call.
 type SignupResult struct {
 	RawKey    string
 	ExpiresAt pgtype.Timestamptz
@@ -38,7 +35,6 @@ type SignupResult struct {
 	TenantUID string
 }
 
-// AcceptInviteResult holds the outcome of a successful AcceptInvite call.
 type AcceptInviteResult struct {
 	RawKey    string
 	ExpiresAt pgtype.Timestamptz
@@ -46,8 +42,6 @@ type AcceptInviteResult struct {
 	Role      string
 }
 
-// Authenticate verifies email/password and returns the Principal on success.
-// Returns ErrUnauthenticated for invalid or unknown credentials.
 func (s *AuthService) Authenticate(
 	ctx context.Context,
 	email, password string,
@@ -63,15 +57,8 @@ func (s *AuthService) Authenticate(
 	return p, nil
 }
 
-// minPasswordLength is the floor for a user-chosen password. It mirrors the
-// de-facto length used across signup/accept-invite flows; the browser enforces
-// it client-side, and this is the server-side backstop.
 const minPasswordLength = 8
 
-// ChangePassword re-hashes and stores a new password for the caller after
-// verifying their current one. An incorrect current password or a too-short new
-// password returns ErrInvalidInput (the caller is authenticated; these are
-// field-level validation failures, not authentication failures).
 func (s *AuthService) ChangePassword(
 	ctx context.Context,
 	p *auth.Principal,
@@ -100,8 +87,6 @@ func (s *AuthService) ChangePassword(
 	return nil
 }
 
-// Login verifies credentials and mints an API key for CLI/programmatic use.
-// Returns ErrUnauthenticated for invalid credentials.
 func (s *AuthService) Login(ctx context.Context, email, password string) (LoginResult, error) {
 	p, err := s.Authenticate(ctx, email, password)
 	if err != nil {
@@ -119,7 +104,6 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (LoginR
 	}, nil
 }
 
-// SignupParams holds the caller-supplied fields for tenant creation.
 type SignupParams struct {
 	Email      string
 	Password   string
@@ -127,8 +111,6 @@ type SignupParams struct {
 	TenantName string
 }
 
-// provisioned carries the identifiers of a freshly provisioned user/tenant,
-// shared by the signup and accept-invite flows to build their distinct results.
 type provisioned struct {
 	tenantUID string
 	email     string
@@ -137,15 +119,8 @@ type provisioned struct {
 	tenantID  int32
 }
 
-// withTxStep runs variant-specific work inside a provisioning transaction (e.g.
-// minting an API key atomically). The web variants pass nil.
 type withTxStep func(st *store.Queries, tenantID, userID int32) error
 
-// createTenantOwner runs the shared signup transaction: reject duplicate emails,
-// hash the password, create the tenant, provision the owner, store the credential,
-// run mintStep (if any) in-tx, and enqueue the welcome email. The only thing the
-// two public signup methods do differently is mintStep and how they shape the
-// result, keeping tenant creation identical across the API and browser paths.
 func (s *AuthService) createTenantOwner(
 	ctx context.Context,
 	params SignupParams,
@@ -223,9 +198,6 @@ func (s *AuthService) createTenantOwner(
 	}, nil
 }
 
-// Signup creates a new tenant and its first owner, then mints a key.
-// Duplicate email raises ErrConflict. SignupEnabled is NOT checked here;
-// that policy gate stays in the handler to preserve the exact 403 message.
 func (s *AuthService) Signup(ctx context.Context, params SignupParams) (SignupResult, error) {
 	var key auth.APIKey
 	var exp pgtype.Timestamptz
@@ -253,10 +225,6 @@ func (s *AuthService) Signup(ctx context.Context, params SignupParams) (SignupRe
 	}, nil
 }
 
-// SignupWeb creates a new tenant and its first owner without minting an API key.
-// Used by the browser flow, which mints a session instead. Duplicate email raises
-// ErrConflict. SignupEnabled is NOT checked here; that policy gate stays in the
-// handler.
 func (s *AuthService) SignupWeb(ctx context.Context, params SignupParams) (*auth.Principal, error) {
 	p, err := s.createTenantOwner(ctx, params, nil)
 	if err != nil {
@@ -270,20 +238,12 @@ func (s *AuthService) SignupWeb(ctx context.Context, params SignupParams) (*auth
 	}, nil
 }
 
-// AcceptInviteParams holds the caller-supplied fields for accepting an invitation.
 type AcceptInviteParams struct {
 	Token    string
 	Password string
 	Name     string
 }
 
-// consumeInvitation runs the new-user accept-invite transaction: resolve the
-// token, create the identity, store the credential, attach a membership with the
-// invited role, mark the invitation accepted, and run mintStep (if any) in-tx. It
-// is only for invitees who do NOT yet have an account; an invite addressed to an
-// existing identity must be accepted while logged in (AttachInviteWeb), so a link
-// alone never attaches a tenant to someone else's account.
-// Invalid/expired token → ErrNotFound. Existing account → ErrConflict (login).
 func (s *AuthService) consumeInvitation(
 	ctx context.Context,
 	params AcceptInviteParams,
@@ -291,12 +251,8 @@ func (s *AuthService) consumeInvitation(
 ) (provisioned, error) {
 	inv, err := s.DB.InvitationGetByTokenHash(ctx, auth.HashToken(params.Token))
 	if err != nil {
-		// Deliberately opaque: expired and invalid tokens both return not-found
-		// so callers cannot distinguish the two cases.
 		return provisioned{}, fmt.Errorf("%w: invalid or expired invitation", ErrNotFound)
 	}
-	// An invite to an already-registered email must be accepted while authenticated
-	// as that identity; reject the password-based path here.
 	if _, err := s.DB.UserGetByEmail(ctx, inv.Email); err == nil {
 		return provisioned{}, msgErr(
 			ErrConflict,
@@ -366,12 +322,6 @@ func (s *AuthService) consumeInvitation(
 	}, nil
 }
 
-// attachInvite validates an invitation token against the authenticated caller's
-// own email, creates the membership with the invited role, marks the invite
-// accepted, and runs mintStep (if any) in-tx. It is the shared core of the web and
-// API "existing account joins another tenant" flows. A link alone can never attach
-// a tenant to a different identity. Invalid/expired token → ErrNotFound; an invite
-// for a different identity → ErrForbidden; already a member → ErrConflict.
 func (s *AuthService) attachInvite(
 	ctx context.Context,
 	p *auth.Principal,
@@ -380,9 +330,6 @@ func (s *AuthService) attachInvite(
 ) (tenantID int32, role store.UserRole, err error) {
 	inv, err := s.DB.InvitationGetByTokenHash(ctx, auth.HashToken(token))
 	if err != nil {
-		// The live invite is gone: unknown token, expired, or already claimed. If
-		// the caller is the invitee and is already a member of the invited tenant,
-		// surface that as a conflict rather than a misleading not-found.
 		if used, lookupErr := s.DB.InvitationGetByTokenHashIncludingUsed(ctx, auth.HashToken(token)); lookupErr == nil &&
 			normaliseEmail(used.Email) == normaliseEmail(p.Email) {
 			if _, mErr := s.DB.MembershipGetRole(ctx, store.MembershipGetRoleParams{
@@ -429,9 +376,6 @@ func (s *AuthService) attachInvite(
 	return inv.TenantID, inv.Role, nil
 }
 
-// AttachInviteWeb attaches the authenticated caller to the tenant named by an
-// invitation token (for invitees who already have an account) and returns the
-// tenant id so the caller can switch the active session to it.
 func (s *AuthService) AttachInviteWeb(
 	ctx context.Context,
 	p *auth.Principal,
@@ -441,10 +385,6 @@ func (s *AuthService) AttachInviteWeb(
 	return tenantID, err
 }
 
-// AttachInvite is the API counterpart of AttachInviteWeb: it attaches the
-// authenticated caller to the invited tenant and mints an API key scoped to that
-// tenant, returning it. This is how an existing API user obtains their first key
-// for a newly joined tenant (keys are per-tenant).
 func (s *AuthService) AttachInvite(
 	ctx context.Context,
 	p *auth.Principal,
@@ -476,9 +416,6 @@ func (s *AuthService) AttachInvite(
 	}, nil
 }
 
-// AcceptInvite consumes an invitation token, creating the user with the
-// invited role in the inviting tenant, and mints a key.
-// Invalid/expired token → ErrNotFound. Duplicate email → ErrConflict.
 func (s *AuthService) AcceptInvite(
 	ctx context.Context,
 	params AcceptInviteParams,
@@ -508,9 +445,6 @@ func (s *AuthService) AcceptInvite(
 	}, nil
 }
 
-// AcceptInviteWeb provisions a user from an invitation token without minting an
-// API key. Used by the browser flow; the caller then mints a session instead.
-// Invalid/expired token → ErrNotFound. Duplicate email → ErrConflict.
 func (s *AuthService) AcceptInviteWeb(
 	ctx context.Context,
 	params AcceptInviteParams,
@@ -527,20 +461,15 @@ func (s *AuthService) AcceptInviteWeb(
 	}, nil
 }
 
-// InviteContext holds the display fields for the accept-invitation page.
 type InviteContext struct {
 	InviteeEmail string
 	InviterEmail string
 	Role         string
 	Expiry       string
 	TenantName   string
-	// ExistingUser is true when the invitee email already has an account, so the
-	// UI directs them to log in and attach the membership rather than set a password.
 	ExistingUser bool
 }
 
-// InviteContextFromToken looks up the invitation and returns display fields.
-// Returns ErrNotFound for unknown, expired, or already-accepted tokens.
 func (s *AuthService) InviteContextFromToken(
 	ctx context.Context,
 	token string,
@@ -570,8 +499,6 @@ func (s *AuthService) InviteContextFromToken(
 	return ic, nil
 }
 
-// TenantName returns the display name for a tenant. Best-effort: returns an
-// empty string when the tenant is not found rather than propagating an error.
 func (s *AuthService) TenantName(ctx context.Context, tenantID int32) (string, error) {
 	tenant, err := s.DB.TenantGetByID(ctx, tenantID)
 	if err != nil {
@@ -583,8 +510,6 @@ func (s *AuthService) TenantName(ctx context.Context, tenantID int32) (string, e
 	return tenant.Name, nil
 }
 
-// MembershipSummary is one tenant a user belongs to, for the UI tenant switcher.
-// Active marks the membership matching the caller's current active tenant.
 type MembershipSummary struct {
 	TenantUID  string
 	TenantName string
@@ -592,8 +517,6 @@ type MembershipSummary struct {
 	Active     bool
 }
 
-// ListMemberships returns the tenants the caller belongs to, flagging the one that
-// is currently active. Drives the topbar tenant switcher.
 func (s *AuthService) ListMemberships(
 	ctx context.Context,
 	p *auth.Principal,
@@ -614,17 +537,12 @@ func (s *AuthService) ListMemberships(
 	return out, nil
 }
 
-// Workspace identifies a newly created tenant.
 type Workspace struct {
 	TenantUID  string
 	TenantName string
 	TenantID   int32
 }
 
-// CreateWorkspace creates a new tenant owned by the authenticated caller and
-// attaches them as its owner. It is the in-app path for an existing account to
-// spin up an additional workspace (public signup only creates brand-new
-// identities). The caller switches the active session to it separately.
 func (s *AuthService) CreateWorkspace(
 	ctx context.Context,
 	p *auth.Principal,
@@ -659,10 +577,6 @@ func (s *AuthService) CreateWorkspace(
 	return Workspace{TenantID: tenant.ID, TenantUID: tenant.Uid, TenantName: tenant.Name}, nil
 }
 
-// SwitchTenant points the caller's current session at a different tenant they
-// belong to. It validates membership in the target tenant (ErrForbidden / ErrNotFound
-// otherwise) and updates the session row's active tenant in place, so the cookie and
-// CSRF token stay valid. rawSessionToken is the caller's current session token.
 func (s *AuthService) SwitchTenant(
 	ctx context.Context,
 	p *auth.Principal,
@@ -693,10 +607,6 @@ func (s *AuthService) SwitchTenant(
 	return nil
 }
 
-// SetSessionTenant points the given session at tenantID without re-checking
-// membership. Callers that have just established membership (e.g. accepting an
-// invite) use this to land the user in the new tenant; untrusted switches must go
-// through SwitchTenant, which validates membership first.
 func (s *AuthService) SetSessionTenant(
 	ctx context.Context,
 	rawSessionToken string,
@@ -711,7 +621,6 @@ func (s *AuthService) SetSessionTenant(
 	return nil
 }
 
-// Logout revokes the API key that authenticated the request. Ignores missing rows.
 func (s *AuthService) Logout(ctx context.Context, p *auth.Principal, apiKeyUID string) error {
 	_, err := s.DB.ApiKeyRevoke(ctx, store.ApiKeyRevokeParams{
 		Uid:      apiKeyUID,
@@ -723,9 +632,6 @@ func (s *AuthService) Logout(ctx context.Context, p *auth.Principal, apiKeyUID s
 	return nil
 }
 
-// MintSession generates a new session token, persists only its hash, and returns
-// the raw token and expiry. The raw token is placed in the response cookie by the
-// caller and is never stored.
 func (s *AuthService) MintSession(
 	ctx context.Context,
 	p *auth.Principal,
@@ -750,9 +656,6 @@ func (s *AuthService) MintSession(
 	return rawToken, expiresAt, nil
 }
 
-// ResolveSession looks up a session by the raw token, slides last_used_at, and
-// returns the associated Principal. Returns ErrUnauthenticated for unknown or
-// expired tokens; a touch failure is logged but does not fail resolution.
 func (s *AuthService) ResolveSession(
 	ctx context.Context,
 	rawToken string,
@@ -775,8 +678,6 @@ func (s *AuthService) ResolveSession(
 	}, nil
 }
 
-// RevokeSession deletes the session row identified by the raw token.
-// Idempotent: revoking an unknown token is not an error.
 func (s *AuthService) RevokeSession(ctx context.Context, rawToken string) error {
 	if err := s.DB.SessionRevoke(ctx, auth.HashToken(rawToken)); err != nil {
 		return fmt.Errorf("revoke session: %w", err)
@@ -784,11 +685,6 @@ func (s *AuthService) RevokeSession(ctx context.Context, rawToken string) error 
 	return nil
 }
 
-// RequestPasswordReset issues a password-reset token for the address and queues
-// the reset email. It never reveals whether the address is registered: an unknown
-// email returns nil without creating a token or enqueuing mail. The token row and
-// the email job are written in one transaction so a link is only ever sent for a
-// token that exists. baseURL is the public origin used to build the reset link.
 func (s *AuthService) RequestPasswordReset(ctx context.Context, email, baseURL string) error {
 	email = normaliseEmail(email)
 	user, err := s.DB.UserGetByEmail(ctx, email)
@@ -831,10 +727,6 @@ func (s *AuthService) RequestPasswordReset(ctx context.Context, email, baseURL s
 	return nil
 }
 
-// ResetPassword consumes a reset token, sets the new password, and revokes every
-// session for the user so a forgotten or compromised credential cannot survive on
-// an existing session. Invalid, expired, or already-used tokens return ErrNotFound;
-// a too-short new password returns ErrInvalidInput.
 func (s *AuthService) ResetPassword(ctx context.Context, token, newPassword string) error {
 	tok, err := s.DB.PasswordResetTokenGetByHash(ctx, auth.HashToken(token))
 	if err != nil {
@@ -873,9 +765,6 @@ func (s *AuthService) ResetPassword(ctx context.Context, token, newPassword stri
 	return nil
 }
 
-// welcomeEmail renders the post-signup acknowledgement. Any link uses the trusted
-// PublicBaseURL (config), never request headers — the message is emailed to the
-// new owner, so a request-derived origin would be injectable.
 func welcomeEmail(to, tenantName, baseURL string) mailer.Message {
 	link := baseURL + "/app/domains"
 	safeTenant := html.EscapeString(tenantName)
@@ -892,8 +781,6 @@ func welcomeEmail(to, tenantName, baseURL string) mailer.Message {
 	}
 }
 
-// passwordResetEmail renders the reset message. With no mailer-side templating in
-// the codebase yet, the body is built here so the worker stays a thin transport.
 func passwordResetEmail(to, baseURL, rawToken string) mailer.Message {
 	link := baseURL + "/app/reset-password?token=" + rawToken
 	safeLink := html.EscapeString(link)
@@ -908,9 +795,6 @@ func passwordResetEmail(to, baseURL, rawToken string) mailer.Message {
 	}
 }
 
-// invitationEmail renders the team-invitation message. The accept link uses the
-// trusted PublicBaseURL (config), never request headers, since the message is
-// emailed — a request-derived origin would be injectable (link poisoning).
 func invitationEmail(to, tenantName, inviterEmail, baseURL, rawToken string) mailer.Message {
 	link := baseURL + "/app/invite?token=" + rawToken
 	intro := "You have been invited to join the workspace " + tenantName + " on gecko."
@@ -933,9 +817,6 @@ func invitationEmail(to, tenantName, inviterEmail, baseURL, rawToken string) mai
 	}
 }
 
-// mintAPIKey creates and persists an API key for (tenant, user) using q (which may
-// be a transaction-scoped Queries), returning the raw key and its expiry. The raw
-// secret is returned to the caller once and never stored.
 func (s *AuthService) mintAPIKey(
 	ctx context.Context,
 	q *store.Queries,

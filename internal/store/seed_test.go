@@ -8,9 +8,6 @@ import (
 	"github.com/danielmichaels/gecko/internal/testhelpers"
 )
 
-// TestSeedDemo validates the embedded dev seed against the real migrated schema
-// (guarding it from silently rotting when the schema changes) and proves it is
-// idempotent.
 func TestSeedDemo(t *testing.T) {
 	ctx := context.Background()
 	pc, err := testhelpers.CreateTestDatabase(ctx)

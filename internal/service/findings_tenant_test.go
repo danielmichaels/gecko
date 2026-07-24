@@ -8,9 +8,6 @@ import (
 	"github.com/danielmichaels/gecko/internal/testhelpers"
 )
 
-// TestFindingsService_ListByTenant exercises the tenant-wide roll-up against a
-// real database: the cross-tenant isolation invariant, the severity/kind/domain
-// filters, and the data-driven KindCounts.
 func TestFindingsService_ListByTenant(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -32,7 +29,6 @@ func TestFindingsService_ListByTenant(t *testing.T) {
 	blog := seedDomain(t, ctx, pc, tenantA, "blog.example.org")
 	secret := seedDomain(t, ctx, pc, tenantB, "secret.io")
 
-	// Tenant A: a critical + high on acme plus a possible AXFR, a medium on blog.
 	seedFinding(t, ctx, pc, tenantA, acme.Name, "SPF", "missing_spf", "critical", "missing_spf")
 	seedFinding(
 		t,
@@ -68,7 +64,6 @@ func TestFindingsService_ListByTenant(t *testing.T) {
 		"test_mode_enabled",
 	)
 
-	// Tenant B: a finding that must never appear in tenant A's roll-up.
 	seedFinding(t, ctx, pc, tenantB, secret.Name, "SPF", "missing_spf", "critical", "missing_spf")
 
 	t.Run("tenant isolation", func(t *testing.T) {
@@ -132,9 +127,6 @@ func TestFindingsService_ListByTenant(t *testing.T) {
 	})
 }
 
-// TestFindingsService_ListByTenantFlat exercises the flat, paginated API listing:
-// cross-tenant isolation, the unpaginated total, the page slice, and filter parity
-// with the grouped path.
 func TestFindingsService_ListByTenantFlat(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()

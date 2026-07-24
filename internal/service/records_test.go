@@ -67,7 +67,6 @@ func TestRecordsService_List_HappyPath(t *testing.T) {
 	tenantA := createTenant(t, ctx, pc, "a@records-list.com")
 	d := seedDomain(t, ctx, pc, tenantA, "records.example.com")
 
-	// No records yet — should return empty slices without error.
 	result, err := rs.List(ctx, ownerPrincipal(tenantA), d.Uid, nil)
 	if err != nil {
 		t.Fatalf("List empty: %v", err)
@@ -207,7 +206,6 @@ func TestRecordsService_History_QtypeFilter(t *testing.T) {
 	d := seedDomain(t, ctx, pc, tenantA, "hist-filter.example.com")
 	recordAObservation(t, ctx, pc, d, tenantA, []string{"9.9.9.9"})
 
-	// Filter by cname — should return empty (only A records exist).
 	result, err := rs.History(ctx, ownerPrincipal(tenantA), d.Uid, "cname")
 	if err != nil {
 		t.Fatalf("History cname filter: %v", err)
@@ -216,7 +214,6 @@ func TestRecordsService_History_QtypeFilter(t *testing.T) {
 		t.Errorf("cname filter returned %d entries, want 0", len(result.History))
 	}
 
-	// Filter by a — should return the observation.
 	result, err = rs.History(ctx, ownerPrincipal(tenantA), d.Uid, "a")
 	if err != nil {
 		t.Fatalf("History a filter: %v", err)
@@ -274,9 +271,6 @@ func TestRecordsService_Timeline_CrossTenantReturnsNotFound(t *testing.T) {
 	}
 }
 
-// TestDomainsService_RecordCountsForPage verifies the index-driven per-page
-// record-count aggregate sums across record tables and that a domain with no
-// records is absent from the result (callers read a missing key as 0).
 func TestDomainsService_RecordCountsForPage(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -295,7 +289,6 @@ func TestDomainsService_RecordCountsForPage(t *testing.T) {
 	dMixed := seedDomain(t, ctx, pc, tenantID, "mixed.rc.test")
 	dEmpty := seedDomain(t, ctx, pc, tenantID, "empty.rc.test")
 
-	// dMixed: 2 A records + 1 AAAA + 1 MX across three tables → 4 total.
 	if _, err := pc.Queries.RecordsCreateA(ctx, store.RecordsCreateAParams{
 		DomainID:    pgtype.Int4{Int32: dMixed.ID, Valid: true},
 		Ipv4Address: "192.0.2.1",

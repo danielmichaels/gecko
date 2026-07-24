@@ -9,12 +9,10 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// APIKeysService exposes API key management business logic.
 type APIKeysService struct {
 	*Service
 }
 
-// APIKeysCreateResult holds the outcome of a successful Create call.
 type APIKeysCreateResult struct {
 	ExpiresAt pgtype.Timestamptz
 	UID       string
@@ -22,7 +20,6 @@ type APIKeysCreateResult struct {
 	Prefix    string
 }
 
-// Create mints a new API key for the caller's tenant. Owner/manager only.
 func (s *APIKeysService) Create(
 	ctx context.Context,
 	p *auth.Principal,
@@ -43,8 +40,6 @@ func (s *APIKeysService) Create(
 	}, nil
 }
 
-// List returns all API keys scoped to the caller's tenant (never their secrets).
-// Any authenticated member may list; the query is tenant-scoped.
 func (s *APIKeysService) List(
 	ctx context.Context,
 	p *auth.Principal,
@@ -56,9 +51,6 @@ func (s *APIKeysService) List(
 	return rows, nil
 }
 
-// ListMine returns the caller's own API keys (never their secrets). Any
-// authenticated member may list the keys they personally own; the query is
-// scoped to both tenant and user so members cannot see each other's keys.
 func (s *APIKeysService) ListMine(
 	ctx context.Context,
 	p *auth.Principal,
@@ -73,7 +65,6 @@ func (s *APIKeysService) ListMine(
 	return rows, nil
 }
 
-// Revoke invalidates an API key in the caller's tenant. Owner/manager only.
 func (s *APIKeysService) Revoke(
 	ctx context.Context,
 	p *auth.Principal,

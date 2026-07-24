@@ -1,8 +1,3 @@
-// Package detect holds the pure Detectors and their typed evidence. A Detector
-// interprets already-collected evidence into findings with no clock, network, or
-// DB access -- every input it needs (including the reference time and any policy
-// threshold) is passed in, so findings are table-driven-testable and re-runnable
-// over stored evidence. Collectors (the outbound-I/O half) join in Phase 2.
 package detect
 
 import (
@@ -22,10 +17,6 @@ const (
 	IssueCertHostnameMismatch = "certificate_hostname_mismatch"
 )
 
-// CertificateEvidence is the collected TLS certificate state for one asset.
-// Fetched distinguishes "no certificate could be retrieved" (unknown -> emit
-// nothing) from a real certificate whose fields are then judged. ObservedAt is the
-// collection time expiry is measured against, keeping the detector clock-free.
 type CertificateEvidence struct {
 	ObservedAt   time.Time `json:"observed_at"`
 	DomainName   string    `json:"domain_name"`
@@ -39,9 +30,6 @@ type CertificateEvidence struct {
 	Fetched      bool      `json:"fetched"`
 }
 
-// CertificateDetector judges a certificate for expiry, weak keys, self-signed
-// chains, and hostname mismatch. Its thresholds are injected (not read from a
-// global) so Detect stays pure.
 type CertificateDetector struct {
 	ExpiryHighDays   int
 	ExpiryMediumDays int
@@ -51,8 +39,6 @@ type CertificateDetector struct {
 func (CertificateDetector) Kind() string                { return CheckCertificate }
 func (CertificateDetector) Scope() checks.EvidenceScope { return checks.SingleAsset }
 
-// Detect returns the certificate problems true now. A cert that could not be
-// fetched yields no findings (unknown, not "fine"); a healthy cert yields none.
 func (d CertificateDetector) Detect(ev CertificateEvidence) (checks.DetectResult, error) {
 	if !ev.Fetched {
 		return checks.DetectResult{}, nil
@@ -95,9 +81,6 @@ func (d CertificateDetector) Detect(ev CertificateEvidence) (checks.DetectResult
 	return checks.DetectResult{Found: out}, nil
 }
 
-// expiryFinding maps the not_after date onto a severity tier relative to the
-// collection time. Expired is critical; the High/Medium day windows are injected;
-// anything beyond is compliant and yields no finding (ok=false).
 func (d CertificateDetector) expiryFinding(ev CertificateEvidence) (checks.Finding, bool) {
 	if ev.NotAfter.Before(ev.ObservedAt) {
 		return checks.Finding{
@@ -136,8 +119,6 @@ func isSelfSigned(issuer, subject string) bool {
 	return issuer != "" && issuer == subject
 }
 
-// hostnameCovered reports whether the domain is matched by any certificate SAN or
-// DNS name, honouring single-label wildcard prefixes (*.example.com).
 func hostnameCovered(domain string, sans, dnsNames []string) bool {
 	host := strings.ToLower(strings.TrimSuffix(domain, "."))
 	for _, name := range append(append([]string{}, sans...), dnsNames...) {

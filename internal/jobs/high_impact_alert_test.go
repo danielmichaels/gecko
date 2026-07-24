@@ -11,8 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// enableAlerts creates the tenant_settings row with the high-impact alert toggle set
-// and the alert watermark planted in the past.
 func enableAlerts(
 	t *testing.T,
 	ctx context.Context,
@@ -53,10 +51,6 @@ func alertTestWorker(
 	}
 }
 
-// TestHighImpactAlertWorker_EnqueueDueAlerts verifies the sweep alerts only opted-in
-// tenants that have a critical/high finding in the window, never fires on
-// medium-severity changes, excludes opted-out recipients, and advances the alert
-// watermark so the same finding is not re-alerted.
 func TestHighImpactAlertWorker_EnqueueDueAlerts(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -69,7 +63,6 @@ func TestHighImpactAlertWorker_EnqueueDueAlerts(t *testing.T) {
 
 	past := time.Now().Add(-30 * time.Minute)
 
-	// Tenant A: alerts on, a critical finding, two recipients (one opted out).
 	tenantA := seedStatsTenant(t, ctx, q, "owner@a.alert.test")
 	enableAlerts(t, ctx, q, tenantA, true, past)
 	domA := seedStatsDomain(t, ctx, q, tenantA, "a.alert.test")
@@ -79,7 +72,6 @@ func TestHighImpactAlertWorker_EnqueueDueAlerts(t *testing.T) {
 	seedObservation(t, ctx, pc, tenantA, domA, "a.alert.test",
 		"dangling_cname_finding", "created", `{"severity":"critical","status":"open"}`)
 
-	// Tenant B: alerts on, but only a medium-severity change — must not alert.
 	tenantB := seedStatsTenant(t, ctx, q, "owner@b.alert.test")
 	enableAlerts(t, ctx, q, tenantB, true, past)
 	domB := seedStatsDomain(t, ctx, q, tenantB, "b.alert.test")
@@ -87,7 +79,6 @@ func TestHighImpactAlertWorker_EnqueueDueAlerts(t *testing.T) {
 	seedObservation(t, ctx, pc, tenantB, domB, "b.alert.test",
 		"spf_finding", "updated", `{"severity":"medium","status":"open"}`)
 
-	// Tenant C: alerts OFF, has a critical finding — must be skipped entirely.
 	tenantC := seedStatsTenant(t, ctx, q, "owner@c.alert.test")
 	enableAlerts(t, ctx, q, tenantC, false, past)
 	domC := seedStatsDomain(t, ctx, q, tenantC, "c.alert.test")
@@ -106,7 +97,6 @@ func TestHighImpactAlertWorker_EnqueueDueAlerts(t *testing.T) {
 		t.Errorf("alerts dispatched = %d, want 1 (only tenant A)", n)
 	}
 
-	// Only the non-opted-out owner of A is mailed.
 	if len(enq.msgs) != 1 {
 		t.Fatalf("emails = %d, want 1 (owner of A; manager opted out)", len(enq.msgs))
 	}
@@ -121,7 +111,6 @@ func TestHighImpactAlertWorker_EnqueueDueAlerts(t *testing.T) {
 		t.Errorf("alert body missing the finding:\n%s", m.HTML)
 	}
 
-	// Watermarks for the processed tenants advanced past the seed; C (off) untouched.
 	if wm := alertWatermarkOf(t, ctx, q, tenantA); !wm.Valid || !wm.Time.After(past) {
 		t.Errorf("tenant A alert watermark = %v, want advanced", wm.Time)
 	}
@@ -136,7 +125,6 @@ func TestHighImpactAlertWorker_EnqueueDueAlerts(t *testing.T) {
 		t.Errorf("tenant C alert watermark = %v, want unchanged (alerts off)", wm.Time)
 	}
 
-	// Rerun: A's finding is now behind the watermark, so nothing re-alerts.
 	enq2 := &fakeEmailEnqueuer{}
 	w.Dispatcher = alertTestWorker(q, pc, enq2).Dispatcher
 	n2, err := w.EnqueueDueAlerts(ctx)

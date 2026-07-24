@@ -11,11 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// seedFinding writes a row directly into the generic findings table, upserting
-// the backing asset first (assets aren't auto-created for a domain outside the
-// migration backfill) with its domain_id FK set, exactly as the assessor does.
-// This is what both FindingsService (ListByDomain, ListByTenant) and
-// DomainsService.FindingsSummaryForPage read (through the assets.domain_id join).
 func seedFinding(
 	t *testing.T,
 	ctx context.Context,
@@ -62,8 +57,6 @@ func hasFindingKind(findings []service.FindingView, kind string) bool {
 	return false
 }
 
-// TestDomainsService_FindingsSummaryForPage verifies the open-findings aggregate
-// reflects worst severity and a domain with no finding rows reads as healthy.
 func TestDomainsService_FindingsSummaryForPage(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -92,7 +85,6 @@ func TestDomainsService_FindingsSummaryForPage(t *testing.T) {
 		t, ctx, pc, tenantID, dWarn.Name,
 		"email_security", "test_mode_enabled", "medium", "test_mode_enabled",
 	)
-	// dHealthy gets no finding rows at all: a healthy check simply has no row.
 	seedFinding(
 		t, ctx, pc, tenantID, dAXFR.Name,
 		"zone_transfer", "zone_transfer_exposed", "high", "zone_transfer_exposed",
@@ -141,9 +133,6 @@ func TestDomainsService_FindingsSummaryForPage(t *testing.T) {
 	})
 }
 
-// TestFindingsService_ListByDomain verifies findings are aggregated across
-// check kinds, sorted worst-first, bucketed for the summary strip, and
-// tenant-scoped.
 func TestFindingsService_ListByDomain(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -214,7 +203,6 @@ func TestFindingsService_ListByDomain(t *testing.T) {
 		)
 	}
 
-	// A different tenant must not be able to read this domain's findings.
 	other := ownerPrincipal(createTenant(t, ctx, pc, "other@example.com"))
 	if _, err := fs.ListByDomain(ctx, other, d.Uid); !errors.Is(err, service.ErrNotFound) {
 		t.Errorf("cross-tenant ListByDomain err = %v, want ErrNotFound", err)

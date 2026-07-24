@@ -13,8 +13,6 @@ const (
 	IssueDNSSECWeakAlgorithm = "dnssec_weak_algorithm"
 )
 
-// deprecatedDNSSECAlgorithms maps DNSSEC algorithm numbers RFC 8624 deprecates to
-// their names.
 var deprecatedDNSSECAlgorithms = map[string]string{
 	"1": "RSAMD5",
 	"3": "DSA",
@@ -23,9 +21,6 @@ var deprecatedDNSSECAlgorithms = map[string]string{
 	"7": "RSASHA1-NSEC3-SHA1",
 }
 
-// DNSSECEvidence is the collected DNSSEC scan state for one asset. Fetched
-// separates "no scan result" (unknown) from a real result; NotApplicable marks a
-// non-apex name where DNSSEC does not apply. Both short-circuit the detector.
 type DNSSECEvidence struct {
 	ValidationError string   `json:"validation_error"`
 	Algorithms      []string `json:"algorithms"`
@@ -41,10 +36,6 @@ type DNSSECDetector struct{}
 func (DNSSECDetector) Kind() string                { return CheckDNSSEC }
 func (DNSSECDetector) Scope() checks.EvidenceScope { return checks.SingleAsset }
 
-// Detect judges DNSSEC deployment. A fully-signed zone (all of DNSKEY/DS/RRSIG)
-// and an unsigned zone are both compliant states that yield nothing; only a broken
-// chain (validation failure or partial deployment) or a deprecated algorithm on an
-// otherwise-signed zone is a finding.
 func (DNSSECDetector) Detect(ev DNSSECEvidence) (checks.DetectResult, error) {
 	if !ev.Fetched || ev.NotApplicable {
 		return checks.DetectResult{}, nil
@@ -59,9 +50,7 @@ func (DNSSECDetector) Detect(ev DNSSECEvidence) (checks.DetectResult, error) {
 			Details:   "DNSSEC validation failed: " + ev.ValidationError,
 		})
 	case !ev.HasDNSKEY && !ev.HasDS && !ev.HasRRSIG:
-		// DNSSEC not enabled -- compliant, no finding.
 	case ev.HasDNSKEY && ev.HasDS && ev.HasRRSIG:
-		// Fully signed -- compliant, but a deprecated algorithm is still a problem.
 		if names := deprecatedAlgorithmNames(ev.Algorithms); len(names) > 0 {
 			out = append(out, checks.Finding{
 				IssueType: IssueDNSSECWeakAlgorithm,
@@ -84,8 +73,6 @@ func (DNSSECDetector) Detect(ev DNSSECEvidence) (checks.DetectResult, error) {
 	return checks.DetectResult{Found: out}, nil
 }
 
-// deprecatedAlgorithmNames returns the names of any deprecated signing algorithms
-// present, trimming whitespace on each input value.
 func deprecatedAlgorithmNames(algorithms []string) []string {
 	var names []string
 	for _, a := range algorithms {

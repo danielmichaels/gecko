@@ -18,12 +18,6 @@ const (
 	IssueNoIPv6          = "no_ipv6"
 )
 
-// NameserverEvidence is one delegated nameserver's collected live-resolution
-// state. Statuses use the ResolutionData/Empty/Indeterminate tri-state so a
-// SERVFAIL is never mistaken for authoritative absence. InBailiwick marks a
-// nameserver under the assessed zone itself (its parent trivially exists, so the
-// dangling check is skipped); ApexStatus is the parent-apex SOA outcome, only
-// meaningful when out of bailiwick.
 type NameserverEvidence struct {
 	Host        string `json:"host"`
 	CNAMEStatus string `json:"cname_status"`
@@ -38,9 +32,6 @@ type NameserverConfigEvidence struct {
 	Nameservers []NameserverEvidence `json:"nameservers"`
 }
 
-// NameserverConfigDetector flags per-nameserver misconfiguration (CNAME target,
-// unresolvable, dangling delegation) and set-level redundancy gaps (too few,
-// single provider, no IPv6). RecommendedCount is injected.
 type NameserverConfigDetector struct {
 	RecommendedCount int
 }
@@ -79,8 +70,6 @@ func (d NameserverConfigDetector) Detect(
 					Details:   "Nameserver does not resolve to any A or AAAA address (missing glue or lame delegation)",
 				})
 			case ns.AStatus != ResolutionData && ns.AAAAStatus != ResolutionData:
-				// Neither resolves nor authoritatively empty: an address lookup was
-				// indeterminate, so resolvability is unknown -- protect the key.
 				res.Indeterminate = append(res.Indeterminate,
 					checks.Key{IssueType: IssueNSNotResolvable, EntityKey: ns.Host})
 			}
@@ -127,8 +116,6 @@ func (d NameserverConfigDetector) Detect(
 	}
 
 	if count > 0 && !anyIPv6(ev.Nameservers) {
-		// "No IPv6" is authoritative only when every AAAA lookup actually completed.
-		// If any AAAA lookup was indeterminate, we cannot claim the set lacks IPv6.
 		if anyAAAAIndeterminate(ev.Nameservers) {
 			res.Indeterminate = append(res.Indeterminate, checks.Key{IssueType: IssueNoIPv6})
 		} else {
@@ -144,8 +131,6 @@ func (d NameserverConfigDetector) Detect(
 	return res, nil
 }
 
-// distinctProviders counts unique registrable apexes across the nameserver set,
-// the v1 proxy for provider diversity.
 func distinctProviders(nss []NameserverEvidence) int {
 	providers := make(map[string]struct{}, len(nss))
 	for _, ns := range nss {
@@ -163,8 +148,6 @@ func anyIPv6(nss []NameserverEvidence) bool {
 	return false
 }
 
-// anyAAAAIndeterminate reports whether any nameserver's AAAA lookup failed to
-// complete, so a "no IPv6" verdict over the set would be unsafe.
 func anyAAAAIndeterminate(nss []NameserverEvidence) bool {
 	for _, ns := range nss {
 		if ns.AAAAStatus == ResolutionIndeterminate {
@@ -174,8 +157,6 @@ func anyAAAAIndeterminate(nss []NameserverEvidence) bool {
 	return false
 }
 
-// nsProviderApex returns the registrable domain (eTLD+1) of a nameserver host,
-// falling back to the bare host when the public-suffix lookup fails.
 func nsProviderApex(host string) string {
 	h := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
 	apex, err := publicsuffix.Domain(h)

@@ -18,8 +18,6 @@ const (
 	IssueNSResolverMismatch = "resolver_mismatch"
 )
 
-// NameserverProbeEvidence is one authoritative nameserver's probe result.
-// Probed fields distinguish shed probes from failed exchanges.
 type NameserverProbeEvidence struct {
 	Nameserver string `json:"nameserver"`
 	ApexSerial string `json:"apex_serial"`
@@ -31,14 +29,11 @@ type NameserverProbeEvidence struct {
 	HasEDNS    bool   `json:"has_edns"`
 }
 
-// NameserverHealthEvidence contains a domain's authoritative SOA probe results.
 type NameserverHealthEvidence struct {
 	RecordType  string                    `json:"record_type"`
 	Nameservers []NameserverProbeEvidence `json:"nameservers"`
 }
 
-// NameserverHealthDetector judges reachability, TCP/EDNS support, response latency,
-// and cross-nameserver apex-SOA agreement. Latency thresholds are injected.
 type NameserverHealthDetector struct {
 	LatencyInfoMs   int32
 	LatencyLowMs    int32
@@ -54,7 +49,6 @@ func (d NameserverHealthDetector) Detect(
 	var res checks.DetectResult
 	for _, ns := range ev.Nameservers {
 		if !ns.Probed {
-			// Rate-limit shedding leaves all probe findings indeterminate.
 			res.Indeterminate = append(
 				res.Indeterminate,
 				checks.Key{IssueType: IssueNSUnreachable, EntityKey: ns.Nameserver},
@@ -79,7 +73,6 @@ func (d NameserverHealthDetector) Detect(
 		}
 		switch {
 		case !ns.TCPProbed:
-			// A shed TCP probe cannot disprove TCP support.
 			res.Indeterminate = append(res.Indeterminate,
 				checks.Key{IssueType: IssueNSNoTCPSupport, EntityKey: ns.Nameserver})
 		case !ns.TCPOK:
@@ -124,7 +117,6 @@ func (d NameserverHealthDetector) Detect(
 	return res, nil
 }
 
-// consistencyDeterminate requires answers from every multi-server delegation.
 func consistencyDeterminate(ev NameserverHealthEvidence) bool {
 	if len(ev.Nameservers) <= 1 {
 		return true
@@ -137,8 +129,6 @@ func consistencyDeterminate(ev NameserverHealthEvidence) bool {
 	return true
 }
 
-// latencyTier maps a latency onto its exceeded threshold tier, or ok=false when
-// under the info floor (compliant, no finding).
 func (d NameserverHealthDetector) latencyTier(
 	ms int32,
 ) (severity string, threshold int32, ok bool) {
@@ -159,7 +149,6 @@ type nsAnswer struct {
 	serial     string
 }
 
-// consistencyFinding flags divergent SOA serials without cross-scan escalation.
 func (d NameserverHealthDetector) consistencyFinding(
 	ev NameserverHealthEvidence,
 ) (checks.Finding, bool) {

@@ -162,8 +162,6 @@ func (w *ScanDNSSECWorker) Work(ctx context.Context, job *river.Job[ScanDNSSECAr
 		AssessDNSSECArgs{DomainJobArgs: job.Args.DomainJobArgs})
 }
 
-// enqueueAssessment inserts a follow-on assessment job in its own transaction so
-// the scan and its downstream assessment are enqueued atomically.
 func enqueueAssessment(
 	ctx context.Context,
 	pool *pgxpool.Pool,
@@ -233,7 +231,6 @@ func (w *ScanZoneTransferWorker) Work(
 		"duration", time.Since(start),
 	)
 
-	// todo: should we allow configuration to scan without auto assessing
 	tx, err := w.PgxPool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)

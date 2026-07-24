@@ -56,9 +56,6 @@ func (w *EnumerateSubdomainWorker) Work(
 	dnsClient := w.Resolver
 	rc := river.ClientFromContext[pgx.Tx](ctx)
 
-	// Drain the discovered host list WITHOUT holding a transaction across the
-	// network sweep. Holding a tx (and its row locks) open for the whole
-	// multi-minute subfinder run would deadlock against the per-host inserts.
 	seen := make(map[string]struct{})
 	var hosts []string
 	err := dnsClient.EnumerateWithSubfinderCallback(
@@ -81,8 +78,6 @@ func (w *EnumerateSubdomainWorker) Work(
 		return fmt.Errorf("enumerate subdomains: %w", err)
 	}
 
-	// Process each host in its own short transaction so one bad host can't roll
-	// back the whole sweep and the advisory-lock scope stays bounded.
 	window := config.AppConfig().AppConf.ScanRecencyWindow
 	for _, host := range hosts {
 		w.Logger.InfoContext(ctx, "enumerate_subdomain", "host", host)
@@ -98,11 +93,6 @@ func (w *EnumerateSubdomainWorker) Work(
 	return nil
 }
 
-// processDiscoveredHost creates (or reuses) the discovered domain and enqueues a
-// scan for it in a single short transaction. Recursion is bounded: discovered
-// scans do NOT themselves enumerate (EnumerateSubdomains: false), so wildcard
-// DNS can't drive an unbounded re-subfinding loop. The advisory lock + recency
-// guard inside EnqueueDomainScan dedupe concurrent discoveries of the same host.
 func (w *EnumerateSubdomainWorker) processDiscoveredHost(
 	ctx context.Context,
 	rc *river.Client[pgx.Tx],
@@ -142,10 +132,10 @@ func (w *EnumerateSubdomainWorker) processDiscoveredHost(
 		DomainName: d.Name,
 		Status:     d.Status,
 	}, DomainScanOptions{
-		EnumerateSubdomains: false, // bounded: discovered hosts don't re-enumerate
+		EnumerateSubdomains: false,
 		ParentScanID:        &parentScanID,
 		Source:              store.ScanSourceDiscovered,
-		Force:               false, // discovered scans are subject to the recency guard
+		Force:               false,
 		RecencyWindow:       window,
 	})
 	if err != nil {
@@ -173,9 +163,6 @@ type ResolveDomainWorker struct {
 	Resolver dnsclient.Resolver
 }
 
-// recordResolved syncs every resolved DNS record type for one scan through the
-// observation recorder inside a single transaction, so the whole scan's
-// projection changes and observations commit or roll back together.
 func (w *ResolveDomainWorker) recordResolved(
 	ctx context.Context,
 	ident DomainJobArgs,
@@ -205,11 +192,6 @@ func (w *ResolveDomainWorker) recordResolved(
 	return tx.Commit(ctx)
 }
 
-// Work resolves every DNS record type for the threaded domain with a three-way
-// resolution status and syncs them through the observation recorder: the live
-// projection is kept current, the change log is appended, and deletions are
-// applied only on an authoritative result. The domain identity arrives on the
-// job args, so the worker never rediscovers or creates the domain.
 func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDomainArgs]) error {
 	ctx = tracing.WithNewTraceID(ctx, false)
 	dnsClient := w.Resolver
@@ -239,48 +221,36 @@ func (w *ResolveDomainWorker) Work(ctx context.Context, job *river.Job[ResolveDo
 		return err
 	}
 
-	// CAA assessment runs unconditionally: a missing CAA record set is itself a
-	// finding, so it must be enqueued even when no CAA records were resolved.
 	if err := enqueueAssessment(ctx, w.PgxPool, &w.Logger, job.Args.DomainUID,
 		AssessCAAArgs{DomainJobArgs: job.Args.DomainJobArgs}); err != nil {
 		w.Logger.WarnContext(ctx, "failed to queue caa assessment",
 			"domain", job.Args.DomainUID, "error", err)
 	}
 
-	// Minimum record set assessment runs unconditionally; missing essential
-	// records are findings, and the assessor itself gates on apex domains.
 	if err := enqueueAssessment(ctx, w.PgxPool, &w.Logger, job.Args.DomainUID,
 		AssessMinimumRecordSetArgs{DomainJobArgs: job.Args.DomainJobArgs}); err != nil {
 		w.Logger.WarnContext(ctx, "failed to queue minimum record set assessment",
 			"domain", job.Args.DomainUID, "error", err)
 	}
 
-	// Nameserver config assessment runs unconditionally: a single nameserver (or
-	// none) is itself a redundancy finding, so it must run regardless of the NS set.
 	if err := enqueueAssessment(ctx, w.PgxPool, &w.Logger, job.Args.DomainUID,
 		AssessNameserverConfigArgs{DomainJobArgs: job.Args.DomainJobArgs}); err != nil {
 		w.Logger.WarnContext(ctx, "failed to queue nameserver config assessment",
 			"domain", job.Args.DomainUID, "error", err)
 	}
 
-	// Nameserver health assessment probes each authoritative NS directly; an
-	// unreachable nameserver is itself a finding, so it runs unconditionally.
 	if err := enqueueAssessment(ctx, w.PgxPool, &w.Logger, job.Args.DomainUID,
 		AssessNameserverHealthArgs{DomainJobArgs: job.Args.DomainJobArgs}); err != nil {
 		w.Logger.WarnContext(ctx, "failed to queue nameserver health assessment",
 			"domain", job.Args.DomainUID, "error", err)
 	}
 
-	// Dangling-NS / delegation-takeover assessment checks whether each NS's parent
-	// domain still exists; it runs unconditionally over the collected NS set.
 	if err := enqueueAssessment(ctx, w.PgxPool, &w.Logger, job.Args.DomainUID,
 		AssessDanglingNSArgs{DomainJobArgs: job.Args.DomainJobArgs}); err != nil {
 		w.Logger.WarnContext(ctx, "failed to queue dangling ns assessment",
 			"domain", job.Args.DomainUID, "error", err)
 	}
 
-	// Email security assessment is data-dependent: enqueue only when TXT records
-	// were discovered (SPF/DKIM/DMARC live in TXT).
 	if len(resolved.TXT.Entries) > 0 {
 		tx, err := w.PgxPool.BeginTx(ctx, pgx.TxOptions{})
 		if err != nil {

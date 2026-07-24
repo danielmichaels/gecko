@@ -64,7 +64,6 @@ func TestZoneTransferExposed(t *testing.T) {
 	if f.Severity != "critical" {
 		t.Errorf("severity = %q, want critical", f.Severity)
 	}
-	// the exposed email should surface inside the evidence blob
 	if !strings.Contains(string(f.Evidence), "admin@example.com") {
 		t.Errorf("evidence missing exposed email: %s", f.Evidence)
 	}

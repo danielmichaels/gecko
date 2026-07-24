@@ -9,9 +9,6 @@ import (
 	"github.com/riverqueue/river"
 )
 
-// SendEmailArgs carries a fully-rendered email for asynchronous delivery. The
-// body is rendered by the enqueuer so the worker stays a thin transport step;
-// it runs on the default queue.
 type SendEmailArgs struct {
 	To      string `json:"to"`
 	Subject string `json:"subject"`

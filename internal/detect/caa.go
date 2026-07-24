@@ -21,8 +21,6 @@ const (
 
 const caaCriticalFlag = 128
 
-// defaultTrustedCAs is the built-in allowlist of CAA issuer identifiers for
-// well-known public CAs; an issuer outside it is a low-severity review finding.
 var defaultTrustedCAs = map[string]struct{}{
 	"letsencrypt.org": {}, "digicert.com": {}, "sectigo.com": {}, "comodoca.com": {},
 	"globalsign.com": {}, "google.com": {}, "pki.goog": {}, "amazon.com": {},
@@ -31,16 +29,12 @@ var defaultTrustedCAs = map[string]struct{}{
 	"certainly.com": {}, "microsoft.com": {},
 }
 
-// CAARecord is one collected CAA property.
 type CAARecord struct {
 	Tag   string `json:"tag"`
 	Value string `json:"value"`
 	Flags int32  `json:"flags"`
 }
 
-// CAAEvidence is the collected CAA state. LookedUp separates a failed lookup
-// (unknown) from an authoritative result; an authoritative empty RRset (LookedUp
-// with no Records) is itself a finding. HasCert gates the cert-related findings.
 type CAAEvidence struct {
 	Records  []CAARecord `json:"records"`
 	LookedUp bool        `json:"looked_up"`
@@ -84,8 +78,6 @@ func caaMissingFindings(hasCert bool) []checks.Finding {
 	return out
 }
 
-// caaPresentFindings emits only the problems; every compliant branch (records
-// present, issue restricted, trusted issuers, iodef present, ...) is absence.
 func caaPresentFindings(ev CAAEvidence) []checks.Finding {
 	c := classifyCAA(ev.Records)
 	var out []checks.Finding
@@ -145,9 +137,6 @@ type caaClass struct {
 	sawIssuer          bool
 }
 
-// classifyCAA derives the policy booleans. Only an `issue` property (not
-// `issuewild`) drives the any-CA / conflicting-policy signals; `issuewild` values
-// still contribute their issuer to the trusted-CA check.
 func classifyCAA(records []CAARecord) caaClass {
 	var c caaClass
 	for _, r := range records {
@@ -182,9 +171,6 @@ func classifyCAA(records []CAARecord) caaClass {
 	return c
 }
 
-// caaIssuerDomain extracts the CA identifier from an issue/issuewild value,
-// dropping parameters after the first semicolon. An empty result denotes a
-// no-issuance directive (e.g. `issue ";"`).
 func caaIssuerDomain(value string) string {
 	v := value
 	if i := strings.Index(v, ";"); i >= 0 {

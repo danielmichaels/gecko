@@ -17,19 +17,15 @@ const (
 	IssueCNAMELoop     = "cname_loop"
 )
 
-// Resolution outcomes as carried in evidence (dnsclient.ResolutionStatus, stringified
-// at collect time so the detector stays free of the dnsclient type).
 const (
 	ResolutionData          = "data"
 	ResolutionEmpty         = "empty"
 	ResolutionIndeterminate = "indeterminate"
 )
 
-// CNAMETargetEvidence is the collected state for one CNAME target.
 type CNAMETargetEvidence struct {
 	Target           string `json:"target"`
 	ResolutionStatus string `json:"resolution_status"`
-	// ChainStatus marks incomplete length and loop observations.
 	ChainStatus      string `json:"chain_status"`
 	Provider         string `json:"provider"`
 	FPErrorBody      string `json:"fp_error_body"`
@@ -47,8 +43,6 @@ type CNAMEEvidence struct {
 	Targets []CNAMETargetEvidence `json:"targets"`
 }
 
-// CNAMEDetector flags dangling/takeover-able CNAME targets and chain-hygiene issues
-// (IP-literal target, loop, over-long chain). LongChainThreshold is injected.
 type CNAMEDetector struct {
 	LongChainThreshold int
 }
@@ -62,7 +56,6 @@ func (d CNAMEDetector) Detect(ev CNAMEEvidence) (checks.DetectResult, error) {
 		if f, ok := danglingFinding(t); ok {
 			res.Found = append(res.Found, f)
 		} else if t.ResolutionStatus == ResolutionIndeterminate {
-			// A failed lookup cannot assert or clear a dangling finding.
 			res.Indeterminate = append(res.Indeterminate,
 				checks.Key{IssueType: IssueDanglingCNAME, EntityKey: t.Target})
 		}
@@ -71,7 +64,6 @@ func (d CNAMEDetector) Detect(ev CNAMEEvidence) (checks.DetectResult, error) {
 			res.Found = append(res.Found, f)
 		}
 		if t.ChainStatus == ResolutionIndeterminate {
-			// An incomplete walk cannot clear an unasserted chain finding.
 			for _, issue := range []string{IssueLongChain, IssueCNAMELoop} {
 				if found && f.IssueType == issue {
 					continue
@@ -84,7 +76,6 @@ func (d CNAMEDetector) Detect(ev CNAMEEvidence) (checks.DetectResult, error) {
 	return res, nil
 }
 
-// danglingFinding requires confirmed evidence for provider-specific takeovers.
 func danglingFinding(t CNAMETargetEvidence) (checks.Finding, bool) {
 	if t.ResolutionStatus == ResolutionIndeterminate {
 		return checks.Finding{}, false
@@ -137,8 +128,6 @@ func danglingF(target, severity, provider string, takeover bool, details string)
 	}
 }
 
-// chainFinding classifies one target's chain hygiene: an IP-literal target, a loop,
-// or an over-long chain. At most one applies, checked in that priority order.
 func (d CNAMEDetector) chainFinding(t CNAMETargetEvidence) (checks.Finding, bool) {
 	switch {
 	case t.IsIPLiteral:

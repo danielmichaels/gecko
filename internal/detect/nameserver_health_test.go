@@ -12,7 +12,6 @@ func nsHealthDetector() NameserverHealthDetector {
 	return NameserverHealthDetector{LatencyInfoMs: 150, LatencyLowMs: 400, LatencyMediumMs: 900}
 }
 
-// healthyProbe is reachable over UDP+TCP, EDNS-capable, fast, with a serial.
 func healthyProbe(ns, serial string) NameserverProbeEvidence {
 	return NameserverProbeEvidence{
 		Nameserver: ns, Probed: true, Reached: true, TCPProbed: true, TCPOK: true,

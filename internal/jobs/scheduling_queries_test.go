@@ -11,8 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// setNextScan sets a domain's next_scan_at to now() + the given Postgres interval
-// literal (e.g. "-1 hour", "30 minutes"), computed on the DB clock to avoid skew.
 func setNextScan(
 	t *testing.T,
 	ctx context.Context,
@@ -31,7 +29,6 @@ func setNextScan(
 	}
 }
 
-// setScanFrequency sets a domain's per-domain override directly.
 func setScanFrequency(
 	t *testing.T,
 	ctx context.Context,
@@ -46,7 +43,6 @@ func setScanFrequency(
 	}
 }
 
-// setInactive flips a domain to inactive.
 func setInactive(t *testing.T, ctx context.Context, pc *testhelpers.TestDatabase, id int32) {
 	t.Helper()
 	_, err := pc.Pool.Exec(ctx, "UPDATE domains SET status = 'inactive' WHERE id = $1", id)
@@ -70,9 +66,6 @@ func nextScanAt(
 	return ts
 }
 
-// TestDomainsListDueForScan verifies the scheduler's hot query returns only
-// active + due (non-NULL, <= now) domains, oldest-due first, respects the batch
-// cap, and reports the effective frequency (override ?? tenant default).
 func TestDomainsListDueForScan(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -91,11 +84,11 @@ func TestDomainsListDueForScan(t *testing.T) {
 		t.Fatalf("upsert tenant settings: %v", err)
 	}
 
-	older := seedStatsDomain(t, ctx, q, tid, "older.due.test")   // due -2h, override weekly
-	due := seedStatsDomain(t, ctx, q, tid, "due.test")           // due -1h, inherit (daily)
-	future := seedStatsDomain(t, ctx, q, tid, "future.test")     // not due (+1h)
-	inactive := seedStatsDomain(t, ctx, q, tid, "inactive.test") // inactive + due
-	seedStatsDomain(t, ctx, q, tid, "off.test")                  // next_scan_at NULL -> excluded
+	older := seedStatsDomain(t, ctx, q, tid, "older.due.test")
+	due := seedStatsDomain(t, ctx, q, tid, "due.test")
+	future := seedStatsDomain(t, ctx, q, tid, "future.test")
+	inactive := seedStatsDomain(t, ctx, q, tid, "inactive.test")
+	seedStatsDomain(t, ctx, q, tid, "off.test")
 
 	setNextScan(t, ctx, pc, older, "-2 hours")
 	setScanFrequency(t, ctx, pc, older, store.ScanFrequencyWeekly)
@@ -103,7 +96,6 @@ func TestDomainsListDueForScan(t *testing.T) {
 	setNextScan(t, ctx, pc, future, "1 hour")
 	setNextScan(t, ctx, pc, inactive, "-1 hour")
 	setInactive(t, ctx, pc, inactive)
-	// off keeps next_scan_at = NULL (the seed default)
 
 	rows, err := q.DomainsListDueForScan(ctx, 10)
 	if err != nil {
@@ -112,7 +104,6 @@ func TestDomainsListDueForScan(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("due rows = %d, want 2 (got %+v)", len(rows), rows)
 	}
-	// Ordered by next_scan_at ASC: older (-2h) before due (-1h).
 	if rows[0].ID != older || rows[1].ID != due {
 		t.Errorf("order = [%d, %d], want [%d, %d]", rows[0].ID, rows[1].ID, older, due)
 	}
@@ -126,7 +117,6 @@ func TestDomainsListDueForScan(t *testing.T) {
 		)
 	}
 
-	// Batch cap: limit 1 returns only the oldest-due domain.
 	capped, err := q.DomainsListDueForScan(ctx, 1)
 	if err != nil {
 		t.Fatalf("DomainsListDueForScan(limit 1): %v", err)
@@ -136,8 +126,6 @@ func TestDomainsListDueForScan(t *testing.T) {
 	}
 }
 
-// TestDomainsMarkScanned verifies the chokepoint stamp advances the cursor by the
-// effective interval (within the ±10% jitter band) and clears it when paused.
 func TestDomainsMarkScanned(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -151,15 +139,13 @@ func TestDomainsMarkScanned(t *testing.T) {
 	tid := seedStatsTenant(t, ctx, q, "mark@sched.test")
 	d := seedStatsDomain(t, ctx, q, tid, "mark.test")
 
-	const base = 24 * 3600.0 // daily, in seconds
+	const base = 24 * 3600.0
 	if err := q.DomainsMarkScanned(ctx, store.DomainsMarkScannedParams{
 		IsOff: false, BaseSecs: base, DomainID: d,
 	}); err != nil {
 		t.Fatalf("DomainsMarkScanned: %v", err)
 	}
 
-	// next_scan_at - last_scanned_at is the jitter expression with no clock skew
-	// (both now() in one statement are identical): must land in [base, base*1.10).
 	const deltaQ = `SELECT EXTRACT(EPOCH FROM (next_scan_at - last_scanned_at)) FROM domains WHERE id = $1`
 	var deltaSecs float64
 	if err := pc.Pool.QueryRow(ctx, deltaQ, d).Scan(&deltaSecs); err != nil {
@@ -178,7 +164,6 @@ func TestDomainsMarkScanned(t *testing.T) {
 		t.Errorf("last_scanned_at = %v, want ~now", lastScanned)
 	}
 
-	// Pausing (is_off) clears the cursor but still stamps last_scanned_at.
 	if err := q.DomainsMarkScanned(ctx, store.DomainsMarkScannedParams{
 		IsOff: true, BaseSecs: 0, DomainID: d,
 	}); err != nil {
@@ -189,9 +174,6 @@ func TestDomainsMarkScanned(t *testing.T) {
 	}
 }
 
-// TestDomainsRecomputeNextScanByTenantDefault verifies a bulk default change
-// recomputes only inheriting + active domains, leaving overrides and inactive
-// domains untouched.
 func TestDomainsRecomputeNextScanByTenantDefault(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -207,7 +189,6 @@ func TestDomainsRecomputeNextScanByTenantDefault(t *testing.T) {
 	overridden := seedStatsDomain(t, ctx, q, tid, "override.test")
 	inactiveInherit := seedStatsDomain(t, ctx, q, tid, "inactive-inherit.test")
 
-	// Park all three far in the future so a recompute is observable as a change.
 	setNextScan(t, ctx, pc, inheriting, "100 hours")
 	setNextScan(t, ctx, pc, overridden, "100 hours")
 	setScanFrequency(t, ctx, pc, overridden, store.ScanFrequencyWeekly)
@@ -217,7 +198,6 @@ func TestDomainsRecomputeNextScanByTenantDefault(t *testing.T) {
 	overrideBefore := nextScanAt(t, ctx, pc, overridden)
 	inactiveBefore := nextScanAt(t, ctx, pc, inactiveInherit)
 
-	// New default: hourly.
 	if err := q.DomainsRecomputeNextScanByTenantDefault(ctx, store.DomainsRecomputeNextScanByTenantDefaultParams{
 		IsOff:    false,
 		BaseSecs: 3600,
@@ -226,21 +206,17 @@ func TestDomainsRecomputeNextScanByTenantDefault(t *testing.T) {
 		t.Fatalf("recompute: %v", err)
 	}
 
-	// Inheriting active domain pulled in to ~1h (was 100h).
 	inh := nextScanAt(t, ctx, pc, inheriting)
 	if !inh.Valid || time.Until(inh.Time) > 2*time.Hour {
 		t.Errorf("inheriting next_scan_at = %v, want ~1h ahead", inh.Time)
 	}
-	// Overridden domain untouched.
 	if got := nextScanAt(t, ctx, pc, overridden); !got.Time.Equal(overrideBefore.Time) {
 		t.Errorf("overridden next_scan_at changed: %v -> %v", overrideBefore.Time, got.Time)
 	}
-	// Inactive inheriting domain untouched.
 	if got := nextScanAt(t, ctx, pc, inactiveInherit); !got.Time.Equal(inactiveBefore.Time) {
 		t.Errorf("inactive next_scan_at changed: %v -> %v", inactiveBefore.Time, got.Time)
 	}
 
-	// Switching the default to off pauses inheriting domains (cursor NULL).
 	if err := q.DomainsRecomputeNextScanByTenantDefault(ctx, store.DomainsRecomputeNextScanByTenantDefaultParams{
 		IsOff:    true,
 		BaseSecs: 0,
@@ -253,9 +229,6 @@ func TestDomainsRecomputeNextScanByTenantDefault(t *testing.T) {
 	}
 }
 
-// TestDomainsGetScanFrequencies verifies the chokepoint's frequency read: it
-// returns the override (NULL = inherit) and the tenant default, falling back to
-// 'daily' when the tenant has no settings row.
 func TestDomainsGetScanFrequencies(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -296,7 +269,6 @@ func TestDomainsGetScanFrequencies(t *testing.T) {
 		t.Errorf("inheriting override = %+v, want NULL", inh.ScanFrequency)
 	}
 
-	// Tenant with no settings row: default falls back to 'daily'.
 	tid2 := seedStatsTenant(t, ctx, q, "nosettings@sched.test")
 	d2 := seedStatsDomain(t, ctx, q, tid2, "ns.freqs.test")
 	got, err := q.DomainsGetScanFrequencies(ctx, d2)
@@ -308,8 +280,6 @@ func TestDomainsGetScanFrequencies(t *testing.T) {
 	}
 }
 
-// TestTenantSettingsUpsertGet verifies the per-tenant settings round-trip and the
-// no-row-yet contract.
 func TestTenantSettingsUpsertGet(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -339,7 +309,6 @@ func TestTenantSettingsUpsertGet(t *testing.T) {
 		t.Errorf("default = %q, want weekly", got.DefaultScanFrequency)
 	}
 
-	// Upsert again updates in place (one row per tenant).
 	if _, err := q.TenantSettingsUpsert(ctx, store.TenantSettingsUpsertParams{
 		TenantID: tid, DefaultScanFrequency: store.ScanFrequencyOff,
 	}); err != nil {

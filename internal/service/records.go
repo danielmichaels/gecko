@@ -13,14 +13,10 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// RecordsService exposes DNS record read operations.
 type RecordsService struct {
 	*Service
 }
 
-// qtypeToEntityType maps the API's record qtype filter onto the entity_type the
-// recorder writes into the observation log. Values reference the observer
-// constants so a rename can't silently desync the filter from what is stored.
 var qtypeToEntityType = map[string]string{
 	"a":      observer.EntityARecord,
 	"aaaa":   observer.EntityAAAARecord,
@@ -37,15 +33,11 @@ var qtypeToEntityType = map[string]string{
 	"rrsig":  observer.EntityRRSIGRecord,
 }
 
-// defaultRecordTypes lists all supported qtype values returned when no filter
-// is provided.
 var defaultRecordTypes = []string{
 	"a", "aaaa", "cname", "mx", "txt", "ns", "soa", "ptr", "srv", "caa",
 	"dnskey", "ds", "rrsig",
 }
 
-// ParseRecordTypes converts a comma-separated qtype query param into a slice.
-// An empty string returns all supported types.
 func ParseRecordTypes(queryParam string) []string {
 	if queryParam == "" {
 		return defaultRecordTypes
@@ -53,17 +45,11 @@ func ParseRecordTypes(queryParam string) []string {
 	return strings.Split(strings.ToLower(queryParam), ",")
 }
 
-// RecordsListResult bundles the AllRecords payload with a total count.
 type RecordsListResult struct {
 	Records      dto.AllRecords
 	TotalRecords int64
 }
 
-// List returns current DNS records for the given domain, filtered by recordTypes.
-// recordTypes nil/empty means all types. Invalid type → ErrInvalidInput.
-//
-// fixme: really inefficient; should be joining not individually querying each table
-// fixme: non-trivially change as SQLc dynamic queries are not straightforward
 func (s *RecordsService) List(
 	ctx context.Context,
 	p *auth.Principal,
@@ -216,19 +202,11 @@ func (s *RecordsService) List(
 	return RecordsListResult{Records: records, TotalRecords: total}, nil
 }
 
-// HistoryResult holds the domain name and flat change log for the caller.
 type HistoryResult struct {
 	DomainName string
 	History    []dto.RecordHistory
 }
 
-// History returns the observation log for the given domain, optionally filtered
-// by a comma-separated qtype string. Invalid type → ErrInvalidInput.
-//
-// It resolves the {id} to its (tenant_id, name) and queries observations by
-// that key — never the live domain_id, which goes NULL on delete — so a
-// re-added domain shows its prior timeline and a deleted domain's history stays
-// reachable.
 func (s *RecordsService) History(
 	ctx context.Context,
 	p *auth.Principal,
@@ -277,19 +255,11 @@ func (s *RecordsService) History(
 	return HistoryResult{DomainName: domain.Name, History: history}, nil
 }
 
-// TimelineResult holds the domain name and scan-grouped change timeline.
 type TimelineResult struct {
 	DomainName string
 	Scans      []dto.ScanDiff
 }
 
-// Timeline returns a domain's scan-by-scan change timeline: every scan that
-// recorded a change (newest first) with the observations from it, grouped by
-// scan uid. Keyed on (tenant_id, domain_name) so it survives a domain
-// delete/re-add, and carries parent_scan_uid lineage so child (discovered) scans
-// can be nested under the apex scan that found them. A single join query supplies
-// both the changes and their scan metadata; scans with no observations never
-// appear, so the timeline reads as a pure change history.
 func (s *RecordsService) Timeline(
 	ctx context.Context,
 	p *auth.Principal,
@@ -316,8 +286,6 @@ func (s *RecordsService) Timeline(
 
 	scans := []dto.ScanDiff{}
 
-	// Rows arrive ordered newest-scan-first, then by observation id, so grouping
-	// by first-seen scan uid preserves both scan order and change order.
 	byUID := map[string]int{}
 	for _, row := range rows {
 		idx, seen := byUID[row.ScanUid]

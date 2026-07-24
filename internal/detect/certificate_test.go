@@ -12,7 +12,6 @@ func certDetector() CertificateDetector {
 	return CertificateDetector{ExpiryHighDays: 14, ExpiryMediumDays: 30, MinRSAKeyBits: 2048}
 }
 
-// healthyCert is a fully-compliant baseline each case mutates one field of.
 func healthyCert(now time.Time) CertificateEvidence {
 	return CertificateEvidence{
 		ObservedAt:   now,
@@ -149,8 +148,6 @@ func TestCertificateDetect(t *testing.T) {
 	}
 }
 
-// findingsOf returns just the Found slice of a Detect result, for tests that
-// assert only on findings. The detectors here never return an error.
 func findingsOf(res checks.DetectResult, _ error) []checks.Finding { return res.Found }
 
 func equalStrings(a, b []string) bool {

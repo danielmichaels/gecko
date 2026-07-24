@@ -1,5 +1,3 @@
-@/Users/danielmichaels/.codex/RTK.md
-
 # Gecko Agent Instructions
 
 ## Project Shape
@@ -13,28 +11,27 @@
 
 ## Commands
 
-- Run all shell commands through `rtk`.
-- List available tasks with `rtk task --list-all`.
-- Run the normal test suite with `rtk go test ./...`.
-- Run the repository test task with `rtk task test`; this uses `go test -race -v -cover ./...`.
-- Regenerate sqlc output after query or schema changes with `rtk task sqlc`.
-- Regenerate UI output after templ or CSS changes with `rtk task ui`.
-- Run lint/format checks with `rtk task audit` when touching broad Go code, generated-adjacent code, or formatting-sensitive changes.
-- Run the auth end-to-end check with `rtk task verify:auth` when changing auth, roles, API keys, invitations, sessions, or protected route middleware.
+- List available tasks with `task --list-all`.
+- Run the normal test suite with `go test ./...`.
+- Run the repository test task with `task test`; this uses `go test -race -v -cover ./...`.
+- Regenerate sqlc output after query or schema changes with `task sqlc`.
+- Regenerate UI output after templ or CSS changes with `task ui`.
+- Run lint/format checks with `task audit` when touching broad Go code, generated-adjacent code, or formatting-sensitive changes.
+- Run the auth end-to-end check with `task verify:auth` when changing auth, roles, API keys, invitations, sessions, or protected route middleware.
 
 ## Local Services
 
 - Local Postgres and supporting services are managed through `Taskfile.yml` and `compose.yaml` (the `dev` profile).
-- Use `rtk task compose:up` to start the local stack and run migrations/seed data.
-- Use `rtk task compose:down` to stop the local stack.
-- Schema migrations use Goose via `rtk task db:migration:*`.
-- River migrations use `rtk task river:migration:*`.
+- Use `task compose:up` to start the local stack and run migrations/seed data.
+- Use `task compose:down` to stop the local stack.
+- Schema migrations use Goose via `task db:migration:*`.
+- River migrations use `task river:migration:*`.
 
 ## Generated Files
 
-- Do not hand-edit sqlc-generated files in `internal/store/*.sql.go`, `internal/store/db.go`, or `internal/store/models.go`; update `sql/queries` or migrations and run `rtk task sqlc`.
-- Do not hand-edit generated templ output; update the `.templ` source and run `rtk task generate` or `rtk task ui`.
-- Treat `assets/static/app.css` as built output from `assets/css/app.css`; run `rtk task css` or `rtk task ui` after CSS changes.
+- Do not hand-edit sqlc-generated files in `internal/store/*.sql.go`, `internal/store/db.go`, or `internal/store/models.go`; update `sql/queries` or migrations and run `task sqlc`.
+- Do not hand-edit generated templ output; update the `.templ` source and run `task generate` or `task ui`.
+- Treat `assets/static/app.css` as built output from `assets/css/app.css`; run `task css` or `task ui` after CSS changes.
 - Avoid unrelated `go.mod` or `go.sum` churn. If dependency changes are required, keep them scoped and explain why.
 
 ## Code Guidelines
@@ -49,7 +46,7 @@
 
 ## Review And Verification
 
-- Before editing, check `rtk git status --short` and avoid touching unrelated user changes.
+- Before editing, check `git status --short` and avoid touching unrelated user changes.
 - Prefer focused tests first, then broader suites when shared behavior is affected.
 - For auth or tenancy changes, include coverage that exercises the real chi to Huma middleware path where practical.
 - For database behavior, prefer migrations plus sqlc query tests or integration tests over mocking query semantics.

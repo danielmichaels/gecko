@@ -11,17 +11,12 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// changeSpec is one entity_type/change_type/count tuple in a scan's breakdown.
 type changeSpec struct {
 	entityType string
 	changeType string
 	count      int
 }
 
-// scanRow builds a synthetic ScansListByTenantRow for the pure builder tests. The
-// created/updated/deleted aggregate columns are derived from breakdown so the row
-// is internally consistent (as the SQL guarantees). An empty parentUID yields a
-// baseline (NULL parent).
 func scanRow(
 	t *testing.T,
 	scanUID, domainUID, name, source, parentUID string,
@@ -67,7 +62,6 @@ func scanRow(
 	}
 }
 
-// fixedNow is the injected clock for deterministic day labels / relative times.
 var fixedNow = time.Date(2026, time.June, 9, 15, 0, 0, 0, time.UTC)
 
 func allScans(res TenantScansResult) []ScanRunView {
@@ -84,7 +78,6 @@ func TestBuildTenantScans_DayGroupingAndOrder(t *testing.T) {
 	yesterday := time.Date(2026, time.June, 8, 18, 44, 0, 0, time.UTC)
 	older := time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
 
-	// Rows arrive newest-first (as the SQL ORDER BY guarantees).
 	rows := []store.ScansListByTenantRow{
 		scanRow(t, "scan_a", "d1", "acme.com", "user_supplied", "scan_z", today,
 			[]changeSpec{{"a_record", "created", 1}}),
@@ -100,14 +93,12 @@ func TestBuildTenantScans_DayGroupingAndOrder(t *testing.T) {
 	if len(got.Days) != 3 {
 		t.Fatalf("day groups = %d, want 3", len(got.Days))
 	}
-	// 2026-06-02 is a Tuesday — older buckets render the weekday abbreviation.
 	wantLabels := []string{"Today", "Yesterday", "Tue"}
 	for i, w := range wantLabels {
 		if got.Days[i].DayLabel != w {
 			t.Errorf("Days[%d].DayLabel = %q, want %q", i, got.Days[i].DayLabel, w)
 		}
 	}
-	// Within Today, newest-first order preserved: scan_a (14:38) before scan_b (09:15).
 	if len(got.Days[0].Scans) != 2 {
 		t.Fatalf("today scans = %d, want 2", len(got.Days[0].Scans))
 	}
@@ -175,7 +166,6 @@ func TestBuildTenantScans_SegmentsAndPills(t *testing.T) {
 	got := buildTenantScans(rows, ScansListOptions{}, fixedNow)
 	s := allScans(got)[0]
 
-	// Three equal segments, widths sum to 100 with the last absorbing the remainder.
 	if len(s.Segments) != 3 {
 		t.Fatalf("segments = %d, want 3", len(s.Segments))
 	}
@@ -220,7 +210,6 @@ func TestBuildTenantScans_ChangesUnmarshalledAndMapped(t *testing.T) {
 	if len(s.Changes) != 2 {
 		t.Fatalf("changes = %d, want 2", len(s.Changes))
 	}
-	// Sorted stably by entity_type: a_record before mx_record.
 	if s.Changes[0].EntityType != "a_record" || s.Changes[1].EntityType != "mx_record" {
 		t.Errorf("change order = [%s %s], want [a_record mx_record]",
 			s.Changes[0].EntityType, s.Changes[1].EntityType)
@@ -248,7 +237,6 @@ func TestBuildTenantScans_Filters(t *testing.T) {
 		if got.Totals.ScanCount != 2 {
 			t.Errorf("scans = %d, want 2 (two discovered)", got.Totals.ScanCount)
 		}
-		// SourceCounts faceted: ignores the source filter so both chips stay populated.
 		if got.SourceCounts["user_supplied"] != 1 || got.SourceCounts["discovered"] != 2 {
 			t.Errorf("SourceCounts not faceted: %v", got.SourceCounts)
 		}

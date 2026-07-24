@@ -10,10 +10,6 @@ import (
 	"github.com/riverqueue/river/rivertype"
 )
 
-// TimingMiddleware wraps every job worked across all queues, emitting a single
-// structured log line carrying the job's identity, attempt, duration and outcome.
-// It runs around Worker.Work without any worker needing to know about it.
-// Successful runs log at DEBUG (they are noise at scale); failures log at ERROR.
 type TimingMiddleware struct {
 	river.WorkerMiddlewareDefaults
 	Logger *slog.Logger
@@ -47,10 +43,6 @@ func (m *TimingMiddleware) Work(
 	return err
 }
 
-// domainIdentityAttrs best-effort decodes the embedded DomainJobArgs identity
-// from a job's encoded args so the completion line says which domain/scan it
-// worked on. Jobs without domain args (cache purge, tenant-stats refresh) decode
-// to empty and contribute no attributes.
 func domainIdentityAttrs(encodedArgs []byte) []slog.Attr {
 	if len(encodedArgs) == 0 {
 		return nil

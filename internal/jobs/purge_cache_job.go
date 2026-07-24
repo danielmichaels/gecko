@@ -10,9 +10,6 @@ import (
 	"github.com/riverqueue/river"
 )
 
-// PurgeDNSCacheArgs drives the periodic deletion of expired dns_cache rows. River
-// runs periodic jobs on the elected leader only, so a single instance purges on
-// behalf of the whole fleet.
 type PurgeDNSCacheArgs struct{}
 
 func (PurgeDNSCacheArgs) Kind() string { return "purge_dns_cache" }

@@ -10,7 +10,6 @@ import (
 
 func cnameDetector() CNAMEDetector { return CNAMEDetector{LongChainThreshold: 8} }
 
-// target is a resolving, non-fingerprinted, short-chain baseline (no findings).
 func target(name string) CNAMETargetEvidence {
 	return CNAMETargetEvidence{Target: name, ResolutionStatus: ResolutionData, ChainLength: 1}
 }
