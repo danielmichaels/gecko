@@ -11,24 +11,12 @@ import (
 	"github.com/riverqueue/river"
 )
 
-// RefreshTenantStatsArgs drives the recompute of the Domains list stat strip
-// (record total + critical/warning domain counts) into tenant_stats.
-//
-// TenantID == 0 refreshes every tenant in two grouped passes — the periodic
-// safety-net path, run on the elected leader. TenantID > 0 refreshes a single
-// tenant via the index-driven per-page aggregates — the event-driven path,
-// enqueued when a tenant deletes a domain (the one change the grouped recompute
-// can't self-heal, since the tenant may drop to zero).
 type RefreshTenantStatsArgs struct {
 	TenantID int32 `json:"tenant_id,omitempty"`
 }
 
 func (RefreshTenantStatsArgs) Kind() string { return "refresh_tenant_stats" }
 
-// InsertOpts makes enqueues unique by args: a burst of deletes for one tenant
-// collapses to a single pending refresh (and the periodic full pass never piles
-// up on itself), so however many domains are deleted, the tenant's one
-// tenant_stats row is written once.
 func (RefreshTenantStatsArgs) InsertOpts() river.InsertOpts {
 	return river.InsertOpts{
 		UniqueOpts: river.UniqueOpts{ByArgs: true},
@@ -72,16 +60,12 @@ func (w *RefreshTenantStatsWorker) Work(
 	return nil
 }
 
-// refreshAll recomputes every tenant in two grouped passes over the whole fleet,
-// merges the two result sets per tenant, and upserts each. A tenant present in
-// neither pass (no records and no open findings) keeps its last-written row; the
-// event-driven path covers the drop-to-zero case the grouped pass misses.
 func (w *RefreshTenantStatsWorker) refreshAll(ctx context.Context) (int, error) {
 	recordTotals, err := w.Store.TenantRecordTotalsAll(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("tenant record totals: %w", err)
 	}
-	findingStats, err := w.Store.TenantFindingStatsAll(ctx)
+	findingStats, err := w.Store.FindingsTenantStats(ctx, pgtype.Int4{})
 	if err != nil {
 		return 0, fmt.Errorf("tenant finding stats: %w", err)
 	}
@@ -107,10 +91,7 @@ func (w *RefreshTenantStatsWorker) refreshAll(ctx context.Context) (int, error) 
 		at(rt.TenantID.Int32).recordTotal = rt.Total
 	}
 	for _, fs := range findingStats {
-		if !fs.TenantID.Valid {
-			continue
-		}
-		r := at(fs.TenantID.Int32)
+		r := at(fs.TenantID)
 		r.criticalCount = fs.CriticalCount
 		r.warningCount = fs.WarningCount
 	}
@@ -128,9 +109,6 @@ func (w *RefreshTenantStatsWorker) refreshAll(ctx context.Context) (int, error) 
 	return len(merged), nil
 }
 
-// refreshOne recomputes a single tenant from the index-driven per-page aggregates
-// over the tenant's own domain IDs. A tenant with no domains yields zeros — this
-// is what makes the drop-to-zero case correct the instant the delete lands.
 func (w *RefreshTenantStatsWorker) refreshOne(ctx context.Context, tenantID int32) error {
 	ids, err := w.Store.DomainsIDsByTenantID(ctx, pgtype.Int4{Int32: tenantID, Valid: true})
 	if err != nil {
@@ -138,7 +116,6 @@ func (w *RefreshTenantStatsWorker) refreshOne(ctx context.Context, tenantID int3
 	}
 
 	var recordTotal int64
-	var critical, warning int32
 	if len(ids) > 0 {
 		counts, err := w.Store.DomainsListRecordCounts(ctx, ids)
 		if err != nil {
@@ -147,19 +124,16 @@ func (w *RefreshTenantStatsWorker) refreshOne(ctx context.Context, tenantID int3
 		for _, c := range counts {
 			recordTotal += int64(c.RecordCount)
 		}
+	}
 
-		sums, err := w.Store.DomainsListFindingsSummary(ctx, ids)
-		if err != nil {
-			return fmt.Errorf("findings summary (tenant %d): %w", tenantID, err)
-		}
-		for _, s := range sums {
-			switch {
-			case s.SeverityRank <= 2:
-				critical++
-			case s.SeverityRank == 3 || s.SeverityRank == 4:
-				warning++
-			}
-		}
+	var critical, warning int32
+	findingStats, err := w.Store.FindingsTenantStats(ctx, pgtype.Int4{Int32: tenantID, Valid: true})
+	if err != nil {
+		return fmt.Errorf("findings summary (tenant %d): %w", tenantID, err)
+	}
+	if len(findingStats) > 0 {
+		critical = findingStats[0].CriticalCount
+		warning = findingStats[0].WarningCount
 	}
 
 	if err := w.Store.TenantStatsUpsert(ctx, store.TenantStatsUpsertParams{

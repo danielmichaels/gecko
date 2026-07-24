@@ -11,109 +11,40 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-func seedDMARCFinding(
+func seedFinding(
 	t *testing.T,
 	ctx context.Context,
 	pc *testhelpers.TestDatabase,
-	domainID int32,
-	severity store.FindingSeverity,
-	status store.FindingStatus,
-	issueType string,
+	tenantID int32,
+	domainName, checkKind, issueType, severity, title string,
 ) {
 	t.Helper()
-	if _, err := pc.Queries.AssessCreateDMARCFinding(ctx, store.AssessCreateDMARCFindingParams{
-		DomainID:  pgtype.Int4{Int32: domainID, Valid: true},
-		Severity:  severity,
-		Status:    status,
-		IssueType: issueType,
-		Details:   pgtype.Text{String: issueType, Valid: true},
-	}); err != nil {
-		t.Fatalf("seed dmarc finding (domain %d): %v", domainID, err)
+	domain, err := pc.Queries.DomainsGetByName(ctx, store.DomainsGetByNameParams{
+		TenantID: pgtype.Int4{Int32: tenantID, Valid: true},
+		Name:     domainName,
+	})
+	if err != nil {
+		t.Fatalf("seed finding: lookup domain (%s): %v", domainName, err)
 	}
-}
-
-func seedSPFFinding(
-	t *testing.T,
-	ctx context.Context,
-	pc *testhelpers.TestDatabase,
-	domainID int32,
-	severity store.FindingSeverity,
-	status store.FindingStatus,
-	issueType string,
-) {
-	t.Helper()
-	if _, err := pc.Queries.AssessCreateSPFFinding(ctx, store.AssessCreateSPFFindingParams{
-		DomainID:  pgtype.Int4{Int32: domainID, Valid: true},
-		Severity:  severity,
-		Status:    status,
-		IssueType: issueType,
-		Details:   pgtype.Text{String: issueType, Valid: true},
-	}); err != nil {
-		t.Fatalf("seed spf finding (domain %d): %v", domainID, err)
+	asset, err := pc.Queries.AssetsUpsertDomain(ctx, store.AssetsUpsertDomainParams{
+		TenantID: tenantID,
+		Value:    domainName,
+		DomainID: pgtype.Int4{Int32: domain.ID, Valid: true},
+		Source:   "discovered",
+	})
+	if err != nil {
+		t.Fatalf("seed finding: upsert asset (%s): %v", domainName, err)
 	}
-}
-
-func seedDKIMFinding(
-	t *testing.T,
-	ctx context.Context,
-	pc *testhelpers.TestDatabase,
-	domainID int32,
-	severity store.FindingSeverity,
-	status store.FindingStatus,
-	issueType string,
-) {
-	t.Helper()
-	if _, err := pc.Queries.AssessCreateDKIMFindingNoSelector(ctx, store.AssessCreateDKIMFindingNoSelectorParams{
-		DomainID:  pgtype.Int4{Int32: domainID, Valid: true},
-		Severity:  severity,
-		Status:    status,
+	if _, err := pc.Queries.FindingsUpsert(ctx, store.FindingsUpsertParams{
+		TenantID:  tenantID,
+		AssetID:   asset.ID,
+		CheckKind: checkKind,
 		IssueType: issueType,
-		Details:   pgtype.Text{String: issueType, Valid: true},
-	}); err != nil {
-		t.Fatalf("seed dkim finding (domain %d): %v", domainID, err)
-	}
-}
-
-func seedZoneTransferFinding(
-	t *testing.T,
-	ctx context.Context,
-	pc *testhelpers.TestDatabase,
-	domainID int32,
-	nameserver string,
-	possible bool,
-) {
-	t.Helper()
-	if _, err := pc.Queries.StoreZoneTransferFinding(ctx, store.StoreZoneTransferFindingParams{
-		DomainID:             pgtype.Int4{Int32: domainID, Valid: true},
-		Severity:             store.FindingSeverityHigh,
-		Status:               store.FindingStatusOpen,
-		Nameserver:           nameserver,
-		ZoneTransferPossible: possible,
-		TransferType:         store.TransferTypeAXFR,
-		Details:              pgtype.Text{String: "zone transfer", Valid: true},
-	}); err != nil {
-		t.Fatalf("seed zone transfer finding (domain %d): %v", domainID, err)
-	}
-}
-
-func seedCertificateFinding(
-	t *testing.T,
-	ctx context.Context,
-	pc *testhelpers.TestDatabase,
-	domainID int32,
-	severity store.FindingSeverity,
-	status store.FindingStatus,
-	issueType string,
-) {
-	t.Helper()
-	if _, err := pc.Queries.AssessCreateCertificateFinding(ctx, store.AssessCreateCertificateFindingParams{
-		DomainID:  pgtype.Int4{Int32: domainID, Valid: true},
 		Severity:  severity,
-		Status:    status,
-		IssueType: issueType,
-		Details:   pgtype.Text{String: issueType, Valid: true},
+		Title:     title,
+		Details:   issueType,
 	}); err != nil {
-		t.Fatalf("seed certificate finding (domain %d): %v", domainID, err)
+		t.Fatalf("seed finding (%s/%s/%s): %v", domainName, checkKind, issueType, err)
 	}
 }
 
@@ -126,9 +57,6 @@ func hasFindingKind(findings []service.FindingView, kind string) bool {
 	return false
 }
 
-// TestDomainsService_FindingsSummaryForPage verifies the open-findings aggregate
-// reflects worst severity, ignores compliant/closed findings, and only counts an
-// AXFR finding when the transfer is actually possible.
 func TestDomainsService_FindingsSummaryForPage(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -149,39 +77,18 @@ func TestDomainsService_FindingsSummaryForPage(t *testing.T) {
 	dHealthy := seedDomain(t, ctx, pc, tenantID, "healthy.example.com")
 	dAXFR := seedDomain(t, ctx, pc, tenantID, "axfr.example.com")
 
-	// dCrit: critical open SPF.
-	seedSPFFinding(
-		t,
-		ctx,
-		pc,
-		dCrit.ID,
-		store.FindingSeverityCritical,
-		store.FindingStatusOpen,
-		"missing_spf",
+	seedFinding(
+		t, ctx, pc, tenantID, dCrit.Name,
+		"email_security", "missing_spf", "critical", "missing_spf",
 	)
-	// dWarn: medium open DKIM.
-	seedDKIMFinding(
-		t,
-		ctx,
-		pc,
-		dWarn.ID,
-		store.FindingSeverityMedium,
-		store.FindingStatusOpen,
-		"test_mode_enabled",
+	seedFinding(
+		t, ctx, pc, tenantID, dWarn.Name,
+		"email_security", "test_mode_enabled", "medium", "test_mode_enabled",
 	)
-	// dHealthy: compliant SPF (info/closed) + a refused AXFR — neither should count.
-	seedSPFFinding(
-		t,
-		ctx,
-		pc,
-		dHealthy.ID,
-		store.FindingSeverityInfo,
-		store.FindingStatusClosed,
-		"spf_compliant",
+	seedFinding(
+		t, ctx, pc, tenantID, dAXFR.Name,
+		"zone_transfer", "zone_transfer_exposed", "high", "zone_transfer_exposed",
 	)
-	seedZoneTransferFinding(t, ctx, pc, dHealthy.ID, "ns1.healthy.example.com", false)
-	// dAXFR: a possible zone transfer (high).
-	seedZoneTransferFinding(t, ctx, pc, dAXFR.ID, "ns1.axfr.example.com", true)
 
 	ids := []int32{dCrit.ID, dWarn.ID, dHealthy.ID, dAXFR.ID}
 	sums, err := ds.FindingsSummaryForPage(ctx, p, ids)
@@ -226,8 +133,6 @@ func TestDomainsService_FindingsSummaryForPage(t *testing.T) {
 	})
 }
 
-// TestFindingsService_ListByDomain verifies findings are aggregated across types,
-// sorted worst-first, bucketed for the summary strip, and tenant-scoped.
 func TestFindingsService_ListByDomain(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -244,42 +149,25 @@ func TestFindingsService_ListByDomain(t *testing.T) {
 	p := ownerPrincipal(tenantID)
 	d := seedDomain(t, ctx, pc, tenantID, "example.com")
 
-	seedSPFFinding(
-		t,
-		ctx,
-		pc,
-		d.ID,
-		store.FindingSeverityCritical,
-		store.FindingStatusOpen,
-		"missing_spf",
+	seedFinding(
+		t, ctx, pc, tenantID, d.Name,
+		"email_security", "missing_spf", "critical", "No SPF record published",
 	)
-	seedSPFFinding(
-		t,
-		ctx,
-		pc,
-		d.ID,
-		store.FindingSeverityInfo,
-		store.FindingStatusClosed,
-		"spf_compliant",
+	seedFinding(
+		t, ctx, pc, tenantID, d.Name,
+		"mta_sts", "mta_sts_not_configured", "info", "MTA-STS not configured (optional)",
 	)
-	seedDMARCFinding(
-		t,
-		ctx,
-		pc,
-		d.ID,
-		store.FindingSeverityMedium,
-		store.FindingStatusOpen,
-		"dmarc_missing_tags",
+	seedFinding(
+		t, ctx, pc, tenantID, d.Name,
+		"email_security", "dmarc_missing_tags", "medium", "DMARC missing rua/ruf tags",
 	)
-	seedZoneTransferFinding(t, ctx, pc, d.ID, "ns1.example.com", true)
-	seedCertificateFinding(
-		t,
-		ctx,
-		pc,
-		d.ID,
-		store.FindingSeverityHigh,
-		store.FindingStatusOpen,
-		"certificate_hostname_mismatch",
+	seedFinding(
+		t, ctx, pc, tenantID, d.Name,
+		"zone_transfer", "zone_transfer_exposed", "critical", "Zone transfer (AXFR) exposed",
+	)
+	seedFinding(
+		t, ctx, pc, tenantID, d.Name,
+		"certificate", "certificate_hostname_mismatch", "high", "Certificate hostname mismatch",
 	)
 
 	res, err := fs.ListByDomain(ctx, p, d.Uid)
@@ -291,18 +179,18 @@ func TestFindingsService_ListByDomain(t *testing.T) {
 	}
 	if res.CriticalCount != 3 {
 		t.Errorf(
-			"critical = %d, want 3 (missing_spf + possible AXFR + cert high)",
+			"critical = %d, want 3 (missing_spf + zone_transfer_exposed + cert high)",
 			res.CriticalCount,
 		)
 	}
 	if res.WarningCount != 1 {
 		t.Errorf("warnings = %d, want 1 (dmarc medium)", res.WarningCount)
 	}
-	if !hasFindingKind(res.Findings, "CERT") {
-		t.Errorf("expected a CERT finding in ListByDomain, got %+v", res.Findings)
+	if !hasFindingKind(res.Findings, "certificate") {
+		t.Errorf("expected a certificate finding in ListByDomain, got %+v", res.Findings)
 	}
 	if res.HealthyCount != 1 {
-		t.Errorf("healthy = %d, want 1 (spf_compliant)", res.HealthyCount)
+		t.Errorf("healthy = %d, want 1 (mta_sts info)", res.HealthyCount)
 	}
 	if len(res.Findings) == 0 || res.Findings[0].SevClass != "crit" {
 		t.Fatalf("expected worst-first ordering with a crit head, got %+v", res.Findings)
@@ -315,7 +203,6 @@ func TestFindingsService_ListByDomain(t *testing.T) {
 		)
 	}
 
-	// A different tenant must not be able to read this domain's findings.
 	other := ownerPrincipal(createTenant(t, ctx, pc, "other@example.com"))
 	if _, err := fs.ListByDomain(ctx, other, d.Uid); !errors.Is(err, service.ErrNotFound) {
 		t.Errorf("cross-tenant ListByDomain err = %v, want ErrNotFound", err)

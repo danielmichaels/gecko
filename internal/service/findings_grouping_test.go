@@ -4,26 +4,23 @@ import (
 	"testing"
 
 	"github.com/danielmichaels/gecko/internal/store"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// tenantRow builds a synthetic UNION row for the pure grouping tests. Status is
-// always open; details/value carry placeholder evidence.
 func tenantRow(
-	domainUID, domainName, kind string,
-	sev store.FindingSeverity,
+	domainUID, domainName, checkKind string,
+	severity string,
 	issueType string,
-) store.FindingsListByTenantRow {
-	return store.FindingsListByTenantRow{
-		FindingUid: kind + "_" + domainUID + "_" + issueType,
+) store.FindingsListTenantOpenRow {
+	return store.FindingsListTenantOpenRow{
+		FindingUid: checkKind + "_" + domainUID + "_" + issueType,
 		DomainUid:  domainUID,
 		DomainName: domainName,
-		Kind:       kind,
-		Severity:   sev,
-		Status:     store.FindingStatusOpen,
+		CheckKind:  checkKind,
+		Severity:   severity,
+		Status:     "open",
 		IssueType:  issueType,
-		Value:      pgtype.Text{String: "evidence", Valid: true},
-		Details:    pgtype.Text{String: "detail text", Valid: true},
+		Title:      issueType,
+		Details:    "detail text",
 	}
 }
 
@@ -36,18 +33,15 @@ func domainNames(groups []DomainFindingGroup) []string {
 }
 
 func TestBuildTenantFindings_GroupingAndOrdering(t *testing.T) {
-	// Rows arrive pre-sorted domain-then-severity (as the SQL guarantees).
-	rows := []store.FindingsListByTenantRow{
-		tenantRow("a", "a.com", "DMARC", store.FindingSeverityHigh, "weak_dmarc_policy"),
-		tenantRow("b", "b.com", "SPF", store.FindingSeverityCritical, "missing_spf"),
-		tenantRow("b", "b.com", "DMARC", store.FindingSeverityCritical, "missing_dmarc"),
-		tenantRow("c", "c.com", "ZONE", store.FindingSeverityCritical, "zone_transfer_exposed"),
+	rows := []store.FindingsListTenantOpenRow{
+		tenantRow("a", "a.com", "DMARC", "high", "weak_dmarc_policy"),
+		tenantRow("b", "b.com", "SPF", "critical", "missing_spf"),
+		tenantRow("b", "b.com", "DMARC", "critical", "missing_dmarc"),
+		tenantRow("c", "c.com", "ZONE", "critical", "zone_transfer_exposed"),
 	}
 
 	got := buildTenantFindings(rows, FindingsListOptions{})
 
-	// Worst-first: b and c are both critical, tie broken by count desc (b has 2),
-	// then a (high) last.
 	want := []string{"b.com", "c.com", "a.com"}
 	names := domainNames(got.Groups)
 	if len(names) != len(want) {
@@ -71,10 +65,10 @@ func TestBuildTenantFindings_GroupingAndOrdering(t *testing.T) {
 }
 
 func TestBuildTenantFindings_WithinGroupSeverityOrderPreserved(t *testing.T) {
-	rows := []store.FindingsListByTenantRow{
-		tenantRow("a", "a.com", "SPF", store.FindingSeverityCritical, "missing_spf"),
-		tenantRow("a", "a.com", "DMARC", store.FindingSeverityHigh, "weak_dmarc_policy"),
-		tenantRow("a", "a.com", "DKIM", store.FindingSeverityLow, "test_mode_enabled"),
+	rows := []store.FindingsListTenantOpenRow{
+		tenantRow("a", "a.com", "SPF", "critical", "missing_spf"),
+		tenantRow("a", "a.com", "DMARC", "high", "weak_dmarc_policy"),
+		tenantRow("a", "a.com", "DKIM", "low", "test_mode_enabled"),
 	}
 
 	got := buildTenantFindings(rows, FindingsListOptions{})
@@ -90,17 +84,11 @@ func TestBuildTenantFindings_WithinGroupSeverityOrderPreserved(t *testing.T) {
 }
 
 func TestBuildTenantFindings_Filters(t *testing.T) {
-	rows := []store.FindingsListByTenantRow{
-		tenantRow("a", "acme.com", "SPF", store.FindingSeverityCritical, "missing_spf"),
-		tenantRow("a", "acme.com", "DMARC", store.FindingSeverityHigh, "weak_dmarc_policy"),
-		tenantRow(
-			"b",
-			"blog.example.org",
-			"DKIM",
-			store.FindingSeverityMedium,
-			"test_mode_enabled",
-		),
-		tenantRow("c", "shop.example.org", "SPF", store.FindingSeverityLow, "soft_fail_spf_policy"),
+	rows := []store.FindingsListTenantOpenRow{
+		tenantRow("a", "acme.com", "SPF", "critical", "missing_spf"),
+		tenantRow("a", "acme.com", "DMARC", "high", "weak_dmarc_policy"),
+		tenantRow("b", "blog.example.org", "DKIM", "medium", "test_mode_enabled"),
+		tenantRow("c", "shop.example.org", "SPF", "low", "soft_fail_spf_policy"),
 	}
 
 	t.Run("severity narrows to one tier", func(t *testing.T) {
@@ -114,8 +102,6 @@ func TestBuildTenantFindings_Filters(t *testing.T) {
 		if len(got.Groups) != 1 || got.Groups[0].DomainName != "acme.com" {
 			t.Errorf("groups = %v, want [acme.com]", domainNames(got.Groups))
 		}
-		// SeverityCounts is faceted: ignores the active severity filter, so all
-		// tiers keep their counts for the chips.
 		if got.SeverityCounts["high"] != 1 || got.SeverityCounts["med"] != 1 {
 			t.Errorf("SeverityCounts not faceted: %v", got.SeverityCounts)
 		}
@@ -126,7 +112,6 @@ func TestBuildTenantFindings_Filters(t *testing.T) {
 		if got.Totals.Open != 2 {
 			t.Errorf("open = %d, want 2 (two SPF)", got.Totals.Open)
 		}
-		// KindCounts ignores the kind filter so the dropdown stays populated.
 		if got.KindCounts["DKIM"] != 1 || got.KindCounts["DMARC"] != 1 {
 			t.Errorf("KindCounts not faceted: %v", got.KindCounts)
 		}
@@ -156,19 +141,23 @@ func TestBuildTenantFindings_Empty(t *testing.T) {
 	}
 }
 
-func TestBuildTenantFindings_RefusedZoneIsHealthy(t *testing.T) {
-	rows := []store.FindingsListByTenantRow{
-		tenantRow("a", "a.com", "ZONE", store.FindingSeverityHigh, "zone_transfer_refused"),
+func TestBuildTenantFindings_InfoSeverityReadsHealthy(t *testing.T) {
+	rows := []store.FindingsListTenantOpenRow{
+		tenantRow("a", "a.com", "MTA_STS", "info", "mta_sts_not_configured"),
 	}
 	got := buildTenantFindings(rows, FindingsListOptions{})
 	if len(got.Groups) != 1 || len(got.Groups[0].Findings) != 1 {
 		t.Fatalf("unexpected groups: %+v", got.Groups)
 	}
 	f := got.Groups[0].Findings[0]
-	if f.Tier != "ok" || f.SevClass != "ok" {
-		t.Errorf("refused zone tier/class = %q/%q, want ok/ok", f.Tier, f.SevClass)
+	if f.Tier != "ok" || f.SevClass != "info" {
+		t.Errorf("info finding tier/class = %q/%q, want ok/info", f.Tier, f.SevClass)
 	}
-	if got.Totals.High != 0 {
-		t.Errorf("Totals.High = %d, want 0 (refused is healthy)", got.Totals.High)
+	if got.Totals.Critical != 0 || got.Totals.High != 0 || got.Totals.Medium != 0 ||
+		got.Totals.Low != 0 {
+		t.Errorf("info finding must not count toward any actionable tier: %+v", got.Totals)
+	}
+	if got.Totals.Open != 1 {
+		t.Errorf("Totals.Open = %d, want 1", got.Totals.Open)
 	}
 }

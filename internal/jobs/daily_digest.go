@@ -17,23 +17,12 @@ import (
 	"github.com/riverqueue/river"
 )
 
-// defaultHighImpactLimit caps how many high-impact items the digest itemizes when
-// config does not set one.
 const defaultHighImpactLimit = 50
 
-// DailyDigestArgs drives the daily notification digest. Like ScheduledScanArgs it
-// carries no payload: River runs PeriodicJobs once cluster-wide on the elected
-// leader, so the tick is a leader-singleton with no extra uniqueness needed.
 type DailyDigestArgs struct{}
 
 func (DailyDigestArgs) Kind() string { return "daily_digest" }
 
-// DailyDigestWorker sends a per-tenant summary of changes detected since each
-// tenant's last digest, across that tenant's enabled channels. It is the recurring
-// notification half of the monitor: the periodic tick finds tenants with changes in
-// the window (last_digest_at, now] and the watermark advance — committed in the same
-// transaction as the channel enqueues — moves each tenant's window forward so the
-// same change is never reported twice.
 type DailyDigestWorker struct {
 	river.WorkerDefaults[DailyDigestArgs]
 	Logger     slog.Logger
@@ -41,14 +30,10 @@ type DailyDigestWorker struct {
 	PgxPool    *pgxpool.Pool
 	Dispatcher *notify.Dispatcher
 	Conf       *config.Conf
-	// Channels names the bearers a digest is dispatched across. Defaults to email.
-	Channels []string
+	Channels   []string
 }
 
 func (w *DailyDigestWorker) Work(ctx context.Context, _ *river.Job[DailyDigestArgs]) error {
-	// The job ticks hourly; do work only on the configured send hour. The per-tenant
-	// watermark prevents a second send within the same day even if this hour's tick
-	// runs more than once.
 	if time.Now().UTC().Hour() != w.sendHour() {
 		return nil
 	}
@@ -62,15 +47,7 @@ func (w *DailyDigestWorker) Work(ctx context.Context, _ *river.Job[DailyDigestAr
 	return nil
 }
 
-// EnqueueDueDigests is the worker's testable core: it dispatches a digest for each
-// opted-in tenant that had changes in its window, advances every processed tenant's
-// watermark, and returns how many digests were dispatched. Each tenant runs in its
-// own transaction so one tenant's failure leaves the rest of the batch intact. The
-// email channel enqueues its send_email jobs via the River client carried on ctx, so
-// no client is threaded here.
 func (w *DailyDigestWorker) EnqueueDueDigests(ctx context.Context) (int, error) {
-	// Captured once: this is the new watermark and the window's upper bound, so an
-	// observation that lands mid-batch is reported in exactly one digest.
 	now := time.Now()
 	until := pgtype.Timestamptz{Time: now, Valid: true}
 
@@ -83,8 +60,6 @@ func (w *DailyDigestWorker) EnqueueDueDigests(ctx context.Context) (int, error) 
 	for _, t := range due {
 		outcome, err := w.digestOne(ctx, t, until)
 		if err != nil {
-			// One tenant's failure must not abort the batch; its watermark stays put
-			// so the window is retried on the next eligible tick.
 			failed++
 			w.Logger.ErrorContext(
 				ctx,
@@ -115,8 +90,6 @@ func (w *DailyDigestWorker) EnqueueDueDigests(ctx context.Context) (int, error) 
 	return sent, nil
 }
 
-// digestOutcome records what happened for one tenant in a digest sweep, so the
-// sweep can tally per-reason counts for observability.
 type digestOutcome int
 
 const (
@@ -125,12 +98,6 @@ const (
 	digestSkippedNoRecipients
 )
 
-// digestOne processes a single tenant: it reads the change summary for the window,
-// and — when there are changes and recipients — renders and dispatches the digest
-// across the enabled channels, advancing the watermark in the same transaction.
-// Returns whether a digest was actually dispatched (false when the window was empty
-// or the tenant has no recipients; the watermark still advances in those cases so
-// the empty window is not re-scanned).
 func (w *DailyDigestWorker) digestOne(
 	ctx context.Context,
 	t store.TenantsListDigestDueRow,
@@ -138,8 +105,6 @@ func (w *DailyDigestWorker) digestOne(
 ) (outcome digestOutcome, err error) {
 	since := t.NotificationsLastDigestAt
 	if !since.Valid {
-		// Never sent: bound the first digest to the fallback window rather than the
-		// tenant's whole history.
 		since = pgtype.Timestamptz{
 			Time:  until.Time.Add(-w.fallbackWindow()),
 			Valid: true,
@@ -163,7 +128,6 @@ func (w *DailyDigestWorker) digestOne(
 		return digestSkippedEmpty, err
 	}
 
-	// Empty window: advance the watermark (so we don't re-scan it) and send nothing.
 	if summary.Total() == 0 {
 		return digestSkippedEmpty, w.advanceWatermark(ctx, w.Store, t.TenantID, until)
 	}
@@ -172,14 +136,10 @@ func (w *DailyDigestWorker) digestOne(
 	if err != nil {
 		return digestSkippedEmpty, err
 	}
-	// Changes but nobody to tell: still advance the watermark so the next window
-	// starts clean (recipients may be added before the next tick).
 	if len(recipients) == 0 {
 		return digestSkippedNoRecipients, w.advanceWatermark(ctx, w.Store, t.TenantID, until)
 	}
 
-	// The high-impact section is opt-out per tenant. When off, suppress both the
-	// itemized list and the summary count so the subject and body never mention it.
 	var highImpact []notify.HighImpactItem
 	if t.NotifyHighImpact {
 		highImpact, err = loadHighImpactItems(
@@ -272,8 +232,6 @@ func (w *DailyDigestWorker) highImpactLimit() int {
 	return w.Conf.AppConf.NotifyHighImpactLimit
 }
 
-// toDigestSummary maps the store summary row into the notify model, decoding the
-// jsonb breakdown emitted by the aggregate query.
 func toDigestSummary(row store.ObservationsDigestSummaryByTenantRow) (notify.DigestSummary, error) {
 	s := notify.DigestSummary{
 		Created:    int(row.CreatedCount),
@@ -302,6 +260,3 @@ func toDigestSummary(row store.ObservationsDigestSummaryByTenantRow) (notify.Dig
 	}
 	return s, nil
 }
-
-// toDigestSummary is defined above; the shared recipient/high-impact loaders and the
-// riverEmailEnqueuer live in notification_shared.go.

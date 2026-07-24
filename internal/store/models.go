@@ -141,98 +141,6 @@ func (ns NullDomainType) Value() (driver.Value, error) {
 	return string(ns.DomainType), nil
 }
 
-type FindingSeverity string
-
-const (
-	FindingSeverityCritical FindingSeverity = "critical"
-	FindingSeverityHigh     FindingSeverity = "high"
-	FindingSeverityMedium   FindingSeverity = "medium"
-	FindingSeverityLow      FindingSeverity = "low"
-	FindingSeverityInfo     FindingSeverity = "info"
-	FindingSeverityIgnore   FindingSeverity = "ignore"
-)
-
-func (e *FindingSeverity) Scan(src interface{}) error {
-	switch s := src.(type) {
-	case []byte:
-		*e = FindingSeverity(s)
-	case string:
-		*e = FindingSeverity(s)
-	default:
-		return fmt.Errorf("unsupported scan type for FindingSeverity: %T", src)
-	}
-	return nil
-}
-
-type NullFindingSeverity struct {
-	FindingSeverity FindingSeverity `json:"finding_severity"`
-	Valid           bool            `json:"valid"` // Valid is true if FindingSeverity is not NULL
-}
-
-// Scan implements the Scanner interface.
-func (ns *NullFindingSeverity) Scan(value interface{}) error {
-	if value == nil {
-		ns.FindingSeverity, ns.Valid = "", false
-		return nil
-	}
-	ns.Valid = true
-	return ns.FindingSeverity.Scan(value)
-}
-
-// Value implements the driver Valuer interface.
-func (ns NullFindingSeverity) Value() (driver.Value, error) {
-	if !ns.Valid {
-		return nil, nil
-	}
-	return string(ns.FindingSeverity), nil
-}
-
-type FindingStatus string
-
-const (
-	FindingStatusOpen          FindingStatus = "open"
-	FindingStatusClosed        FindingStatus = "closed"
-	FindingStatusCompliant     FindingStatus = "compliant"
-	FindingStatusResolved      FindingStatus = "resolved"
-	FindingStatusIgnore        FindingStatus = "ignore"
-	FindingStatusNotApplicable FindingStatus = "not_applicable"
-)
-
-func (e *FindingStatus) Scan(src interface{}) error {
-	switch s := src.(type) {
-	case []byte:
-		*e = FindingStatus(s)
-	case string:
-		*e = FindingStatus(s)
-	default:
-		return fmt.Errorf("unsupported scan type for FindingStatus: %T", src)
-	}
-	return nil
-}
-
-type NullFindingStatus struct {
-	FindingStatus FindingStatus `json:"finding_status"`
-	Valid         bool          `json:"valid"` // Valid is true if FindingStatus is not NULL
-}
-
-// Scan implements the Scanner interface.
-func (ns *NullFindingStatus) Scan(value interface{}) error {
-	if value == nil {
-		ns.FindingStatus, ns.Valid = "", false
-		return nil
-	}
-	ns.Valid = true
-	return ns.FindingStatus.Scan(value)
-}
-
-// Value implements the driver Valuer interface.
-func (ns NullFindingStatus) Value() (driver.Value, error) {
-	if !ns.Valid {
-		return nil, nil
-	}
-	return string(ns.FindingStatus), nil
-}
-
 type ScanFrequency string
 
 const (
@@ -483,31 +391,18 @@ type ApiKeys struct {
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 }
 
-type CaaComplianceFindings struct {
-	ID           int32              `json:"id"`
-	Uid          string             `json:"uid"`
-	DomainID     pgtype.Int4        `json:"domain_id"`
-	CaaRecordID  pgtype.Int4        `json:"caa_record_id"`
-	Severity     FindingSeverity    `json:"severity"`
-	Status       FindingStatus      `json:"status"`
-	IssueType    string             `json:"issue_type"`
-	StandardName pgtype.Text        `json:"standard_name"`
-	Details      pgtype.Text        `json:"details"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
-}
-
-type CaaConfigurationFindings struct {
-	ID          int32              `json:"id"`
-	Uid         string             `json:"uid"`
-	DomainID    pgtype.Int4        `json:"domain_id"`
-	CaaRecordID pgtype.Int4        `json:"caa_record_id"`
-	Severity    FindingSeverity    `json:"severity"`
-	Status      FindingStatus      `json:"status"`
-	IssueType   string             `json:"issue_type"`
-	Details     pgtype.Text        `json:"details"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+type Assets struct {
+	ID            int64              `json:"id"`
+	Uid           string             `json:"uid"`
+	TenantID      int32              `json:"tenant_id"`
+	Kind          string             `json:"kind"`
+	Value         string             `json:"value"`
+	ParentAssetID pgtype.Int8        `json:"parent_asset_id"`
+	IsCdn         bool               `json:"is_cdn"`
+	Source        string             `json:"source"`
+	FirstSeen     pgtype.Timestamptz `json:"first_seen"`
+	LastSeen      pgtype.Timestamptz `json:"last_seen"`
+	DomainID      pgtype.Int4        `json:"domain_id"`
 }
 
 type CaaRecords struct {
@@ -519,19 +414,6 @@ type CaaRecords struct {
 	Value     string             `json:"value"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
-}
-
-type CertificateFindings struct {
-	ID            int32              `json:"id"`
-	Uid           string             `json:"uid"`
-	DomainID      pgtype.Int4        `json:"domain_id"`
-	CertificateID pgtype.Int4        `json:"certificate_id"`
-	Severity      FindingSeverity    `json:"severity"`
-	Status        FindingStatus      `json:"status"`
-	IssueType     string             `json:"issue_type"`
-	Details       pgtype.Text        `json:"details"`
-	CreatedAt     pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Certificates struct {
@@ -565,64 +447,6 @@ type CnameRecords struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
-type CnameRedirectionFindings struct {
-	ID            int32              `json:"id"`
-	Uid           string             `json:"uid"`
-	DomainID      pgtype.Int4        `json:"domain_id"`
-	CnameRecordID pgtype.Int4        `json:"cname_record_id"`
-	Severity      FindingSeverity    `json:"severity"`
-	Status        FindingStatus      `json:"status"`
-	IssueType     string             `json:"issue_type"`
-	ChainLength   pgtype.Int4        `json:"chain_length"`
-	Details       pgtype.Text        `json:"details"`
-	CreatedAt     pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
-}
-
-type DanglingCnameFindings struct {
-	ID               int32              `json:"id"`
-	Uid              string             `json:"uid"`
-	DomainID         pgtype.Int4        `json:"domain_id"`
-	Severity         FindingSeverity    `json:"severity"`
-	Status           FindingStatus      `json:"status"`
-	TargetDomain     string             `json:"target_domain"`
-	ServiceProvider  pgtype.Text        `json:"service_provider"`
-	TakeoverPossible bool               `json:"takeover_possible"`
-	Details          pgtype.Text        `json:"details"`
-	CreatedAt        pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
-}
-
-type DkimFindings struct {
-	ID          int32              `json:"id"`
-	Uid         string             `json:"uid"`
-	DomainID    pgtype.Int4        `json:"domain_id"`
-	TxtRecordID pgtype.Int4        `json:"txt_record_id"`
-	Severity    FindingSeverity    `json:"severity"`
-	Status      FindingStatus      `json:"status"`
-	Selector    pgtype.Text        `json:"selector"`
-	IssueType   string             `json:"issue_type"`
-	Details     pgtype.Text        `json:"details"`
-	DkimValue   pgtype.Text        `json:"dkim_value"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
-}
-
-type DmarcFindings struct {
-	ID          int32              `json:"id"`
-	Uid         string             `json:"uid"`
-	DomainID    pgtype.Int4        `json:"domain_id"`
-	TxtRecordID pgtype.Int4        `json:"txt_record_id"`
-	Severity    FindingSeverity    `json:"severity"`
-	Status      FindingStatus      `json:"status"`
-	Policy      pgtype.Text        `json:"policy"`
-	IssueType   string             `json:"issue_type"`
-	Details     pgtype.Text        `json:"details"`
-	DmarcValue  pgtype.Text        `json:"dmarc_value"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
-}
-
 type DnsCache struct {
 	Qtype     int32              `json:"qtype"`
 	Fqdn      string             `json:"fqdn"`
@@ -641,37 +465,6 @@ type DnsRateLimitBucket struct {
 	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
 }
 
-type DnsResolutionConsistencyFindings struct {
-	ID              int32              `json:"id"`
-	Uid             string             `json:"uid"`
-	DomainID        pgtype.Int4        `json:"domain_id"`
-	Severity        FindingSeverity    `json:"severity"`
-	Status          FindingStatus      `json:"status"`
-	RecordType      string             `json:"record_type"`
-	Resolver1       string             `json:"resolver1"`
-	Resolver1Result pgtype.Text        `json:"resolver1_result"`
-	Resolver2       string             `json:"resolver2"`
-	Resolver2Result pgtype.Text        `json:"resolver2_result"`
-	Details         pgtype.Text        `json:"details"`
-	CreatedAt       pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
-}
-
-type DnsResolutionLatencyFindings struct {
-	ID          int32              `json:"id"`
-	Uid         string             `json:"uid"`
-	DomainID    pgtype.Int4        `json:"domain_id"`
-	Severity    FindingSeverity    `json:"severity"`
-	Status      FindingStatus      `json:"status"`
-	RecordType  string             `json:"record_type"`
-	Resolver    string             `json:"resolver"`
-	LatencyMs   int32              `json:"latency_ms"`
-	ThresholdMs int32              `json:"threshold_ms"`
-	Details     pgtype.Text        `json:"details"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
-}
-
 type DnskeyRecords struct {
 	ID        int32              `json:"id"`
 	Uid       string             `json:"uid"`
@@ -682,33 +475,6 @@ type DnskeyRecords struct {
 	Algorithm int32              `json:"algorithm"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
-}
-
-type DnssecComplianceFindings struct {
-	ID           int32              `json:"id"`
-	Uid          string             `json:"uid"`
-	DomainID     pgtype.Int4        `json:"domain_id"`
-	Severity     FindingSeverity    `json:"severity"`
-	Status       FindingStatus      `json:"status"`
-	IssueType    string             `json:"issue_type"`
-	StandardName pgtype.Text        `json:"standard_name"`
-	Details      pgtype.Text        `json:"details"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
-}
-
-type DnssecFindings struct {
-	ID             int32              `json:"id"`
-	Uid            string             `json:"uid"`
-	DomainID       pgtype.Int4        `json:"domain_id"`
-	DnskeyRecordID pgtype.Int4        `json:"dnskey_record_id"`
-	DsRecordID     pgtype.Int4        `json:"ds_record_id"`
-	Severity       FindingSeverity    `json:"severity"`
-	Status         FindingStatus      `json:"status"`
-	IssueType      string             `json:"issue_type"`
-	Details        pgtype.Text        `json:"details"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
 }
 
 type DnssecScanResults struct {
@@ -767,19 +533,29 @@ type DsRecords struct {
 	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
 }
 
-type EmailAuthComplianceFindings struct {
-	ID           int32              `json:"id"`
-	Uid          string             `json:"uid"`
-	DomainID     pgtype.Int4        `json:"domain_id"`
-	TxtRecordID  pgtype.Int4        `json:"txt_record_id"`
-	Severity     FindingSeverity    `json:"severity"`
-	Status       FindingStatus      `json:"status"`
-	AuthType     string             `json:"auth_type"`
-	IssueType    string             `json:"issue_type"`
-	StandardName pgtype.Text        `json:"standard_name"`
-	Details      pgtype.Text        `json:"details"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+type Findings struct {
+	ID         int64              `json:"id"`
+	Uid        string             `json:"uid"`
+	TenantID   int32              `json:"tenant_id"`
+	AssetID    int64              `json:"asset_id"`
+	CheckKind  string             `json:"check_kind"`
+	IssueType  string             `json:"issue_type"`
+	EntityKey  string             `json:"entity_key"`
+	Severity   string             `json:"severity"`
+	Status     string             `json:"status"`
+	Title      string             `json:"title"`
+	Details    string             `json:"details"`
+	Evidence   []byte             `json:"evidence"`
+	FirstSeen  pgtype.Timestamptz `json:"first_seen"`
+	LastSeen   pgtype.Timestamptz `json:"last_seen"`
+	ResolvedAt pgtype.Timestamptz `json:"resolved_at"`
+}
+
+type FindingsEvents struct {
+	ID        int64              `json:"id"`
+	FindingID int64              `json:"finding_id"`
+	Event     string             `json:"event"`
+	At        pgtype.Timestamptz `json:"at"`
 }
 
 type Invitations struct {
@@ -805,68 +581,12 @@ type Memberships struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
-type MinimumRecordSetFindings struct {
-	ID                int32              `json:"id"`
-	Uid               string             `json:"uid"`
-	DomainID          pgtype.Int4        `json:"domain_id"`
-	Severity          FindingSeverity    `json:"severity"`
-	Status            FindingStatus      `json:"status"`
-	IssueType         string             `json:"issue_type"`
-	MissingRecordType string             `json:"missing_record_type"`
-	Details           pgtype.Text        `json:"details"`
-	CreatedAt         pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
-}
-
 type MxRecords struct {
 	ID         int32              `json:"id"`
 	Uid        string             `json:"uid"`
 	DomainID   pgtype.Int4        `json:"domain_id"`
 	Preference int32              `json:"preference"`
 	Target     string             `json:"target"`
-	CreatedAt  pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
-}
-
-type NameserverReachabilityFindings struct {
-	ID             int32              `json:"id"`
-	Uid            string             `json:"uid"`
-	DomainID       pgtype.Int4        `json:"domain_id"`
-	NsRecordID     pgtype.Int4        `json:"ns_record_id"`
-	Severity       FindingSeverity    `json:"severity"`
-	Status         FindingStatus      `json:"status"`
-	Nameserver     string             `json:"nameserver"`
-	IssueType      string             `json:"issue_type"`
-	ResponseTimeMs pgtype.Int4        `json:"response_time_ms"`
-	Details        pgtype.Text        `json:"details"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
-}
-
-type NameserverRedundancyFindings struct {
-	ID               int32              `json:"id"`
-	Uid              string             `json:"uid"`
-	DomainID         pgtype.Int4        `json:"domain_id"`
-	Severity         FindingSeverity    `json:"severity"`
-	Status           FindingStatus      `json:"status"`
-	IssueType        string             `json:"issue_type"`
-	NameserverCount  int32              `json:"nameserver_count"`
-	RecommendedCount int32              `json:"recommended_count"`
-	Details          pgtype.Text        `json:"details"`
-	CreatedAt        pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
-}
-
-type NsConfigurationFindings struct {
-	ID         int32              `json:"id"`
-	Uid        string             `json:"uid"`
-	DomainID   pgtype.Int4        `json:"domain_id"`
-	NsRecordID pgtype.Int4        `json:"ns_record_id"`
-	Severity   FindingSeverity    `json:"severity"`
-	Status     FindingStatus      `json:"status"`
-	IssueType  string             `json:"issue_type"`
-	Nameserver string             `json:"nameserver"`
-	Details    pgtype.Text        `json:"details"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
 }
@@ -878,23 +598,6 @@ type NsRecords struct {
 	Nameserver string             `json:"nameserver"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
-}
-
-type OpenPortFindings struct {
-	ID           int32              `json:"id"`
-	Uid          string             `json:"uid"`
-	DomainID     pgtype.Int4        `json:"domain_id"`
-	ARecordID    pgtype.Int4        `json:"a_record_id"`
-	AaaaRecordID pgtype.Int4        `json:"aaaa_record_id"`
-	Severity     FindingSeverity    `json:"severity"`
-	Status       FindingStatus      `json:"status"`
-	IpAddress    string             `json:"ip_address"`
-	Port         int32              `json:"port"`
-	Service      pgtype.Text        `json:"service"`
-	IssueType    string             `json:"issue_type"`
-	Details      pgtype.Text        `json:"details"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
 type PasswordResetTokens struct {
@@ -971,20 +674,6 @@ type SoaRecords struct {
 	MinimumTtl int32              `json:"minimum_ttl"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
-}
-
-type SpfFindings struct {
-	ID          int32              `json:"id"`
-	Uid         string             `json:"uid"`
-	DomainID    pgtype.Int4        `json:"domain_id"`
-	TxtRecordID pgtype.Int4        `json:"txt_record_id"`
-	Severity    FindingSeverity    `json:"severity"`
-	Status      FindingStatus      `json:"status"`
-	IssueType   string             `json:"issue_type"`
-	SpfValue    pgtype.Text        `json:"spf_value"`
-	Details     pgtype.Text        `json:"details"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
 type SrvRecords struct {
@@ -1066,20 +755,4 @@ type ZoneTransferAttempts struct {
 	ErrorMessage  pgtype.Text        `json:"error_message"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
-}
-
-type ZoneTransferFindings struct {
-	ID                   int32              `json:"id"`
-	Uid                  string             `json:"uid"`
-	DomainID             pgtype.Int4        `json:"domain_id"`
-	NsRecordID           pgtype.Int4        `json:"ns_record_id"`
-	Severity             FindingSeverity    `json:"severity"`
-	Status               FindingStatus      `json:"status"`
-	Nameserver           string             `json:"nameserver"`
-	ZoneTransferPossible bool               `json:"zone_transfer_possible"`
-	TransferType         TransferType       `json:"transfer_type"`
-	Details              pgtype.Text        `json:"details"`
-	TransferDetails      []byte             `json:"transfer_details"`
-	CreatedAt            pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
 }

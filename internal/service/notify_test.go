@@ -18,8 +18,6 @@ type uiNotification struct {
 	ChangeType string `json:"change_type"`
 }
 
-// awaitDomainNotify LISTENs on domain_observations, runs mutate, and returns the
-// decoded notification (failing if none arrives).
 func awaitDomainNotify(
 	t *testing.T,
 	ctx context.Context,
@@ -51,8 +49,6 @@ func awaitDomainNotify(
 	return got
 }
 
-// TestDomainsService_Delete_NotifiesUI: a delete writes no observation of its
-// own, so without this signal the live list stays stale until a manual reload.
 func TestDomainsService_Delete_NotifiesUI(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -80,9 +76,6 @@ func TestDomainsService_Delete_NotifiesUI(t *testing.T) {
 	}
 }
 
-// TestDomainsService_Create_NotifiesUI: a newly added domain should appear on
-// other open sessions immediately, not only once its first scan observation
-// lands.
 func TestDomainsService_Create_NotifiesUI(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -111,9 +104,6 @@ func TestDomainsService_Create_NotifiesUI(t *testing.T) {
 	}
 }
 
-// TestDomainsService_Update_NotifiesUI: a status change (e.g. active->inactive)
-// is list-visible but writes no observation — and an inactive domain is never
-// rescanned, so the signal is the only way the live list reflects it.
 func TestDomainsService_Update_NotifiesUI(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()

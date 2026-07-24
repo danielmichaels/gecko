@@ -11,11 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// TestEnqueueDomainScan_StampsSchedule locks in the chokepoint contract: every
-// scan that EnqueueDomainScan actually creates — manual, discovered, or scheduled
-// — stamps last_scanned_at and advances next_scan_at by the effective interval,
-// and an 'off' domain is stamped but left out of the schedule (cursor NULL). This
-// is the single place that fixes the updated_at proxy for all triggers.
 func TestEnqueueDomainScan_StampsSchedule(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -77,9 +72,6 @@ func TestEnqueueDomainScan_StampsSchedule(t *testing.T) {
 
 	t.Run("manual Force resets the cadence clock from the real scan", func(t *testing.T) {
 		d := createDomain("manual.chokepoint.test")
-		// Pre-seed a near-term cursor; a manual scan must push it a FULL daily
-		// interval out, proving the clock resets from the actual scan, not the old
-		// cursor.
 		setNextScan(t, ctx, pc, d.ID, "1 hour")
 
 		enqueue(d, DomainScanOptions{Force: true, Source: store.ScanSourceUserSupplied})

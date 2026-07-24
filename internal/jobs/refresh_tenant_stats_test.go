@@ -56,27 +56,43 @@ func seedStatsARecord(
 	}
 }
 
-func seedStatsSPF(
+func seedStatsFinding(
 	t *testing.T,
 	ctx context.Context,
 	q *store.Queries,
-	domainID int32,
-	severity store.FindingSeverity,
+	tenantID int32,
+	domainName, severity string,
 ) {
 	t.Helper()
-	if _, err := q.AssessCreateSPFFinding(ctx, store.AssessCreateSPFFindingParams{
-		DomainID:  pgtype.Int4{Int32: domainID, Valid: true},
-		Severity:  severity,
-		Status:    store.FindingStatusOpen,
+	domain, err := q.DomainsGetByName(ctx, store.DomainsGetByNameParams{
+		TenantID: pgtype.Int4{Int32: tenantID, Valid: true},
+		Name:     domainName,
+	})
+	if err != nil {
+		t.Fatalf("seed finding: lookup domain (%s): %v", domainName, err)
+	}
+	asset, err := q.AssetsUpsertDomain(ctx, store.AssetsUpsertDomainParams{
+		TenantID: tenantID,
+		Value:    domainName,
+		DomainID: pgtype.Int4{Int32: domain.ID, Valid: true},
+		Source:   "discovered",
+	})
+	if err != nil {
+		t.Fatalf("seed finding: upsert asset (%s): %v", domainName, err)
+	}
+	if _, err := q.FindingsUpsert(ctx, store.FindingsUpsertParams{
+		TenantID:  tenantID,
+		AssetID:   asset.ID,
+		CheckKind: "email_security",
 		IssueType: "missing_spf",
+		Severity:  severity,
+		Title:     "missing_spf",
+		Details:   "missing_spf",
 	}); err != nil {
-		t.Fatalf("seed spf finding (domain %d): %v", domainID, err)
+		t.Fatalf("seed finding (%s): %v", domainName, err)
 	}
 }
 
-// TestRefreshTenantStatsWorker_ComputesAndIsolatesTenants seeds records and
-// findings across two tenants, runs the refresh, and asserts each tenant's
-// cached rollups are correct and do not leak across the tenant boundary.
 func TestRefreshTenantStatsWorker_ComputesAndIsolatesTenants(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -91,20 +107,15 @@ func TestRefreshTenantStatsWorker_ComputesAndIsolatesTenants(t *testing.T) {
 	t1 := seedStatsTenant(t, ctx, q, "owner1@stats.test")
 	t2 := seedStatsTenant(t, ctx, q, "owner2@stats.test")
 
-	// Tenant 1: two domains. dCrit has 3 A records + a critical SPF finding;
-	// dWarn has 1 A record + a medium SPF finding. Record total = 4, critical = 1,
-	// warning = 1.
 	dCrit := seedStatsDomain(t, ctx, q, t1, "crit.t1.test")
 	dWarn := seedStatsDomain(t, ctx, q, t1, "warn.t1.test")
 	seedStatsARecord(t, ctx, q, dCrit, "192.0.2.1")
 	seedStatsARecord(t, ctx, q, dCrit, "192.0.2.2")
 	seedStatsARecord(t, ctx, q, dCrit, "192.0.2.3")
 	seedStatsARecord(t, ctx, q, dWarn, "192.0.2.4")
-	seedStatsSPF(t, ctx, q, dCrit, store.FindingSeverityCritical)
-	seedStatsSPF(t, ctx, q, dWarn, store.FindingSeverityMedium)
+	seedStatsFinding(t, ctx, q, t1, "crit.t1.test", "critical")
+	seedStatsFinding(t, ctx, q, t1, "warn.t1.test", "medium")
 
-	// Tenant 2: one domain with 1 A record and no findings. Record total = 1,
-	// critical = 0, warning = 0.
 	dOther := seedStatsDomain(t, ctx, q, t2, "only.t2.test")
 	seedStatsARecord(t, ctx, q, dOther, "198.51.100.1")
 
@@ -142,7 +153,6 @@ func TestRefreshTenantStatsWorker_ComputesAndIsolatesTenants(t *testing.T) {
 		)
 	}
 
-	// Re-running is idempotent: counts do not double.
 	if err := w.Work(ctx, &river.Job[RefreshTenantStatsArgs]{Args: RefreshTenantStatsArgs{}}); err != nil {
 		t.Fatalf("worker Work (rerun): %v", err)
 	}
@@ -155,10 +165,6 @@ func TestRefreshTenantStatsWorker_ComputesAndIsolatesTenants(t *testing.T) {
 	}
 }
 
-// TestRefreshTenantStatsWorker_SingleTenant verifies the event-driven path: a
-// refresh scoped to one tenant computes that tenant's rollups, and once the
-// tenant's domains are deleted, a re-run overwrites the cached row with zeros
-// (the drop-to-zero case the periodic full pass can't self-heal).
 func TestRefreshTenantStatsWorker_SingleTenant(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -183,7 +189,7 @@ func TestRefreshTenantStatsWorker_SingleTenant(t *testing.T) {
 	d := seedStatsDomain(t, ctx, q, tid, "d.single.test")
 	seedStatsARecord(t, ctx, q, d, "192.0.2.10")
 	seedStatsARecord(t, ctx, q, d, "192.0.2.11")
-	seedStatsSPF(t, ctx, q, d, store.FindingSeverityCritical)
+	seedStatsFinding(t, ctx, q, tid, "d.single.test", "critical")
 
 	run(tid)
 
@@ -198,8 +204,6 @@ func TestRefreshTenantStatsWorker_SingleTenant(t *testing.T) {
 		)
 	}
 
-	// Delete the tenant's domains (cascading records/findings), then refresh just
-	// this tenant: the cached row must drop to zeros.
 	if _, err := pc.Pool.Exec(ctx, "DELETE FROM domains WHERE tenant_id = $1", tid); err != nil {
 		t.Fatalf("delete domains: %v", err)
 	}

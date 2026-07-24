@@ -2,19 +2,44 @@ package assessor
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 
+	"github.com/danielmichaels/gecko/internal/checks"
+	"github.com/danielmichaels/gecko/internal/detect"
 	"github.com/danielmichaels/gecko/internal/dnsclient"
+	"github.com/danielmichaels/gecko/internal/findings"
 	"github.com/danielmichaels/gecko/internal/observer"
 
 	"github.com/danielmichaels/gecko/internal/store"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// resolutionString maps the resolver's tri-state onto the detect package's string
+// form, so collectors record it in evidence without leaking the dnsclient type and
+// a failed lookup (Indeterminate) stays distinguishable from authoritative absence.
+func resolutionString(s dnsclient.ResolutionStatus) string {
+	switch s {
+	case dnsclient.ResolutionData:
+		return detect.ResolutionData
+	case dnsclient.ResolutionEmpty:
+		return detect.ResolutionEmpty
+	default:
+		return detect.ResolutionIndeterminate
+	}
+}
+
 type Config struct {
-	Logger    *slog.Logger
-	Store     *store.Queries
+	Logger *slog.Logger
+	Store  *store.Queries
+	// Pool backs the reconcile transaction so a finding upsert and its
+	// findings_events row commit atomically. Left nil in unit tests (which run
+	// with a zero identity and skip reconcile).
+	Pool      *pgxpool.Pool
 	DNSClient dnsclient.Resolver
 	// HTTPProber probes CNAME targets for the dangling/takeover assessor. Left nil
 	// outside tests; NewAssessor supplies the default outbound prober.
@@ -31,6 +56,7 @@ type Config struct {
 type Assessor struct {
 	logger    *slog.Logger
 	store     *store.Queries
+	pool      *pgxpool.Pool
 	dnsClient dnsclient.Resolver
 	prober    HTTPProber
 	nsProber  NameserverProber
@@ -62,6 +88,7 @@ func NewAssessor(cfg Config) *Assessor {
 
 	return &Assessor{
 		store:     cfg.Store,
+		pool:      cfg.Pool,
 		logger:    logger,
 		dnsClient: dnsClient,
 		prober:    prober,
@@ -70,62 +97,75 @@ func NewAssessor(cfg Config) *Assessor {
 	}
 }
 
-// createFinding upserts an email-security finding and, when running under a real
-// scan, emits a created/updated observation for it. entity_type, entity_key, and
-// payload are derived from the finding params.
-func (a *Assessor) createFinding(
+// getDomain loads a domain by its UID within the assessor's tenant, mapping a
+// missing row to a caller-friendly not-found error.
+func (a *Assessor) getDomain(
 	ctx context.Context,
-	params interface{},
-	logMessage string,
-	issueType string,
-) error {
-	var (
-		err        error
-		entityType string
-		entityKey  string
-		payload    []byte
-	)
-	switch p := params.(type) {
-	case store.AssessCreateSPFFindingParams:
-		_, err = a.store.AssessCreateSPFFinding(ctx, p)
-		entityType, entityKey = observer.EntitySPFFinding, p.IssueType
-		payload = observer.PayloadJSON(map[string]any{
-			"issue_type": p.IssueType, "severity": string(p.Severity),
-			"status": string(p.Status), "value": p.SpfValue.String, "details": p.Details.String,
-		})
-	case store.AssessCreateDKIMFindingParams:
-		_, err = a.store.AssessCreateDKIMFinding(ctx, p)
-		entityType = observer.EntityDKIMFinding
-		entityKey = p.IssueType + "|" + p.Selector.String
-		payload = observer.PayloadJSON(map[string]any{
-			"issue_type": p.IssueType, "selector": p.Selector.String, "severity": string(p.Severity),
-			"status": string(p.Status), "value": p.DkimValue.String, "details": p.Details.String,
-		})
-	case store.AssessCreateDKIMFindingNoSelectorParams:
-		_, err = a.store.AssessCreateDKIMFindingNoSelector(ctx, p)
-		entityType, entityKey = observer.EntityDKIMFinding, p.IssueType
-		payload = observer.PayloadJSON(map[string]any{
-			"issue_type": p.IssueType, "severity": string(p.Severity),
-			"status": string(p.Status), "value": p.DkimValue.String, "details": p.Details.String,
-		})
-	case store.AssessCreateDMARCFindingParams:
-		_, err = a.store.AssessCreateDMARCFinding(ctx, p)
-		entityType, entityKey = observer.EntityDMARCFinding, p.IssueType
-		payload = observer.PayloadJSON(map[string]any{
-			"issue_type": p.IssueType, "severity": string(p.Severity), "status": string(p.Status),
-			"policy": p.Policy.String, "value": p.DmarcValue.String, "details": p.Details.String,
-		})
-	default:
-		return fmt.Errorf("unsupported finding type")
-	}
+	domainUID string,
+) (store.DomainsGetByIdentifierRow, error) {
+	domain, err := a.store.DomainsGetByIdentifier(ctx, store.DomainsGetByIdentifierParams{
+		Uid:      domainUID,
+		TenantID: pgtype.Int4{Int32: a.identity.TenantID, Valid: true},
+	})
 	if err != nil {
-		a.logger.WarnContext(ctx, logMessage, "error", err)
-		return fmt.Errorf("create finding: %s %w", issueType, err)
+		if errors.Is(err, sql.ErrNoRows) {
+			return store.DomainsGetByIdentifierRow{}, fmt.Errorf(
+				"domain %s not found in database",
+				domainUID,
+			)
+		}
+		a.logger.ErrorContext(ctx, "Error looking up domain", "domain", domainUID, "error", err)
+		return store.DomainsGetByIdentifierRow{}, err
 	}
+	return domain, nil
+}
 
-	if oErr := observer.New(a.store).RecordFindingChange(ctx, a.identity, entityType, entityKey, payload); oErr != nil {
-		a.logger.WarnContext(ctx, "failed to emit finding observation",
-			"entity_type", entityType, "entity_key", entityKey, "error", oErr)
+// reconcile resolves the domain's asset and persists the detector output via the
+// desired-state reconciler, inside one transaction so a finding and its
+// findings_events row commit together. It is a no-op without a real scan identity
+// (unit tests exercise detectors directly), so callers need not guard it.
+func (a *Assessor) reconcile(
+	ctx context.Context,
+	domainID int32,
+	domainName, checkKind string,
+	res checks.DetectResult,
+) error {
+	if a.identity.TenantID == 0 {
+		return nil
 	}
-	return nil
+	if a.pool == nil {
+		// No pool wired (should not happen in a real scan): fall back to the
+		// non-atomic pool store rather than dropping the reconcile.
+		return a.reconcileWith(ctx, a.store, domainID, domainName, checkKind, res)
+	}
+	tx, err := a.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin reconcile tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := a.reconcileWith(ctx, a.store.WithTx(tx), domainID, domainName, checkKind, res); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// reconcileWith runs the asset upsert and reconciler against q, which is either the
+// pool store or a transaction-scoped store.
+func (a *Assessor) reconcileWith(
+	ctx context.Context,
+	q *store.Queries,
+	domainID int32,
+	domainName, checkKind string,
+	res checks.DetectResult,
+) error {
+	asset, err := q.AssetsUpsertDomain(ctx, store.AssetsUpsertDomainParams{
+		TenantID: a.identity.TenantID,
+		Value:    domainName,
+		DomainID: pgtype.Int4{Int32: domainID, Valid: true},
+		Source:   "discovered",
+	})
+	if err != nil {
+		return fmt.Errorf("resolve asset for %s: %w", domainName, err)
+	}
+	return findings.Reconcile(ctx, q, a.identity.TenantID, asset.ID, checkKind, res)
 }

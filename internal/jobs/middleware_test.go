@@ -55,8 +55,6 @@ func TestTimingMiddleware_LogsSuccessAtDebug(t *testing.T) {
 		t.Fatalf("expected exactly 1 log record, got %d", len(h.records))
 	}
 	rec := h.records[0]
-	// Successful completions are noise at info during bulk scans; they log at
-	// DEBUG so the duration/identity is there when needed but quiet by default.
 	if rec.Level != slog.LevelDebug {
 		t.Errorf("expected level DEBUG, got %v", rec.Level)
 	}

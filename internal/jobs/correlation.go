@@ -11,9 +11,6 @@ import (
 
 const metadataTraceIDKey = "trace_id"
 
-// CorrelationInsertHook persists the context's trace ID onto a job's metadata at
-// insertion time, allowing the correlation ID to survive the gap between the
-// inserting goroutine and the worker that later runs the job.
 type CorrelationInsertHook struct {
 	river.HookDefaults
 }
@@ -46,9 +43,6 @@ func (h *CorrelationInsertHook) InsertBegin(
 	return nil
 }
 
-// CorrelationMiddleware restores the trace ID stamped onto a job's metadata back
-// into the context before the worker runs, so every log line and any jobs the
-// worker inserts inherit the same correlation ID.
 type CorrelationMiddleware struct {
 	river.WorkerMiddlewareDefaults
 }

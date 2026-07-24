@@ -15,8 +15,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// fakeEmailEnqueuer records the emails the digest dispatches, standing in for the
-// River send_email path so the worker can be exercised without a live client.
 type fakeEmailEnqueuer struct {
 	msgs []mailer.Message
 }
@@ -65,9 +63,6 @@ func seedRecipient(
 	}
 }
 
-// enableDigest creates the tenant_settings row with the digest toggle set and the
-// watermark planted in the past so freshly-seeded observations fall inside the
-// window.
 func enableDigest(
 	t *testing.T,
 	ctx context.Context,
@@ -92,12 +87,6 @@ func enableDigest(
 	}
 }
 
-// seedObservation inserts an observation with an explicit in-window observed_at
-// (a minute in the past). domain_observations.observed_at is TIMESTAMP(0), which
-// Postgres *rounds* to the nearest second — a default now() could round up past the
-// worker's sub-second upper bound and defer the row to the next window (correct in
-// production, but flaky for a test that expects it this window). A fixed past stamp
-// removes that ambiguity.
 func seedObservation(
 	t *testing.T,
 	ctx context.Context,
@@ -139,10 +128,6 @@ func watermarkOf(
 	return row.NotificationsLastDigestAt
 }
 
-// TestDailyDigestWorker_EnqueueDueDigests verifies the worker dispatches a digest
-// only for opted-in tenants that had changes in the window, fans out one email per
-// active owner/manager, advances every processed tenant's watermark, and never
-// touches a tenant whose digest toggle is off.
 func TestDailyDigestWorker_EnqueueDueDigests(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -155,13 +140,12 @@ func TestDailyDigestWorker_EnqueueDueDigests(t *testing.T) {
 
 	past := time.Now().Add(-1 * time.Hour)
 
-	// Tenant A: opted in, has changes (incl. one high-impact), two recipients.
 	tenantA := seedStatsTenant(t, ctx, q, "owner@a.digest.test")
 	enableDigest(t, ctx, q, tenantA, true, past)
 	domA := seedStatsDomain(t, ctx, q, tenantA, "a.digest.test")
 	seedRecipient(t, ctx, q, tenantA, "owner@a.digest.test", store.UserRoleOwner)
 	seedRecipient(t, ctx, q, tenantA, "mgr@a.digest.test", store.UserRoleManager)
-	seedRecipient(t, ctx, q, tenantA, "viewer@a.digest.test", store.UserRoleViewer) // excluded
+	seedRecipient(t, ctx, q, tenantA, "viewer@a.digest.test", store.UserRoleViewer)
 	seedObservation(
 		t,
 		ctx,
@@ -185,12 +169,10 @@ func TestDailyDigestWorker_EnqueueDueDigests(t *testing.T) {
 		`{"severity":"critical","status":"open"}`,
 	)
 
-	// Tenant B: opted in, NO changes in the window.
 	tenantB := seedStatsTenant(t, ctx, q, "owner@b.digest.test")
 	enableDigest(t, ctx, q, tenantB, true, past)
 	seedRecipient(t, ctx, q, tenantB, "owner@b.digest.test", store.UserRoleOwner)
 
-	// Tenant C: digest OFF, has changes — must be skipped entirely.
 	tenantC := seedStatsTenant(t, ctx, q, "owner@c.digest.test")
 	enableDigest(t, ctx, q, tenantC, false, past)
 	domC := seedStatsDomain(t, ctx, q, tenantC, "c.digest.test")
@@ -218,7 +200,6 @@ func TestDailyDigestWorker_EnqueueDueDigests(t *testing.T) {
 		t.Errorf("dispatched digests = %d, want 1 (only tenant A)", n)
 	}
 
-	// Tenant A: one email to the owner + one to the manager; viewer excluded.
 	if len(enq.msgs) != 2 {
 		t.Fatalf("emails = %d, want 2 (owner + manager of tenant A)", len(enq.msgs))
 	}
@@ -233,7 +214,6 @@ func TestDailyDigestWorker_EnqueueDueDigests(t *testing.T) {
 		t.Error("viewer received a digest, want excluded")
 	}
 
-	// Watermarks: A and B advanced past the old watermark; C (off) untouched.
 	if wm := watermarkOf(t, ctx, q, tenantA); !wm.Valid || !wm.Time.After(past) {
 		t.Errorf("tenant A watermark = %v, want advanced past %v", wm.Time, past)
 	}
@@ -244,8 +224,6 @@ func TestDailyDigestWorker_EnqueueDueDigests(t *testing.T) {
 		t.Errorf("tenant C watermark = %v, want unchanged (digest off)", wm.Time)
 	}
 
-	// Back-to-back rerun: A's window is now empty (watermark advanced), so nothing
-	// new is dispatched.
 	enq2 := &fakeEmailEnqueuer{}
 	w.Dispatcher = notify.NewDispatcher(notify.NewEmailChannel(enq2))
 	n2, err := w.EnqueueDueDigests(ctx)
@@ -260,9 +238,6 @@ func TestDailyDigestWorker_EnqueueDueDigests(t *testing.T) {
 	}
 }
 
-// TestDailyDigestWorker_HighImpactToggleOff verifies that a tenant with the
-// high-impact toggle off still gets the digest, but the critical/high section is
-// suppressed from both the subject and the body.
 func TestDailyDigestWorker_HighImpactToggleOff(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -276,7 +251,6 @@ func TestDailyDigestWorker_HighImpactToggleOff(t *testing.T) {
 	past := time.Now().Add(-1 * time.Hour)
 
 	tenant := seedStatsTenant(t, ctx, q, "owner@hi.digest.test")
-	// Digest on, high-impact OFF.
 	if _, err := q.NotificationSettingsUpsert(ctx, store.NotificationSettingsUpsertParams{
 		TenantID:          tenant,
 		NotifyDailyDigest: true,

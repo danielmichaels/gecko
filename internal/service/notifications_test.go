@@ -88,7 +88,6 @@ func TestNotificationsService_SetRequiresOwnerOrManager(t *testing.T) {
 		t.Fatalf("viewer Set err = %v, want ErrForbidden", err)
 	}
 
-	// A manager is allowed.
 	if err := ns.SetNotificationSettings(ctx, principalWithRole(tenant, "manager"), service.NotificationSettings{
 		DailyDigest: true,
 		HighImpact:  false,
@@ -110,7 +109,6 @@ func TestNotificationsService_AlertToggleRoundTrips(t *testing.T) {
 	ns := svc.NotificationsService()
 	tenant := createTenant(t, ctx, pc, "a@notif-alert.com")
 
-	// Default: alerts off (opt-in).
 	got, err := ns.GetNotificationSettings(ctx, ownerPrincipal(tenant))
 	if err != nil {
 		t.Fatalf("GetNotificationSettings: %v", err)
@@ -147,7 +145,6 @@ func TestNotificationsService_PerUserOptOut(t *testing.T) {
 	svc := newTestService(pc, &fakeScheduler{})
 	ns := svc.NotificationsService()
 	tenant := createTenant(t, ctx, pc, "a@notif-optout.com")
-	// Use the provisioned owner's real id so the per-user query targets a real row.
 	u, err := pc.Queries.UserGetByEmail(ctx, "a@notif-optout.com")
 	if err != nil {
 		t.Fatalf("get user: %v", err)
@@ -155,7 +152,6 @@ func TestNotificationsService_PerUserOptOut(t *testing.T) {
 	p := principalWithRole(tenant, "owner")
 	p.UserID = u.ID
 
-	// Default: not opted out.
 	out, err := ns.GetMyNotificationOptOut(ctx, p)
 	if err != nil {
 		t.Fatalf("GetMyNotificationOptOut: %v", err)

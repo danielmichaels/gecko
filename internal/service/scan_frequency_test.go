@@ -13,8 +13,6 @@ import (
 
 func freqPtr(f store.ScanFrequency) *store.ScanFrequency { return &f }
 
-// readNextScan reads a domain's raw next_scan_at by uid (DomainsGetByID does not
-// project the scheduling columns).
 func readNextScan(
 	t *testing.T,
 	ctx context.Context,
@@ -71,7 +69,6 @@ func TestDomainsService_SetScanFrequency_OwnerRecomputes(t *testing.T) {
 	svc := newTestService(pc, &fakeScheduler{})
 	owner := ownerPrincipal(tid)
 
-	// Explicit weekly override: cursor ~7d out (within +10% jitter).
 	dom, err := svc.DomainsService().
 		SetScanFrequency(ctx, owner, d.Uid, freqPtr(store.ScanFrequencyWeekly))
 	if err != nil {
@@ -87,7 +84,6 @@ func TestDomainsService_SetScanFrequency_OwnerRecomputes(t *testing.T) {
 		t.Errorf("weekly next_scan_at in %v, want ~168-185h", d)
 	}
 
-	// Off override: cursor cleared (paused).
 	dom, err = svc.DomainsService().
 		SetScanFrequency(ctx, owner, d.Uid, freqPtr(store.ScanFrequencyOff))
 	if err != nil {
@@ -97,8 +93,6 @@ func TestDomainsService_SetScanFrequency_OwnerRecomputes(t *testing.T) {
 		t.Errorf("next_scan_at after off = %v, want NULL", dom.NextScanAt)
 	}
 
-	// Inherit (nil): with no tenant settings row the default falls back to daily,
-	// so the cursor returns ~1d out and the stored override is NULL.
 	dom, err = svc.DomainsService().SetScanFrequency(ctx, owner, d.Uid, nil)
 	if err != nil {
 		t.Fatalf("set inherit: %v", err)
@@ -165,7 +159,6 @@ func TestSettingsService_SetDefaultScanFrequency_RecomputesInheriting(t *testing
 	inheriting := seedDomain(t, ctx, pc, tid, "inherit.settings.test")
 	overridden := seedDomain(t, ctx, pc, tid, "override.settings.test")
 
-	// Give the overridden domain an explicit weekly override (cursor ~7d).
 	if _, err := svc.DomainsService().
 		SetScanFrequency(ctx, owner, overridden.Uid, freqPtr(store.ScanFrequencyWeekly)); err != nil {
 		t.Fatalf("seed override: %v", err)
@@ -175,13 +168,11 @@ func TestSettingsService_SetDefaultScanFrequency_RecomputesInheriting(t *testing
 		t.Fatalf("override next_scan_at not set")
 	}
 
-	// Change the tenant default to hourly.
 	if err := svc.SettingsService().
 		SetDefaultScanFrequency(ctx, owner, store.ScanFrequencyHourly); err != nil {
 		t.Fatalf("set default hourly: %v", err)
 	}
 
-	// Inheriting domain pulled in to ~1h.
 	inh, ok := readNextScan(t, ctx, pc, inheriting.Uid)
 	if !ok {
 		t.Fatalf("inheriting next_scan_at not set after default change")
@@ -190,13 +181,11 @@ func TestSettingsService_SetDefaultScanFrequency_RecomputesInheriting(t *testing
 		t.Errorf("inheriting next_scan_at in %v, want ~1h after hourly default", d)
 	}
 
-	// Overridden domain untouched by the default change.
 	overrideAfter, _ := readNextScan(t, ctx, pc, overridden.Uid)
 	if !overrideAfter.Equal(overrideBefore) {
 		t.Errorf("overridden next_scan_at changed: %v -> %v", overrideBefore, overrideAfter)
 	}
 
-	// The default is persisted.
 	got, err := svc.SettingsService().GetScanSettings(ctx, owner)
 	if err != nil {
 		t.Fatalf("get scan settings: %v", err)

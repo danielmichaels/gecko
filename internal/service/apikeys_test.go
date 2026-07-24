@@ -35,7 +35,6 @@ func setupAPIKeysService(
 	return svc.AuthService(), svc.APIKeysService()
 }
 
-// TestAPIKeysService_Create_HappyPath verifies owner can create an API key.
 func TestAPIKeysService_Create_HappyPath(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -64,7 +63,6 @@ func TestAPIKeysService_Create_HappyPath(t *testing.T) {
 	}
 }
 
-// TestAPIKeysService_Create_ViewerForbidden verifies viewer cannot create API keys.
 func TestAPIKeysService_Create_ViewerForbidden(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -89,7 +87,6 @@ func TestAPIKeysService_Create_ViewerForbidden(t *testing.T) {
 	}
 }
 
-// TestAPIKeysService_Create_ManagerAllowed verifies manager can create API keys.
 func TestAPIKeysService_Create_ManagerAllowed(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -114,7 +111,6 @@ func TestAPIKeysService_Create_ManagerAllowed(t *testing.T) {
 	}
 }
 
-// TestAPIKeysService_List_TenantScoped verifies List returns only the caller's tenant keys.
 func TestAPIKeysService_List_TenantScoped(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -144,7 +140,6 @@ func TestAPIKeysService_List_TenantScoped(t *testing.T) {
 		t.Fatalf("list B: %v", err)
 	}
 
-	// Tenant A should have signup key + created key; B should have only its signup key.
 	foundA := false
 	for _, r := range rowsA {
 		if r.Name == "key-a" {
@@ -161,8 +156,6 @@ func TestAPIKeysService_List_TenantScoped(t *testing.T) {
 	}
 }
 
-// TestAPIKeysService_ListMine_UserScoped verifies ListMine returns only the
-// caller's own keys, not other members' keys in the same tenant.
 func TestAPIKeysService_ListMine_UserScoped(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -219,7 +212,6 @@ func TestAPIKeysService_ListMine_UserScoped(t *testing.T) {
 	}
 }
 
-// TestAPIKeysService_Revoke_HappyPath verifies owner can revoke an API key.
 func TestAPIKeysService_Revoke_HappyPath(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -243,7 +235,6 @@ func TestAPIKeysService_Revoke_HappyPath(t *testing.T) {
 	}
 }
 
-// TestAPIKeysService_Revoke_ViewerForbidden verifies viewer cannot revoke API keys.
 func TestAPIKeysService_Revoke_ViewerForbidden(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -268,7 +259,6 @@ func TestAPIKeysService_Revoke_ViewerForbidden(t *testing.T) {
 	}
 }
 
-// TestAPIKeysService_Revoke_CrossTenant verifies cross-tenant revoke returns ErrNotFound.
 func TestAPIKeysService_Revoke_CrossTenant(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -284,13 +274,11 @@ func TestAPIKeysService_Revoke_CrossTenant(t *testing.T) {
 	pA := principalForEmail(t, ctx, pc, "owner@a.com")
 	pB := principalForEmail(t, ctx, pc, "owner@b.com")
 
-	// Create key in tenant A.
 	resultA, err := keysSvc.Create(ctx, pA, "key-a")
 	if err != nil {
 		t.Fatalf("create key for A: %v", err)
 	}
 
-	// Tenant B owner tries to revoke tenant A's key.
 	err = keysSvc.Revoke(ctx, pB, resultA.UID)
 	if !errors.Is(err, service.ErrNotFound) {
 		t.Errorf("cross-tenant revoke: want ErrNotFound, got %v", err)
@@ -300,7 +288,6 @@ func TestAPIKeysService_Revoke_CrossTenant(t *testing.T) {
 	}
 }
 
-// TestAPIKeysService_Revoke_NotFound verifies revoking non-existent key returns ErrNotFound.
 func TestAPIKeysService_Revoke_NotFound(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -323,7 +310,6 @@ func TestAPIKeysService_Revoke_NotFound(t *testing.T) {
 	}
 }
 
-// TestAPIKeysService_Create_KeyIsUsable verifies the returned raw key authenticates.
 func TestAPIKeysService_Create_KeyIsUsable(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -342,7 +328,6 @@ func TestAPIKeysService_Create_KeyIsUsable(t *testing.T) {
 		t.Fatalf("create key: %v", err)
 	}
 
-	// The raw key should be verifiable against the DB.
 	p, _, err := auth.VerifyAPIKey(ctx, pc.Queries, result.Raw)
 	if err != nil {
 		t.Fatalf("verify key: %v", err)

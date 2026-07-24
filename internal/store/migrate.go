@@ -11,13 +11,6 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-// MigrateUp applies all pending goose migrations against dsn using the embedded
-// migration FS. It is idempotent: a second call with nothing pending is a no-op.
-//
-// The running binary does not migrate in production (an external entrypoint /
-// `task db:migration:up` does); this exists for the embedded-Postgres dev path,
-// which must migrate its own freshly-initialised database on startup. When logger
-// is non-nil, goose output is routed through it.
 func MigrateUp(dsn string, logger *slog.Logger) error {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
@@ -42,8 +35,6 @@ func MigrateUp(dsn string, logger *slog.Logger) error {
 	return nil
 }
 
-// waitForDB pings db until it accepts connections or 30s elapses — an embedded
-// Postgres may still be finishing startup when MigrateUp is called.
 func waitForDB(db *sql.DB) error {
 	const maxRetries = 30
 	for i := range maxRetries {
@@ -58,8 +49,6 @@ func waitForDB(db *sql.DB) error {
 	return nil
 }
 
-// gooseSlogBridge routes goose's logger output through slog. Fatalf logs at Error
-// rather than exiting the process — MigrateUp returns the error to its caller.
 type gooseSlogBridge struct{ l *slog.Logger }
 
 func (g *gooseSlogBridge) Printf(format string, v ...any) {

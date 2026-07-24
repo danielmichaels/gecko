@@ -39,7 +39,6 @@ func setupInvitationsService(
 	return svc.AuthService(), svc.InvitationsService()
 }
 
-// TestInvitationsService_Create_HappyPath verifies owner can create an invitation.
 func TestInvitationsService_Create_HappyPath(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -74,7 +73,6 @@ func TestInvitationsService_Create_HappyPath(t *testing.T) {
 	}
 }
 
-// TestInvitationsService_Create_ViewerForbidden verifies viewer cannot create invitation.
 func TestInvitationsService_Create_ViewerForbidden(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -102,7 +100,6 @@ func TestInvitationsService_Create_ViewerForbidden(t *testing.T) {
 	}
 }
 
-// TestInvitationsService_Create_ManagerCannotGrantOwner verifies manager cannot invite at owner role.
 func TestInvitationsService_Create_ManagerCannotGrantOwner(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -130,9 +127,6 @@ func TestInvitationsService_Create_ManagerCannotGrantOwner(t *testing.T) {
 	}
 }
 
-// TestInvitationsService_Create_ExistingUserOtherTenant verifies that an email
-// which already has an account in ANOTHER tenant is invitable (multi-tenant
-// membership), while an email already a member of THIS tenant is rejected.
 func TestInvitationsService_Create_ExistingUserOtherTenant(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -143,11 +137,10 @@ func TestInvitationsService_Create_ExistingUserOtherTenant(t *testing.T) {
 	defer pc.Close(ctx)
 
 	authSvc, invSvc := setupInvitationsService(t, pc)
-	signupUser(t, authSvc, "owner@a.com", "supersecret")    // tenant A
-	signupUser(t, authSvc, "existing@b.com", "supersecret") // their own tenant B
+	signupUser(t, authSvc, "owner@a.com", "supersecret")
+	signupUser(t, authSvc, "existing@b.com", "supersecret")
 	pOwner := principalForEmail(t, ctx, pc, "owner@a.com")
 
-	// Inviting an existing account from another tenant is allowed.
 	if _, err := invSvc.Create(ctx, pOwner, service.InvitationsCreateParams{
 		Email: "existing@b.com",
 		Role:  "viewer",
@@ -155,7 +148,6 @@ func TestInvitationsService_Create_ExistingUserOtherTenant(t *testing.T) {
 		t.Fatalf("invite existing other-tenant user: %v", err)
 	}
 
-	// Inviting an email already a member of THIS tenant is rejected.
 	_, err = invSvc.Create(ctx, pOwner, service.InvitationsCreateParams{
 		Email: "owner@a.com",
 		Role:  "viewer",
@@ -168,7 +160,6 @@ func TestInvitationsService_Create_ExistingUserOtherTenant(t *testing.T) {
 	}
 }
 
-// TestInvitationsService_Create_DuplicatePendingInvite verifies collision on active invite.
 func TestInvitationsService_Create_DuplicatePendingInvite(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -182,7 +173,6 @@ func TestInvitationsService_Create_DuplicatePendingInvite(t *testing.T) {
 	signupUser(t, authSvc, "owner@a.com", "supersecret")
 	pOwner := principalForEmail(t, ctx, pc, "owner@a.com")
 
-	// First invite goes through.
 	_, err = invSvc.Create(ctx, pOwner, service.InvitationsCreateParams{
 		Email: "new@a.com",
 		Role:  "viewer",
@@ -191,7 +181,6 @@ func TestInvitationsService_Create_DuplicatePendingInvite(t *testing.T) {
 		t.Fatalf("first invite: %v", err)
 	}
 
-	// Second invite for same email while first is still live → conflict.
 	_, err = invSvc.Create(ctx, pOwner, service.InvitationsCreateParams{
 		Email: "new@a.com",
 		Role:  "viewer",
@@ -208,7 +197,6 @@ func TestInvitationsService_Create_DuplicatePendingInvite(t *testing.T) {
 	}
 }
 
-// TestInvitationsService_List_TenantScoped verifies List returns only the caller's tenant.
 func TestInvitationsService_List_TenantScoped(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -250,7 +238,6 @@ func TestInvitationsService_List_TenantScoped(t *testing.T) {
 	}
 }
 
-// TestInvitationsService_Revoke_HappyPath verifies owner can revoke a pending invite.
 func TestInvitationsService_Revoke_HappyPath(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -283,7 +270,6 @@ func TestInvitationsService_Revoke_HappyPath(t *testing.T) {
 	}
 }
 
-// TestInvitationsService_Revoke_ViewerForbidden verifies viewer cannot revoke.
 func TestInvitationsService_Revoke_ViewerForbidden(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -308,7 +294,6 @@ func TestInvitationsService_Revoke_ViewerForbidden(t *testing.T) {
 	}
 }
 
-// TestInvitationsService_Revoke_CrossTenant verifies cross-tenant revoke returns ErrNotFound.
 func TestInvitationsService_Revoke_CrossTenant(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -324,7 +309,6 @@ func TestInvitationsService_Revoke_CrossTenant(t *testing.T) {
 	pA := principalForEmail(t, ctx, pc, "owner@a.com")
 	pB := principalForEmail(t, ctx, pc, "owner@b.com")
 
-	// Seed an invite in tenant A directly.
 	rawToken, err := auth.GenerateToken()
 	if err != nil {
 		t.Fatalf("generate token: %v", err)
@@ -341,7 +325,6 @@ func TestInvitationsService_Revoke_CrossTenant(t *testing.T) {
 		t.Fatalf("seed invite: %v", err)
 	}
 
-	// Tenant B owner tries to revoke tenant A's invite.
 	err = invSvc.Revoke(ctx, pB, inv.Uid)
 	if !errors.Is(err, service.ErrNotFound) {
 		t.Errorf("cross-tenant revoke: want ErrNotFound, got %v", err)
@@ -351,7 +334,6 @@ func TestInvitationsService_Revoke_CrossTenant(t *testing.T) {
 	}
 }
 
-// TestInvitationsService_TokenUsable verifies the returned token is accepted by AcceptInvite.
 func TestInvitationsService_TokenUsable(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -373,7 +355,6 @@ func TestInvitationsService_TokenUsable(t *testing.T) {
 		t.Fatalf("create invite: %v", err)
 	}
 
-	// Accept the invitation using the returned token.
 	_, err = authSvc.AcceptInvite(ctx, service.AcceptInviteParams{
 		Token:    result.Token,
 		Password: "supersecret",

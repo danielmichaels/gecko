@@ -13,9 +13,6 @@ import (
 	"github.com/riverqueue/river"
 )
 
-// loadDigestRecipients returns a tenant's notification recipients (active
-// owners/managers who have not opted out). Shared by the daily digest and the
-// high-impact alert sweep so both honour the same recipient and opt-out rules.
 func loadDigestRecipients(
 	ctx context.Context,
 	st *store.Queries,
@@ -32,9 +29,6 @@ func loadDigestRecipients(
 	return out, nil
 }
 
-// loadHighImpactItems returns the critical/high-severity changes for a tenant over
-// (since, until], capped by limit. Shared by the digest's high-impact section and
-// the alert sweep.
 func loadHighImpactItems(
 	ctx context.Context,
 	st *store.Queries,
@@ -68,8 +62,6 @@ func loadHighImpactItems(
 	return out, nil
 }
 
-// ifaceText coerces a sqlc interface{} column (payload->>'x' projects as untyped
-// text) to a string, tolerating a NULL (nil) value.
 func ifaceText(v any) string {
 	if s, ok := v.(string); ok {
 		return s
@@ -84,10 +76,6 @@ func textOrEmpty(t pgtype.Text) string {
 	return ""
 }
 
-// riverEmailEnqueuer satisfies notify.EmailEnqueuer by inserting a send_email job on
-// the caller's transaction, reusing exactly the path riverScheduler.EnqueueEmail
-// uses. The River client comes from context (populated inside a running worker), so
-// the email channel stays decoupled from the client lifecycle.
 type riverEmailEnqueuer struct{}
 
 func (riverEmailEnqueuer) EnqueueEmail(ctx context.Context, tx pgx.Tx, msg mailer.Message) error {

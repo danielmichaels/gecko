@@ -11,9 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// TestEnqueueDomainScan locks in the Phase 1 orchestration guard invariants: the
-// active-status gate (Force never bypasses it), the leaf-job fan-out, and the
-// recency dedup for discovered scans (which Force does bypass).
 func TestEnqueueDomainScan(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -32,7 +29,7 @@ func TestEnqueueDomainScan(t *testing.T) {
 		t.Fatalf("failed to create river client: %v", err)
 	}
 
-	const tenantID = int32(1) // seeded by test-data.sql
+	const tenantID = int32(1)
 
 	countJobs := func(name string) int {
 		var n int

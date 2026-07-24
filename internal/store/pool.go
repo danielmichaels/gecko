@@ -22,7 +22,6 @@ func NewDatabasePool(ctx context.Context, cfg *config.Conf) (*pgxpool.Pool, erro
 		cfg.Db.Db,
 		cfg.Db.SSLMode,
 	)
-	// fly.io exposes DATABASE_URL to all of its machines and is the recommended way to connect
 	if os.Getenv("DATABASE_URL") != "" {
 		dbUrl = os.Getenv("DATABASE_URL")
 	}

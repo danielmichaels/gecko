@@ -5,10 +5,6 @@ import (
 	"testing"
 )
 
-// These builders interpolate user-controlled values (workspace name, inviter
-// email) into HTML email bodies, so the HTML variant must escape them to prevent
-// injection in webmail clients. The text/plain variant stays raw by design.
-
 func TestInvitationEmail_EscapesHTMLBody(t *testing.T) {
 	evilTenant := "<script>alert(1)</script>"
 	evilInviter := "attacker<script>@evil.test"

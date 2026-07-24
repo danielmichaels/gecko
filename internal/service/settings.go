@@ -12,15 +12,10 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// SettingsService exposes per-tenant configuration. Today that is the default
-// scan cadence; future tenant-scoped settings get a home here too.
 type SettingsService struct {
 	*Service
 }
 
-// GetScanSettings returns the tenant's default scan frequency, falling back to the
-// system default (daily) when no settings row exists yet (a brand-new tenant
-// before its first write). A missing row is not an error.
 func (s *SettingsService) GetScanSettings(
 	ctx context.Context,
 	p *auth.Principal,
@@ -35,13 +30,6 @@ func (s *SettingsService) GetScanSettings(
 	return row.DefaultScanFrequency, nil
 }
 
-// SetDefaultScanFrequency sets the tenant default cadence and recomputes the
-// scheduling cursor for every inheriting domain (no per-domain override) in one
-// transaction, so the settings write and the bulk cursor recompute commit
-// atomically. Owner/manager only; ErrInvalidInput for an unknown preset.
-//
-// Overridden domains are untouched — they keep their explicit cadence — and 'off'
-// pauses every inheriting domain (cursor cleared).
 func (s *SettingsService) SetDefaultScanFrequency(
 	ctx context.Context,
 	p *auth.Principal,

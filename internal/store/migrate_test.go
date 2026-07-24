@@ -8,9 +8,6 @@ import (
 	"github.com/danielmichaels/gecko/internal/testhelpers"
 )
 
-// TestMigrateUp_Idempotent runs against the harness's already-migrated per-test
-// database, so MigrateUp must be a clean no-op — this exercises the goose wiring
-// (embedded FS + dialect) against a real Postgres and proves re-running is safe.
 func TestMigrateUp_Idempotent(t *testing.T) {
 	ctx := context.Background()
 	pc, err := testhelpers.CreateTestDatabase(ctx)

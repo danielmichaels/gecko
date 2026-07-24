@@ -12,18 +12,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// InvitationsService exposes invitation management business logic.
 type InvitationsService struct {
 	*Service
 }
 
-// InvitationsCreateParams holds the caller-supplied fields for creating an invitation.
 type InvitationsCreateParams struct {
 	Email string
 	Role  string
 }
 
-// InvitationsCreateResult holds the outcome of a successful Create call.
 type InvitationsCreateResult struct {
 	ExpiresAt time.Time
 	Token     string
@@ -31,14 +28,6 @@ type InvitationsCreateResult struct {
 	Role      string
 }
 
-// Create issues an invitation for a teammate. Owner/manager only.
-//
-// Multi-tenant: an already-registered email is allowed — the invitee accepts while
-// logged in to attach a membership. Only an email that is already a member of THIS
-// tenant is rejected (ErrConflict). A stale expired invite for the same email is
-// cleared first, while a still-live one collides on the partial unique index
-// (ErrConflict). The invitation row and its email enqueue commit atomically; the
-// raw token is also returned so the UI can reveal a copyable link as a fallback.
 func (s *InvitationsService) Create(
 	ctx context.Context,
 	p *auth.Principal,
@@ -52,8 +41,6 @@ func (s *InvitationsService) Create(
 	}
 	email := normaliseEmail(params.Email)
 
-	// Reject only if the email is already a member of THIS tenant; membership in
-	// other tenants (or no account at all) is fine.
 	if existing, err := s.DB.UserGetByEmail(ctx, email); err == nil {
 		if _, mErr := s.DB.MembershipGetRole(ctx, store.MembershipGetRoleParams{
 			UserID:   existing.ID,
@@ -127,8 +114,6 @@ func (s *InvitationsService) Create(
 	}, nil
 }
 
-// List returns all invitations scoped to the caller's tenant. Any authenticated
-// member may list; the query is tenant-scoped so no cross-tenant rows are returned.
 func (s *InvitationsService) List(
 	ctx context.Context,
 	p *auth.Principal,
@@ -140,7 +125,6 @@ func (s *InvitationsService) List(
 	return rows, nil
 }
 
-// Revoke deletes a pending invitation in the caller's tenant. Owner/manager only.
 func (s *InvitationsService) Revoke(
 	ctx context.Context,
 	p *auth.Principal,

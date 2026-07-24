@@ -17,21 +17,12 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// scanRowLimit caps how many windowed scans the tenant feed aggregates in a
-// single page. It bounds the observation aggregation (the SQL only sums
-// observations for these scans) and the DOM. ListByTenant logs when it truncates
-// so the feed never silently implies it is exhaustive.
 const scanRowLimit = 200
 
-// ScansService exposes the tenant-wide reverse-chronological scan feed.
 type ScansService struct {
 	*Service
 }
 
-// ScansListOptions narrows a tenant-wide scan listing. Empty strings mean "no
-// filter". Source is an exact match on the domain_source enum; DomainQuery is a
-// case-insensitive substring on the domain name; WindowDays bounds how far back
-// the feed reaches (0 = all-time); ChangedOnly hides clean scans (baselines stay).
 type ScansListOptions struct {
 	Source      string
 	DomainQuery string
@@ -39,8 +30,6 @@ type ScansListOptions struct {
 	ChangedOnly bool
 }
 
-// ScanChange is one entity_type rollup within a scan's diff, presentation-ready.
-// Op/Class encode the change kind: created -> +/c, updated -> ~/u, deleted -> −/d.
 type ScanChange struct {
 	EntityType string
 	ChangeType string
@@ -49,22 +38,17 @@ type ScanChange struct {
 	Count      int
 }
 
-// ScanSegment is one proportional slice of a scan's change seg-bar.
 type ScanSegment struct {
-	Class string // c | u | d
-	Width string // e.g. "34%"
+	Class string
+	Width string
 }
 
-// ScanPill is one per-change-kind count chip on a scan row.
 type ScanPill struct {
-	Class string // c | u | d
-	Glyph string // + | ~ | −
+	Class string
+	Glyph string
 	Count int
 }
 
-// ScanRunView is one scan run rendered as a feed row. State drives the timeline
-// node-dot and the summary cell: "baseline" (first observation, no parent),
-// "clean" (a re-scan that changed nothing), or "changed".
 type ScanRunView struct {
 	StartedAt     time.Time
 	ScanUID       string
@@ -88,15 +72,13 @@ type ScanRunView struct {
 	IsBaseline    bool
 }
 
-// ScanDayGroup is one day bucket on the timeline spine, newest day first.
 type ScanDayGroup struct {
-	DayKey   string // "2006-01-02" (UTC) — group identity
-	DayLabel string // "Today" | "Yesterday" | weekday ("Mon")
-	DayDate  string // dimmed date, e.g. "09 Jun"
+	DayKey   string
+	DayLabel string
+	DayDate  string
 	Scans    []ScanRunView
 }
 
-// ScanTotals drives the stat strip; counts reflect the fully-filtered view.
 type ScanTotals struct {
 	ScanCount   int
 	ChangeCount int
@@ -104,18 +86,12 @@ type ScanTotals struct {
 	CleanCount  int
 }
 
-// TenantScansResult is the tenant-wide feed: day-grouped scan runs, the totals
-// strip, and the faceted source counts for the filter chips. SourceCounts ignores
-// the active Source filter so both chips stay populated as the user narrows.
 type TenantScansResult struct {
 	SourceCounts map[string]int
 	Days         []ScanDayGroup
 	Totals       ScanTotals
 }
 
-// FlatScanView is the API-facing shape for one scan in the flat tenant feed. It
-// omits the UI-only presentation fields (TimelineURL, Segments, Pills, RelativeTime,
-// SourceLabel, AbsoluteTime, FullTime) that are meaningless outside the browser.
 type FlatScanView struct {
 	StartedAt     time.Time
 	ScanUID       string
@@ -132,17 +108,11 @@ type FlatScanView struct {
 	IsBaseline    bool
 }
 
-// FlatScansResult is the API-facing tenant-wide feed: a flat, newest-first,
-// paginated slice of scans plus the unpaginated total for pagination metadata.
 type FlatScansResult struct {
 	Scans      []FlatScanView
 	TotalCount int64
 }
 
-// ScanObservationDetail is one observation row in a scan's diff detail: the
-// entity that changed, how it changed (change_type: created|updated|deleted), and
-// its recorded payload. UI-only glyph/class fields are intentionally excluded —
-// this is the machine-facing shape.
 type ScanObservationDetail struct {
 	ObservedAt time.Time
 	EntityType string
@@ -151,18 +121,11 @@ type ScanObservationDetail struct {
 	Payload    json.RawMessage
 }
 
-// ScanDetailView is a single scan — its FlatScanView header and change aggregate
-// — plus the per-observation diff detail, for the scan-detail API.
 type ScanDetailView struct {
 	Observations []ScanObservationDetail
 	FlatScanView
 }
 
-// GetByUID returns one scan by its uid with its change aggregate and full
-// per-observation diff detail. Tenant isolation is the (tenant_id, uid) gate in
-// ScansGetByTenantUID — a cross-tenant or unknown uid yields ErrNotFound. The
-// header derivation (state, counts, breakdown) is reused from the list path via
-// mapScanRow/flatScanView so both endpoints stay in lockstep.
 func (s *ScansService) GetByUID(
 	ctx context.Context,
 	p *auth.Principal,
@@ -214,14 +177,6 @@ func (s *ScansService) GetByUID(
 	return ScanDetailView{FlatScanView: head, Observations: observations}, nil
 }
 
-// ListByTenantFlat returns the tenant scan feed as a flat, newest-first, paginated
-// slice for the REST API. It reuses ListByTenant's tenant-gated, windowed, row-capped
-// SQL and its filtering, then flattens the day groups.
-//
-// FLAG: ScansListByTenant is bounded by a time window (Since) and a hard row cap
-// (scanRowLimit=200); its observation aggregation rides idx_obs_scan and does not
-// full-scan domain_observations. Pagination here is an in-memory slice over <=200
-// rows. If the row cap grows materially this should move to SQL-level pagination.
 func (s *ScansService) ListByTenantFlat(
 	ctx context.Context,
 	p *auth.Principal,
@@ -252,7 +207,6 @@ func (s *ScansService) ListByTenantFlat(
 	return FlatScansResult{Scans: all[lo:hi], TotalCount: total}, nil
 }
 
-// flatScanView projects a presentation ScanRunView down to its API fields.
 func flatScanView(v ScanRunView) FlatScanView {
 	return FlatScanView{
 		StartedAt:     v.StartedAt,
@@ -271,9 +225,6 @@ func flatScanView(v ScanRunView) FlatScanView {
 	}
 }
 
-// ListByTenant returns the tenant's reverse-chronological scan feed with per-scan
-// change aggregates. Tenant isolation is the WHERE s.tenant_id gate inside
-// ScansListByTenant — never a Go-side filter.
 func (s *ScansService) ListByTenant(
 	ctx context.Context,
 	p *auth.Principal,
@@ -306,9 +257,6 @@ func (s *ScansService) ListByTenant(
 	return buildTenantScans(rows, opts, now), nil
 }
 
-// buildTenantScans is the pure grouping/filter/derive layer over the raw rows
-// (which arrive newest-first). Separated from the DB call so it is exhaustively
-// unit-testable with synthetic rows and an injected clock.
 func buildTenantScans(
 	rows []store.ScansListByTenantRow,
 	opts ScansListOptions,
@@ -325,8 +273,6 @@ func buildTenantScans(
 		if query != "" && !strings.Contains(strings.ToLower(v.DomainName), query) {
 			continue
 		}
-		// Faceted: the source chip ignores its own filter so both chips stay
-		// populated as the domain search narrows.
 		res.SourceCounts[v.Source]++
 
 		if opts.Source != "" && v.Source != opts.Source {
@@ -356,7 +302,6 @@ func buildTenantScans(
 	return res
 }
 
-// mapScanRow maps one aggregated SQL row to a presentation-ready scan view.
 func mapScanRow(row store.ScansListByTenantRow, now time.Time) ScanRunView {
 	started := row.StartedAt.Time
 	isBaseline := !row.ParentScanUid.Valid || row.ParentScanUid.String == ""
@@ -399,7 +344,6 @@ func mapScanRow(row store.ScansListByTenantRow, now time.Time) ScanRunView {
 	}
 }
 
-// sourceLabel renders the domain_source enum as its badge text.
 func sourceLabel(source string) string {
 	switch source {
 	case string(store.DomainSourceUserSupplied):
@@ -411,9 +355,6 @@ func sourceLabel(source string) string {
 	}
 }
 
-// dayBucket assigns a scan to a UTC day bucket and renders its divider labels.
-// Day boundaries are server-side UTC for v1 (deterministic, test-friendly);
-// per-user timezone is out of scope.
 func dayBucket(now, t time.Time) (key, label, date string) {
 	tu, nu := t.UTC(), now.UTC()
 	key = tu.Format("2006-01-02")
@@ -434,8 +375,6 @@ func dayBucket(now, t time.Time) (key, label, date string) {
 	return key, label, date
 }
 
-// relativeSince renders a human "Nm ago" string against the injected clock,
-// mirroring ui.relativeTime but with an injectable now for deterministic tests.
 func relativeSince(now, t time.Time) string {
 	d := now.Sub(t)
 	if d < 0 {
@@ -455,10 +394,9 @@ func relativeSince(now, t time.Time) string {
 	}
 }
 
-// scanChangeKind pairs a change kind with its seg/pill CSS class and op glyph.
 type scanChangeKind struct {
-	class string // c | u | d
-	glyph string // + | ~ | −
+	class string
+	glyph string
 	count int
 }
 
@@ -470,8 +408,6 @@ func scanChangeKinds(created, updated, deleted int) []scanChangeKind {
 	}
 }
 
-// scanSegments builds proportional seg-bar widths over the present change kinds;
-// the last present segment absorbs the rounding remainder so widths sum to 100%.
 func scanSegments(created, updated, deleted int) []ScanSegment {
 	total := created + updated + deleted
 	if total == 0 {
@@ -496,8 +432,6 @@ func scanSegments(created, updated, deleted int) []ScanSegment {
 	return segs
 }
 
-// scanPills builds one count chip per present change kind, worst-neutral order
-// created/updated/deleted.
 func scanPills(created, updated, deleted int) []ScanPill {
 	var pills []ScanPill
 	for _, k := range scanChangeKinds(created, updated, deleted) {
@@ -508,8 +442,6 @@ func scanPills(created, updated, deleted int) []ScanPill {
 	return pills
 }
 
-// scanChanges unmarshals the jsonb breakdown into presentation-ready changes,
-// mapped to op/class and sorted stably by entity type then change kind.
 func scanChanges(raw []byte) []ScanChange {
 	if len(raw) == 0 {
 		return nil
@@ -542,7 +474,6 @@ func scanChanges(raw []byte) []ScanChange {
 	return out
 }
 
-// changeOpClass maps an observation change_type to its op glyph and CSS class.
 func changeOpClass(changeType string) (op, class string) {
 	switch changeType {
 	case "created":
@@ -554,7 +485,6 @@ func changeOpClass(changeType string) (op, class string) {
 	}
 }
 
-// classRank fixes the within-entity display order: created, updated, deleted.
 func classRank(class string) int {
 	switch class {
 	case "c":

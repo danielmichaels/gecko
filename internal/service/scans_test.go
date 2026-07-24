@@ -167,8 +167,6 @@ func TestScansService_ListByTenant_IsolationAndAggregates(t *testing.T) {
 	tenantB := createTenant(t, ctx, pc, "b-owner@example.com")
 	pA := ownerPrincipal(tenantA)
 
-	// Tenant A: acme.com has a baseline -> changed -> clean lineage; a discovered
-	// domain has its own baseline.
 	acme := seedDomain(t, ctx, pc, tenantA, "acme.com")
 	disc := seedDomain(t, ctx, pc, tenantA, "disc.example.org")
 
@@ -187,7 +185,6 @@ func TestScansService_ListByTenant_IsolationAndAggregates(t *testing.T) {
 	discScan := seedScan(t, ctx, pc, tenantA, disc, store.ScanSourceDiscovered, pgtype.Int8{})
 	seedObservation(t, ctx, pc, tenantA, disc, discScan.ID, "a_record", "a1", "created")
 
-	// Tenant B: a scan that must never surface for tenant A.
 	other := seedDomain(t, ctx, pc, tenantB, "other.com")
 	otherScan := seedScan(t, ctx, pc, tenantB, other, store.ScanSourceUserSupplied, pgtype.Int8{})
 	seedObservation(t, ctx, pc, tenantB, other, otherScan.ID, "a_record", "a1", "created")
@@ -197,7 +194,6 @@ func TestScansService_ListByTenant_IsolationAndAggregates(t *testing.T) {
 		t.Fatalf("ListByTenant: %v", err)
 	}
 
-	// Isolation: tenant B's scan is absent.
 	if _, ok := scanByUID(res, otherScan.Uid); ok {
 		t.Fatalf("tenant A leaked tenant B scan %s", otherScan.Uid)
 	}
@@ -281,7 +277,6 @@ func TestScansService_ListByTenant_SourceFilterAndWindow(t *testing.T) {
 	})
 
 	t.Run("window excludes scans older than the cutoff", func(t *testing.T) {
-		// Backdate the discovered scan 10 days; a 1-day window must drop it.
 		old := time.Now().Add(-10 * 24 * time.Hour)
 		if _, err := pc.Pool.Exec(ctx,
 			"UPDATE scans SET started_at = $1 WHERE id = $2", old, discScan.ID); err != nil {

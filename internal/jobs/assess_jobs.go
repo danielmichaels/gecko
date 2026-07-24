@@ -44,6 +44,7 @@ func (w *AssessCNAMEDanglingWorker) Work(
 	a := assessor.NewAssessor(assessor.Config{
 		Logger:    &w.Logger,
 		Store:     w.Store,
+		Pool:      w.PgxPool,
 		DNSClient: w.Resolver,
 		Identity:  job.Args.Identity(),
 	})
@@ -91,6 +92,7 @@ func (w *AssessZoneTransferWorker) Work(
 	a := assessor.NewAssessor(assessor.Config{
 		Logger:    &w.Logger,
 		Store:     w.Store,
+		Pool:      w.PgxPool,
 		DNSClient: w.Resolver,
 		Identity:  job.Args.Identity(),
 	})
@@ -139,6 +141,7 @@ func (w *AssessEmailSecurityWorker) Work(
 	a := assessor.NewAssessor(assessor.Config{
 		Logger:    &w.Logger,
 		Store:     w.Store,
+		Pool:      w.PgxPool,
 		DNSClient: w.Resolver,
 		Identity:  job.Args.Identity(),
 	})
@@ -187,6 +190,7 @@ func (w *AssessCertificateWorker) Work(
 	a := assessor.NewAssessor(assessor.Config{
 		Logger:    &w.Logger,
 		Store:     w.Store,
+		Pool:      w.PgxPool,
 		DNSClient: w.Resolver,
 		Identity:  job.Args.Identity(),
 	})
@@ -234,6 +238,7 @@ func (w *AssessDNSSECWorker) Work(
 	a := assessor.NewAssessor(assessor.Config{
 		Logger:    &w.Logger,
 		Store:     w.Store,
+		Pool:      w.PgxPool,
 		DNSClient: w.Resolver,
 		Identity:  job.Args.Identity(),
 	})
@@ -281,6 +286,7 @@ func (w *AssessCAAWorker) Work(
 	a := assessor.NewAssessor(assessor.Config{
 		Logger:    &w.Logger,
 		Store:     w.Store,
+		Pool:      w.PgxPool,
 		DNSClient: w.Resolver,
 		Identity:  job.Args.Identity(),
 	})
@@ -328,6 +334,7 @@ func (w *AssessMinimumRecordSetWorker) Work(
 	a := assessor.NewAssessor(assessor.Config{
 		Logger:    &w.Logger,
 		Store:     w.Store,
+		Pool:      w.PgxPool,
 		DNSClient: w.Resolver,
 		Identity:  job.Args.Identity(),
 	})
@@ -375,6 +382,7 @@ func (w *AssessNameserverConfigWorker) Work(
 	a := assessor.NewAssessor(assessor.Config{
 		Logger:    &w.Logger,
 		Store:     w.Store,
+		Pool:      w.PgxPool,
 		DNSClient: w.Resolver,
 		Identity:  job.Args.Identity(),
 	})
@@ -422,6 +430,7 @@ func (w *AssessNameserverHealthWorker) Work(
 	a := assessor.NewAssessor(assessor.Config{
 		Logger:    &w.Logger,
 		Store:     w.Store,
+		Pool:      w.PgxPool,
 		DNSClient: w.Resolver,
 		Identity:  job.Args.Identity(),
 	})
@@ -469,6 +478,7 @@ func (w *AssessDanglingNSWorker) Work(
 	a := assessor.NewAssessor(assessor.Config{
 		Logger:    &w.Logger,
 		Store:     w.Store,
+		Pool:      w.PgxPool,
 		DNSClient: w.Resolver,
 		Identity:  job.Args.Identity(),
 	})

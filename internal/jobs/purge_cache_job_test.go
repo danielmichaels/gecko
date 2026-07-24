@@ -44,11 +44,9 @@ func TestPurgeDNSCacheWorker_DeletesOnlyExpiredRows(t *testing.T) {
 		t.Fatalf("worker Work: %v", err)
 	}
 
-	// Expired rows are gone: a follow-up purge finds nothing to delete.
 	if n, err := pc.Queries.DNSCachePurgeExpired(ctx); err != nil || n != 0 {
 		t.Fatalf("expected expired rows already purged (0 deleted), got n=%d err=%v", n, err)
 	}
-	// Fresh rows survived.
 	if _, err := pc.Queries.DNSCacheGet(ctx, store.DNSCacheGetParams{Qtype: 1, Fqdn: "fresh-a."}); err != nil {
 		t.Fatalf("expected fresh row to survive purge: %v", err)
 	}
