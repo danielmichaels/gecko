@@ -46,8 +46,7 @@ const (
 
 var dmarcPrefix = regexp.MustCompile(`^v\s*=\s*DMARC1`)
 
-// DKIMSelectorEvidence is one probed selector's outcome. Status is the 3-way
-// resolution outcome so an all-SERVFAIL run never claims "no DKIM found".
+// DKIMSelectorEvidence includes resolution status for failed lookups.
 type DKIMSelectorEvidence struct {
 	Selector string   `json:"selector"`
 	Status   string   `json:"status"`

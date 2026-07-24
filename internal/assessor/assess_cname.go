@@ -21,11 +21,7 @@ const (
 	probeConcurrency = 4
 )
 
-// AssessCNAMEDangling reads the domain's persisted CNAME records, re-resolves each
-// target live to detect non-resolving (NXDOMAIN) targets, fingerprints
-// takeover-able providers, and — for resolving takeover candidates — probes the
-// target over HTTP(S) to confirm or suppress the finding. It records dangling
-// findings and CNAME chain-hygiene findings with observations.
+// AssessCNAMEDangling checks CNAME targets for takeover and chain-hygiene issues.
 func (a *Assessor) AssessCNAMEDangling(ctx context.Context, domainUID string) error {
 	domain, err := a.getDomain(ctx, domainUID)
 	if err != nil {
@@ -41,8 +37,7 @@ func (a *Assessor) AssessCNAMEDangling(ctx context.Context, domainUID string) er
 		return err
 	}
 
-	// Each target's live lookups + conditional HTTP probe are independent; fan out
-	// with a bounded worker pool and index-assign to keep evidence order stable.
+	// Index assignment preserves record order across concurrent probes.
 	ev := detect.CNAMEEvidence{Targets: make([]detect.CNAMETargetEvidence, len(records))}
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(probeConcurrency)
@@ -62,10 +57,7 @@ func (a *Assessor) AssessCNAMEDangling(ctx context.Context, domainUID string) er
 	return a.reconcile(ctx, domain.ID, domain.Name, detect.CheckCNAME, res)
 }
 
-// collectCNAMETarget gathers one CNAME target's live resolution, takeover-provider
-// fingerprint, conditional HTTP probe, and chain-hygiene facts into evidence. The
-// probe fires only for a takeover-able provider that still resolves -- the only
-// case the verdict consults it (matching the pre-refactor short-circuit).
+// collectCNAMETarget probes only resolving takeover candidates.
 func (a *Assessor) collectCNAMETarget(
 	ctx context.Context,
 	record store.CnameRecords,

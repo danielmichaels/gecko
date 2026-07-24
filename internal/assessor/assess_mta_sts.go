@@ -7,9 +7,7 @@ import (
 	"github.com/miekg/dns"
 )
 
-// mtaStsMinMaxAge is the policy max_age (seconds) below which MTA-STS offers weak
-// protection: a short window lets a downgrade attacker wait out the cached policy.
-// RFC 8461 recommends at least a few weeks; one week is the minimum we accept.
+// mtaStsMinMaxAge is the one-week minimum accepted policy lifetime.
 const mtaStsMinMaxAge = 604800
 
 func (a *Assessor) lookupTXTPrefixed(name, prefix string) (string, dnsclient.ResolutionStatus) {

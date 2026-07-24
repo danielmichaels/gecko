@@ -18,10 +18,8 @@ const (
 	IssueNSResolverMismatch = "resolver_mismatch"
 )
 
-// NameserverProbeEvidence is one authoritative nameserver's direct-probe outcome.
-// Probed/TCPProbed record whether the exchange was actually attempted (the fleet
-// rate limiter may have denied it) so a denied probe is never read as a genuine
-// failure. LatencyMs/ApexSerial are only meaningful when Reached.
+// NameserverProbeEvidence is one authoritative nameserver's probe result.
+// Probed fields distinguish shed probes from failed exchanges.
 type NameserverProbeEvidence struct {
 	Nameserver string `json:"nameserver"`
 	ApexSerial string `json:"apex_serial"`
@@ -33,8 +31,7 @@ type NameserverProbeEvidence struct {
 	HasEDNS    bool   `json:"has_edns"`
 }
 
-// NameserverHealthEvidence is one domain's authoritative-NS-set probe results for
-// the zone apex SOA. RecordType keys the latency/consistency findings ("SOA").
+// NameserverHealthEvidence contains a domain's authoritative SOA probe results.
 type NameserverHealthEvidence struct {
 	RecordType  string                    `json:"record_type"`
 	Nameservers []NameserverProbeEvidence `json:"nameservers"`
@@ -57,8 +54,7 @@ func (d NameserverHealthDetector) Detect(
 	var res checks.DetectResult
 	for _, ns := range ev.Nameservers {
 		if !ns.Probed {
-			// Probe denied (fleet rate limiter): this nameserver's health is unknown
-			// this run, so none of its keys may be asserted or resolved.
+			// Rate-limit shedding leaves all probe findings indeterminate.
 			res.Indeterminate = append(
 				res.Indeterminate,
 				checks.Key{IssueType: IssueNSUnreachable, EntityKey: ns.Nameserver},
@@ -163,9 +159,7 @@ type nsAnswer struct {
 	serial     string
 }
 
-// consistencyFinding flags divergent apex SOA serials across the reachable
-// nameservers. Kept low severity and worded as possibly-transient: this check has
-// no cross-scan memory, so propagation lag is not escalated.
+// consistencyFinding flags divergent SOA serials without cross-scan escalation.
 func (d NameserverHealthDetector) consistencyFinding(
 	ev NameserverHealthEvidence,
 ) (checks.Finding, bool) {

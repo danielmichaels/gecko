@@ -8,11 +8,6 @@ import (
 	"github.com/danielmichaels/gecko/internal/checks"
 )
 
-// TestCNAMEIndeterminateNeverFires is the finding-#2 regression guard: a
-// fingerprinted takeover-able provider whose live resolution SERVFAILed must
-// produce no finding (it previously fell through to a medium "unconfirmed"), and
-// its dangling key must be reported Indeterminate so the reconciler leaves any
-// existing finding open rather than resolving it on a transient failure.
 func TestCNAMEIndeterminateNeverFires(t *testing.T) {
 	d := CNAMEDetector{LongChainThreshold: 8}
 	res, err := d.Detect(CNAMEEvidence{Targets: []CNAMETargetEvidence{{
@@ -35,9 +30,6 @@ func TestCNAMEIndeterminateNeverFires(t *testing.T) {
 	}
 }
 
-// TestNameserverConfigNoIPv6Indeterminate is the finding-#3 guard: when every AAAA
-// lookup failed to complete, the detector must not claim "No IPv6" and must report
-// the no_ipv6 key Indeterminate instead.
 func TestNameserverConfigNoIPv6Indeterminate(t *testing.T) {
 	d := NameserverConfigDetector{RecommendedCount: 2}
 	a := healthyNS("ns1.provider-a.com")
@@ -60,9 +52,6 @@ func TestNameserverConfigNoIPv6Indeterminate(t *testing.T) {
 	}
 }
 
-// TestNameserverConfigDanglingIndeterminate: a nameserver whose parent-apex SOA
-// lookup SERVFAILed must not be flagged dangling, and its dangling_ns key must be
-// protected.
 func TestNameserverConfigDanglingIndeterminate(t *testing.T) {
 	d := NameserverConfigDetector{RecommendedCount: 2}
 	ns := healthyNS("ns1.sketchy.example")
@@ -85,9 +74,6 @@ func TestNameserverConfigDanglingIndeterminate(t *testing.T) {
 	}
 }
 
-// TestEmailIndeterminateProtectsMissingKeys guards finding #1 for email: when the
-// DMARC and DKIM lookups fail, the missing_* keys are reported Indeterminate (and
-// no missing_* finding is emitted) so a SERVFAIL never resolves a real finding.
 func TestEmailIndeterminateProtectsMissingKeys(t *testing.T) {
 	d := EmailSecurityDetector{MaxSPFLookups: 10, MinDKIMKeyLength: 270, MTASTSMinMaxAge: 604800}
 	res, err := d.Detect(EmailSecurityEvidence{

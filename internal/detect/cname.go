@@ -25,9 +25,7 @@ const (
 	ResolutionIndeterminate = "indeterminate"
 )
 
-// CNAMETargetEvidence is one CNAME target's collected state: its live resolution
-// outcome, the takeover-provider fingerprint match, the (conditional) HTTP probe,
-// and chain-hygiene facts. Everything the pure verdict needs, gathered by collect.
+// CNAMETargetEvidence is the collected state for one CNAME target.
 type CNAMETargetEvidence struct {
 	Target           string `json:"target"`
 	ResolutionStatus string `json:"resolution_status"`
@@ -64,8 +62,7 @@ func (d CNAMEDetector) Detect(ev CNAMEEvidence) (checks.DetectResult, error) {
 		if f, ok := danglingFinding(t); ok {
 			res.Found = append(res.Found, f)
 		} else if t.ResolutionStatus == ResolutionIndeterminate {
-			// Live resolution failed (SERVFAIL/timeout): we can neither assert nor
-			// clear a dangling finding for this target -- protect its key.
+			// A failed lookup cannot assert or clear a dangling finding.
 			res.Indeterminate = append(res.Indeterminate,
 				checks.Key{IssueType: IssueDanglingCNAME, EntityKey: t.Target})
 		}
@@ -87,12 +84,7 @@ func (d CNAMEDetector) Detect(ev CNAMEEvidence) (checks.DetectResult, error) {
 	return res, nil
 }
 
-// danglingFinding applies the conservative false-positive policy to one target. A
-// takeover-able provider is high/takeover only when takeover is confirmed (the
-// provider's unclaimed-resource body, or the target not resolving at all); a live
-// 200 page suppresses it. A bare non-resolving target with no takeover provider is
-// medium. A clean resolution -- or an indeterminate one (SERVFAIL is not proof of
-// anything, even for a fingerprinted provider) -- yields nothing.
+// danglingFinding requires confirmed evidence for provider-specific takeovers.
 func danglingFinding(t CNAMETargetEvidence) (checks.Finding, bool) {
 	if t.ResolutionStatus == ResolutionIndeterminate {
 		return checks.Finding{}, false

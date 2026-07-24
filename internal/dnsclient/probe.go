@@ -6,9 +6,7 @@ import (
 	"github.com/miekg/dns"
 )
 
-// nsProbeTimeout bounds a single direct nameserver exchange. It is long enough
-// not to false-positive on a slow-but-alive nameserver (the medium latency tier
-// is 900ms) yet short enough to surface an unreachable one promptly.
+// nsProbeTimeout allows the 900ms latency tier without delaying unreachable probes.
 const nsProbeTimeout = 3 * time.Second
 
 // NSProbeResult captures a direct authoritative nameserver probe.
@@ -24,15 +22,8 @@ type NSProbeResult struct {
 	TCPOK        bool          // the server also answered the same query over TCP
 }
 
-// ProbeNameserver sends a direct, non-recursive query for name/qtype to a
-// specific nameserver address (host:port) over UDP (with EDNS0) and then TCP. It
-// is the active primitive behind the nameserver-health assessor: it measures
-// reachability, latency, EDNS0 and TCP support, and returns the answer set for
-// cross-nameserver consistency comparison.
-//
-// Unlike the LookupX methods it bypasses the fleet L1/DB cache entirely — results
-// are specific to one server and must not pollute the cache, which is keyed only
-// on (qtype, fqdn). It still passes through the fleet rate limiter.
+// ProbeNameserver queries one server over UDP and TCP.
+// Server-specific results bypass the shared cache but use the fleet limiter.
 func (c *DNSClient) ProbeNameserver(server, name string, qtype uint16) NSProbeResult {
 	var res NSProbeResult
 

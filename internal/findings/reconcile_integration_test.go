@@ -44,7 +44,6 @@ func TestReconcileLifecycle(t *testing.T) {
 			t.Fatalf("reconcile: %v", err)
 		}
 	}
-	// getFinding returns (id, status, resolved) or fails if absent.
 	getFinding := func(issueType, entityKey string) (id int64, status string, resolved bool) {
 		t.Helper()
 		err := pc.Pool.QueryRow(ctx,
@@ -76,7 +75,7 @@ func TestReconcileLifecycle(t *testing.T) {
 	a := mkFinding("issue_a", "", "high")
 	b := mkFinding("issue_b", "sel1", "medium")
 
-	// 1. Both open on first sight.
+	// Initial open.
 	reconcile(a, b)
 	aID, aStatus, _ := getFinding("issue_a", "")
 	bID, bStatus, _ := getFinding("issue_b", "sel1")
@@ -87,8 +86,7 @@ func TestReconcileLifecycle(t *testing.T) {
 		t.Fatalf("a events = %v, want [opened]", got)
 	}
 
-	// 2. KEY STABILITY: re-reconciling identical output must not churn -- same ids,
-	// still open, no new events.
+	// Identical output preserves IDs and emits no events.
 	reconcile(a, b)
 	aID2, s, _ := getFinding("issue_a", "")
 	if aID2 != aID || s != "open" {
@@ -101,7 +99,7 @@ func TestReconcileLifecycle(t *testing.T) {
 		t.Fatalf("stability: b gained events %v (want still 1)", got)
 	}
 
-	// 3. b becomes absent -> resolved; a stays open.
+	// Missing findings resolve.
 	reconcile(a)
 	_, bStatus, bResolved := getFinding("issue_b", "sel1")
 	if bStatus != "resolved" || !bResolved {
@@ -114,7 +112,7 @@ func TestReconcileLifecycle(t *testing.T) {
 		t.Fatalf("b events = %v, want [opened resolved]", got)
 	}
 
-	// 4. b returns -> reopened as the SAME row (id preserved), resolved_at cleared.
+	// Returning findings reopen the same row.
 	reconcile(a, b)
 	bID2, bStatus, bResolved := getFinding("issue_b", "sel1")
 	if bID2 != bID {
@@ -127,7 +125,7 @@ func TestReconcileLifecycle(t *testing.T) {
 		t.Fatalf("b events = %v, want [opened resolved reopened]", got)
 	}
 
-	// 5. empty output resolves everything for the scope.
+	// Empty output resolves the scope.
 	reconcile()
 	if _, aStatus, _ := getFinding("issue_a", ""); aStatus != "resolved" {
 		t.Fatalf("a status = %s, want resolved", aStatus)
@@ -137,8 +135,6 @@ func TestReconcileLifecycle(t *testing.T) {
 	}
 }
 
-// TestReconcileScopeIsolation confirms one check's reconcile never resolves another
-// check's findings on the same asset.
 func TestReconcileScopeIsolation(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -160,7 +156,7 @@ func TestReconcileScopeIsolation(t *testing.T) {
 	if err := findings.Reconcile(ctx, pc.Queries, tenantID, asset.ID, "check_one", checks.DetectResult{Found: []checks.Finding{f}}); err != nil {
 		t.Fatal(err)
 	}
-	// Reconcile a DIFFERENT check with empty output; check_one's finding must survive.
+	// Another check cannot affect this finding.
 	if err := findings.Reconcile(ctx, pc.Queries, tenantID, asset.ID, "check_two", checks.DetectResult{}); err != nil {
 		t.Fatal(err)
 	}
@@ -174,10 +170,6 @@ func TestReconcileScopeIsolation(t *testing.T) {
 	}
 }
 
-// TestReconcileProtectsIndeterminate is the guard against a transient lookup
-// failure closing a real finding: a key the detector could not evaluate this run
-// (DetectResult.Indeterminate) must stay open, while a key that is authoritatively
-// absent (in neither Found nor Indeterminate) resolves.
 func TestReconcileProtectsIndeterminate(t *testing.T) {
 	testhelpers.ParallelDBTest(t)
 	ctx := context.Background()
@@ -208,14 +200,11 @@ func TestReconcileProtectsIndeterminate(t *testing.T) {
 		return status
 	}
 
-	// 1. Open the finding.
 	if err := findings.Reconcile(ctx, pc.Queries, tenantID, asset.ID, kind,
 		checks.DetectResult{Found: []checks.Finding{mkFinding(key.IssueType, key.EntityKey, "high")}}); err != nil {
 		t.Fatal(err)
 	}
 
-	// 2. Next run: the detector emits nothing for the key but reports it as
-	// Indeterminate (its lookup SERVFAILed). It must stay open.
 	if err := findings.Reconcile(ctx, pc.Queries, tenantID, asset.ID, kind,
 		checks.DetectResult{Indeterminate: []checks.Key{key}}); err != nil {
 		t.Fatal(err)
@@ -224,8 +213,6 @@ func TestReconcileProtectsIndeterminate(t *testing.T) {
 		t.Fatalf("indeterminate key was resolved (status=%s), want still open", s)
 	}
 
-	// 3. Contrast: an authoritatively-absent key (neither Found nor Indeterminate)
-	// resolves as before.
 	if err := findings.Reconcile(ctx, pc.Queries, tenantID, asset.ID, kind,
 		checks.DetectResult{}); err != nil {
 		t.Fatal(err)
