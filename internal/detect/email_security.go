@@ -125,7 +125,8 @@ func emailIndeterminate(ev EmailSecurityEvidence) []checks.Key {
 		return keys
 	}
 	if ev.BIMIStatus == ResolutionIndeterminate {
-		keys = append(keys,
+		keys = append(
+			keys,
 			checks.Key{IssueType: IssueBIMIRequiresDMARC},
 			checks.Key{IssueType: IssueBIMIInvalidLogo},
 			checks.Key{IssueType: IssueBIMIInvalidVMC},
@@ -135,14 +136,16 @@ func emailIndeterminate(ev EmailSecurityEvidence) []checks.Key {
 	}
 	switch {
 	case ev.MTASTSStatus == ResolutionIndeterminate:
-		keys = append(keys,
+		keys = append(
+			keys,
 			checks.Key{IssueType: IssueMTASTSPolicyUnreachable},
 			checks.Key{IssueType: IssueMTASTSModeNotEnforcing},
 			checks.Key{IssueType: IssueMTASTSMXMismatch},
 			checks.Key{IssueType: IssueMTASTSShortMaxAge},
 		)
 	case ev.MTASTSConfigured && !ev.MTASTSPolicyReached:
-		keys = append(keys,
+		keys = append(
+			keys,
 			checks.Key{IssueType: IssueMTASTSModeNotEnforcing},
 			checks.Key{IssueType: IssueMTASTSMXMismatch},
 			checks.Key{IssueType: IssueMTASTSShortMaxAge},
