@@ -31,6 +31,8 @@ const (
 type CNAMETargetEvidence struct {
 	Target           string `json:"target"`
 	ResolutionStatus string `json:"resolution_status"`
+	// ChainStatus marks incomplete length and loop observations.
+	ChainStatus      string `json:"chain_status"`
 	Provider         string `json:"provider"`
 	FPErrorBody      string `json:"fp_error_body"`
 	ProbeBody        string `json:"probe_body"`
@@ -67,8 +69,19 @@ func (d CNAMEDetector) Detect(ev CNAMEEvidence) (checks.DetectResult, error) {
 			res.Indeterminate = append(res.Indeterminate,
 				checks.Key{IssueType: IssueDanglingCNAME, EntityKey: t.Target})
 		}
-		if f, ok := d.chainFinding(t); ok {
+		f, found := d.chainFinding(t)
+		if found {
 			res.Found = append(res.Found, f)
+		}
+		if t.ChainStatus == ResolutionIndeterminate {
+			// An incomplete walk cannot clear an unasserted chain finding.
+			for _, issue := range []string{IssueLongChain, IssueCNAMELoop} {
+				if found && f.IssueType == issue {
+					continue
+				}
+				res.Indeterminate = append(res.Indeterminate,
+					checks.Key{IssueType: issue, EntityKey: t.Target})
+			}
 		}
 	}
 	return res, nil

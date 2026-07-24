@@ -130,11 +130,15 @@ func (a *Assessor) collectEmailSecurity(
 		return nil
 	})
 	g.Go(func() error {
-		ev.BIMIRecord = a.lookupBIMIRecord(name)
+		bimiRec, bimiSt := a.lookupBIMIRecord(name)
+		ev.BIMIStatus = resolutionString(bimiSt)
+		ev.BIMIRecord = bimiRec
 		return nil
 	})
 	g.Go(func() error {
-		if a.lookupTXTPrefixed("_mta-sts."+name, "v=STSv1") != "" {
+		stsRec, stsSt := a.lookupTXTPrefixed("_mta-sts."+name, "v=STSv1")
+		ev.MTASTSStatus = resolutionString(stsSt)
+		if stsRec != "" {
 			ev.MTASTSConfigured = true
 			res := a.prober.Get(gctx, "https://mta-sts."+name+"/.well-known/mta-sts.txt")
 			ev.MTASTSPolicyReached = res.Reached
@@ -144,7 +148,9 @@ func (a *Assessor) collectEmailSecurity(
 		return nil
 	})
 	g.Go(func() error {
-		ev.TLSRPTRecord = a.lookupTXTPrefixed("_smtp._tls."+name, "v=TLSRPTv1")
+		tlsRec, tlsSt := a.lookupTXTPrefixed("_smtp._tls."+name, "v=TLSRPTv1")
+		ev.TLSRPTStatus = resolutionString(tlsSt)
+		ev.TLSRPTRecord = tlsRec
 		return nil
 	})
 	if err := g.Wait(); err != nil {

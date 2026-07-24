@@ -1,16 +1,21 @@
 package assessor
 
-import "strings"
+import (
+	"strings"
 
-func (a *Assessor) lookupBIMIRecord(domainName string) string {
-	records, found := a.dnsClient.LookupTXT("default._bimi." + domainName)
-	if !found {
-		return ""
+	"github.com/danielmichaels/gecko/internal/dnsclient"
+	"github.com/miekg/dns"
+)
+
+func (a *Assessor) lookupBIMIRecord(domainName string) (string, dnsclient.ResolutionStatus) {
+	records, status := a.dnsClient.LookupWithStatus("default._bimi."+domainName, dns.TypeTXT)
+	if status != dnsclient.ResolutionData {
+		return "", status
 	}
 	for _, r := range records {
 		if strings.HasPrefix(strings.TrimSpace(r), "v=BIMI1") {
-			return r
+			return r, status
 		}
 	}
-	return ""
+	return "", status
 }

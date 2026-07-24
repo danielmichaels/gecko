@@ -91,28 +91,34 @@ func (a *Assessor) collectCNAMETarget(
 		t.ProbeStatusCode = probe.StatusCode
 		t.ProbeBody = probe.Body
 	}
-	length, looped := a.walkCNAMEChain(record.Target)
+	length, looped, status := a.walkCNAMEChain(record.Target)
 	t.ChainLength = length
 	t.ChainLooped = looped
+	t.ChainStatus = resolutionString(status)
 	return t
 }
 
-// walkCNAMEChain follows the CNAME chain from start, returning the hop count and
-// whether a loop was detected. The walk is bounded by maxChainDepth.
-func (a *Assessor) walkCNAMEChain(start string) (int, bool) {
+// walkCNAMEChain marks incomplete walks indeterminate.
+func (a *Assessor) walkCNAMEChain(
+	start string,
+) (int, bool, dnsclient.ResolutionStatus) {
 	seen := make(map[string]bool)
 	current := start
 	for length := 1; length <= maxChainDepth; length++ {
 		key := strings.ToLower(strings.TrimSuffix(current, "."))
 		if seen[key] {
-			return length, true
+			return length, true, dnsclient.ResolutionData
 		}
 		seen[key] = true
-		next, ok := a.dnsClient.LookupCNAME(current)
-		if !ok || len(next) == 0 {
-			return length, false
+		next, status := a.dnsClient.LookupWithStatus(current, dns.TypeCNAME)
+		if status == dnsclient.ResolutionIndeterminate {
+			return length, false, status
+		}
+		if len(next) == 0 {
+			return length, false, dnsclient.ResolutionEmpty
 		}
 		current = next[0]
 	}
-	return maxChainDepth, false
+	// Reaching the limit does not prove the chain is loop-free.
+	return maxChainDepth, false, dnsclient.ResolutionIndeterminate
 }

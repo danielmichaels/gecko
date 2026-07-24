@@ -2,6 +2,7 @@ package findings_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/danielmichaels/gecko/internal/checks"
@@ -231,5 +232,96 @@ func TestReconcileProtectsIndeterminate(t *testing.T) {
 	}
 	if s := statusOf(); s != "resolved" {
 		t.Fatalf("authoritatively-absent key = %s, want resolved", s)
+	}
+}
+
+func TestReconcileConcurrentScope(t *testing.T) {
+	testhelpers.ParallelDBTest(t)
+	ctx := context.Background()
+	pc, err := testhelpers.CreateTestDatabase(ctx)
+	if err != nil {
+		t.Fatalf("container: %v", err)
+	}
+	defer pc.Close(ctx)
+
+	const tenantID = int32(1)
+	asset, err := pc.Queries.AssetsUpsertDomain(ctx, store.AssetsUpsertDomainParams{
+		TenantID: tenantID, Value: "race.example.com", Source: "user_supplied",
+	})
+	if err != nil {
+		t.Fatalf("upsert asset: %v", err)
+	}
+	const kind = "race_check"
+	f := mkFinding("issue_race", "e1", "high")
+
+	// Each reconcile owns the transaction that scopes its advisory lock.
+	reconcileTx := func(res checks.DetectResult) error {
+		tx, err := pc.Pool.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+		if err := findings.Reconcile(ctx, pc.Queries.WithTx(tx), tenantID, asset.ID, kind, res); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	}
+	race := func(res checks.DetectResult) {
+		t.Helper()
+		const racers = 8
+		var wg sync.WaitGroup
+		errs := make([]error, racers)
+		start := make(chan struct{})
+		for i := range racers {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				errs[i] = reconcileTx(res)
+			}()
+		}
+		close(start)
+		wg.Wait()
+		for _, err := range errs {
+			if err != nil {
+				t.Fatalf("concurrent reconcile: %v", err)
+			}
+		}
+	}
+	eventCounts := func() map[string]int {
+		t.Helper()
+		rows, err := pc.Pool.Query(ctx,
+			`SELECT e.event, COUNT(*) FROM findings_events e
+			 JOIN findings fi ON fi.id = e.finding_id
+			 WHERE fi.asset_id=$1 AND fi.check_kind=$2 GROUP BY e.event`, asset.ID, kind)
+		if err != nil {
+			t.Fatalf("events: %v", err)
+		}
+		defer rows.Close()
+		out := map[string]int{}
+		for rows.Next() {
+			var event string
+			var n int
+			if err := rows.Scan(&event, &n); err != nil {
+				t.Fatalf("scan: %v", err)
+			}
+			out[event] = n
+		}
+		return out
+	}
+
+	race(checks.DetectResult{Found: []checks.Finding{f}})
+	if got := eventCounts(); got["opened"] != 1 || len(got) != 1 {
+		t.Fatalf("concurrent open emitted %v, want exactly one 'opened'", got)
+	}
+
+	race(checks.DetectResult{})
+	if got := eventCounts(); got["resolved"] != 1 {
+		t.Fatalf("concurrent resolve emitted %v, want exactly one 'resolved'", got)
+	}
+
+	race(checks.DetectResult{Found: []checks.Finding{f}})
+	if got := eventCounts(); got["reopened"] != 1 {
+		t.Fatalf("concurrent reopen emitted %v, want exactly one 'reopened'", got)
 	}
 }

@@ -64,6 +64,22 @@ func (q *Queries) FindingsListOpenByAssetCheck(ctx context.Context, arg Findings
 	return items, nil
 }
 
+const findingsLockScope = `-- name: FindingsLockScope :exec
+SELECT pg_advisory_xact_lock(
+               hashtextextended($1::text, $2::bigint))
+`
+
+type FindingsLockScopeParams struct {
+	CheckKind string `json:"check_kind"`
+	AssetID   int64  `json:"asset_id"`
+}
+
+// Serialize one asset/check scope within the caller's transaction.
+func (q *Queries) FindingsLockScope(ctx context.Context, arg FindingsLockScopeParams) error {
+	_, err := q.db.Exec(ctx, findingsLockScope, arg.CheckKind, arg.AssetID)
+	return err
+}
+
 const findingsResolve = `-- name: FindingsResolve :exec
 UPDATE findings
 SET status      = 'resolved',
@@ -115,10 +131,7 @@ type FindingsUpsertRow struct {
 	PriorStatus string `json:"prior_status"`
 }
 
-// Upsert a finding by its identity key, returning the row id and the status it had
-// BEFORE this call (NULL when newly inserted) so the caller can emit the right
-// lifecycle event. A previously-resolved finding is reopened: status back to open,
-// resolved_at cleared, first_seen preserved.
+// Return the prior status for lifecycle events. Reopening preserves first_seen.
 func (q *Queries) FindingsUpsert(ctx context.Context, arg FindingsUpsertParams) (FindingsUpsertRow, error) {
 	row := q.db.QueryRow(ctx, findingsUpsert,
 		arg.TenantID,

@@ -1,8 +1,4 @@
-// Package findings persists Detector output with a desired-state reconciler: the
-// single write path that replaces the ~17 bespoke typed-table writers plus
-// RecordFindingChange. Detect declares the problems TRUE NOW for an asset+check;
-// Reconcile makes the findings table match, opening/reopening present findings and
-// resolving absent ones, and records every transition in findings_events.
+// Package findings reconciles detector output with persisted finding state.
 package findings
 
 import (
@@ -21,20 +17,14 @@ const (
 	eventReopened = "reopened"
 )
 
-// keyOf is the in-memory identity for a finding within one (asset, check) scope.
-// The NUL separator can't appear in an issue_type or entity_key, so it can't
-// collide two distinct findings into one key.
+// keyOf joins fields with a separator neither field can contain.
 func keyOf(issueType, entityKey string) string {
 	return issueType + "\x00" + entityKey
 }
 
-// Reconcile diffs the Detect output for one asset+check against the stored open
-// findings and makes them match. q MUST be transaction-scoped so the upserts,
-// resolves, and event rows commit atomically. res.Found is "problems true now"
-// (opened/reopened); res.Indeterminate is "keys the detector could not evaluate
-// this run" and is protected from resolution. An open finding is resolved only
-// when its key is authoritatively absent -- in neither set -- so a transient
-// lookup failure never closes (or churns) a real finding.
+// Reconcile atomically applies detector output within one asset/check scope.
+// Found keys open, Indeterminate keys remain unchanged, and absent keys resolve.
+// q must be transaction-scoped; the scope lock serializes concurrent updates.
 func Reconcile(
 	ctx context.Context,
 	q *store.Queries,
@@ -43,6 +33,13 @@ func Reconcile(
 	checkKind string,
 	res checks.DetectResult,
 ) error {
+	if err := q.FindingsLockScope(ctx, store.FindingsLockScopeParams{
+		AssetID:   assetID,
+		CheckKind: checkKind,
+	}); err != nil {
+		return fmt.Errorf("lock scope %s: %w", checkKind, err)
+	}
+
 	present := make(map[string]struct{}, len(res.Found))
 	for _, f := range res.Found {
 		present[keyOf(f.IssueType, f.EntityKey)] = struct{}{}

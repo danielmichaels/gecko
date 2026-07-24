@@ -54,11 +54,12 @@ type DKIMSelectorEvidence struct {
 	Records  []string `json:"records"`
 }
 
-// EmailSecurityEvidence composes the collected state for all six email sub-checks.
-// Every live-lookup field carries a resolution status (or presence flag) so a
-// failed lookup is never read as authoritative absence.
+// EmailSecurityEvidence is the collected state for all six email checks.
 type EmailSecurityEvidence struct {
 	DMARCStatus          string                 `json:"dmarc_status"`
+	BIMIStatus           string                 `json:"bimi_status"`
+	MTASTSStatus         string                 `json:"mta_sts_status"`
+	TLSRPTStatus         string                 `json:"tls_rpt_status"`
 	BIMIRecord           string                 `json:"bimi_record"`
 	MTASTSPolicyBody     string                 `json:"mta_sts_policy_body"`
 	TLSRPTRecord         string                 `json:"tls_rpt_record"`
@@ -96,11 +97,7 @@ func (d EmailSecurityDetector) Detect(ev EmailSecurityEvidence) (checks.DetectRe
 	return res, nil
 }
 
-// emailIndeterminate reports the keys whose live lookup did not authoritatively
-// complete this run, so the reconciler leaves them alone instead of resolving a
-// real finding on a transient SERVFAIL. Only DKIM and DMARC carry a 3-way
-// resolution status today; SPF reads stored TXT (always determinate), and
-// BIMI/MTA-STS/TLS-RPT use presence-only lookups (a tracked follow-up to upgrade).
+// emailIndeterminate returns keys this run cannot safely resolve.
 func emailIndeterminate(ev EmailSecurityEvidence) []checks.Key {
 	var keys []checks.Key
 
@@ -117,7 +114,7 @@ func emailIndeterminate(ev EmailSecurityEvidence) []checks.Key {
 		)
 	}
 
-	if ev.HandlesEmail && !dkimSawAuthoritative(ev) {
+	if ev.HandlesEmail && !dkimAllDeterminate(ev) && !dkimHasValidRecord(ev) {
 		keys = append(keys, checks.Key{IssueType: IssueDKIMMissing})
 	}
 	for _, sel := range ev.DKIMSelectors {
@@ -130,16 +127,59 @@ func emailIndeterminate(ev EmailSecurityEvidence) []checks.Key {
 			)
 		}
 	}
+
+	if !ev.HandlesEmail {
+		return keys
+	}
+	if ev.BIMIStatus == ResolutionIndeterminate {
+		keys = append(keys,
+			checks.Key{IssueType: IssueBIMIRequiresDMARC},
+			checks.Key{IssueType: IssueBIMIInvalidLogo},
+			checks.Key{IssueType: IssueBIMIInvalidVMC},
+		)
+	} else if ev.BIMIRecord != "" && ev.DMARCStatus == ResolutionIndeterminate {
+		// BIMI enforcement depends on DMARC.
+		keys = append(keys, checks.Key{IssueType: IssueBIMIRequiresDMARC})
+	}
+	switch {
+	case ev.MTASTSStatus == ResolutionIndeterminate:
+		keys = append(keys,
+			checks.Key{IssueType: IssueMTASTSPolicyUnreachable},
+			checks.Key{IssueType: IssueMTASTSModeNotEnforcing},
+			checks.Key{IssueType: IssueMTASTSMXMismatch},
+			checks.Key{IssueType: IssueMTASTSShortMaxAge},
+		)
+	case ev.MTASTSConfigured && !ev.MTASTSPolicyReached:
+		// A failed fetch leaves policy contents unknown.
+		keys = append(keys,
+			checks.Key{IssueType: IssueMTASTSModeNotEnforcing},
+			checks.Key{IssueType: IssueMTASTSMXMismatch},
+			checks.Key{IssueType: IssueMTASTSShortMaxAge},
+		)
+	}
+	if ev.TLSRPTStatus == ResolutionIndeterminate {
+		keys = append(keys, checks.Key{IssueType: IssueTLSRPTInvalidRua})
+	}
 	return keys
 }
 
-// dkimSawAuthoritative reports whether at least one selector lookup completed
-// (data or authoritative NXDOMAIN), the precondition for concluding DKIM is
-// missing rather than merely unresolved.
-func dkimSawAuthoritative(ev EmailSecurityEvidence) bool {
+// dkimAllDeterminate reports whether every probed selector resolved.
+func dkimAllDeterminate(ev EmailSecurityEvidence) bool {
 	for _, sel := range ev.DKIMSelectors {
-		if sel.Status == ResolutionEmpty || sel.Status == ResolutionData {
-			return true
+		if sel.Status != ResolutionEmpty && sel.Status != ResolutionData {
+			return false
+		}
+	}
+	return len(ev.DKIMSelectors) > 0
+}
+
+// dkimHasValidRecord reports whether any selector returned a DKIM record.
+func dkimHasValidRecord(ev EmailSecurityEvidence) bool {
+	for _, sel := range ev.DKIMSelectors {
+		for _, value := range sel.Records {
+			if strings.Contains(value, "v=DKIM") {
+				return true
+			}
 		}
 	}
 	return false
@@ -240,14 +280,12 @@ func countSPFDNSLookups(record string) int {
 
 func (d EmailSecurityDetector) dkimFindings(ev EmailSecurityEvidence) []checks.Finding {
 	var out []checks.Finding
-	foundValid := false
 	for _, sel := range ev.DKIMSelectors {
 		seen := map[string]bool{}
 		for _, value := range sel.Records {
 			if !strings.Contains(value, "v=DKIM") {
 				continue
 			}
-			foundValid = true
 			if strings.Contains(value, "k=rsa") && strings.Contains(value, "p=") &&
 				len(extractKeyFromDKIM(value)) < d.MinDKIMKeyLength && !seen[IssueDKIMWeakKey] {
 				seen[IssueDKIMWeakKey] = true
@@ -272,7 +310,7 @@ func (d EmailSecurityDetector) dkimFindings(ev EmailSecurityEvidence) []checks.F
 			}
 		}
 	}
-	if !foundValid && ev.HandlesEmail && dkimSawAuthoritative(ev) {
+	if !dkimHasValidRecord(ev) && ev.HandlesEmail && dkimAllDeterminate(ev) {
 		out = append(out, ef(
 			IssueDKIMMissing,
 			"",
@@ -429,7 +467,8 @@ func bimiFindings(ev EmailSecurityEvidence) []checks.Finding {
 	}
 	var out []checks.Finding
 	tags := parseKVTags(ev.BIMIRecord)
-	if !dmarcEnforced(ev.DMARCRecords) {
+	// A failed DMARC lookup leaves BIMI enforcement unknown.
+	if ev.DMARCStatus != ResolutionIndeterminate && !dmarcEnforced(ev.DMARCRecords) {
 		out = append(out, ef(IssueBIMIRequiresDMARC, "", "medium", "BIMI requires enforced DMARC",
 			"BIMI is published but DMARC is not enforced; BIMI requires p=quarantine or p=reject"))
 	}

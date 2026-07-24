@@ -81,7 +81,12 @@ func (d NameserverHealthDetector) Detect(
 			})
 			continue
 		}
-		if ns.TCPProbed && !ns.TCPOK {
+		switch {
+		case !ns.TCPProbed:
+			// A shed TCP probe cannot disprove TCP support.
+			res.Indeterminate = append(res.Indeterminate,
+				checks.Key{IssueType: IssueNSNoTCPSupport, EntityKey: ns.Nameserver})
+		case !ns.TCPOK:
 			res.Found = append(res.Found, checks.Finding{
 				IssueType: IssueNSNoTCPSupport,
 				EntityKey: ns.Nameserver,
@@ -116,23 +121,24 @@ func (d NameserverHealthDetector) Detect(
 
 	if f, ok := d.consistencyFinding(ev); ok {
 		res.Found = append(res.Found, f)
-	} else if !anyReachedAnswer(ev) {
-		// No nameserver produced an apex serial, so answer consistency is unknown.
+	} else if !consistencyDeterminate(ev) {
 		res.Indeterminate = append(res.Indeterminate,
 			checks.Key{IssueType: IssueNSResolverMismatch, EntityKey: ev.RecordType})
 	}
 	return res, nil
 }
 
-// anyReachedAnswer reports whether at least one nameserver returned an apex serial,
-// the minimum needed to say anything about cross-nameserver consistency.
-func anyReachedAnswer(ev NameserverHealthEvidence) bool {
+// consistencyDeterminate requires answers from every multi-server delegation.
+func consistencyDeterminate(ev NameserverHealthEvidence) bool {
+	if len(ev.Nameservers) <= 1 {
+		return true
+	}
 	for _, ns := range ev.Nameservers {
-		if ns.Reached && ns.ApexSerial != "" {
-			return true
+		if !ns.Reached || ns.ApexSerial == "" {
+			return false
 		}
 	}
-	return false
+	return true
 }
 
 // latencyTier maps a latency onto its exceeded threshold tier, or ok=false when

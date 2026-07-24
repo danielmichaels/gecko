@@ -73,9 +73,9 @@ func (a *Assessor) AssessNameserverHealth(ctx context.Context, domainUID string)
 		probe := a.nsProber.ProbeNameserver(net.JoinHostPort(host, "53"), domain.Name, dns.TypeSOA)
 		ev.Nameservers = append(ev.Nameservers, detect.NameserverProbeEvidence{
 			Nameserver: r.Nameserver,
-			Probed:     true,
+			Probed:     probe.Attempted,
 			Reached:    probe.Reachable,
-			TCPProbed:  true,
+			TCPProbed:  probe.TCPAttempted,
 			TCPOK:      probe.TCPOK,
 			HasEDNS:    probe.HasEDNS,
 			LatencyMs:  int32(probe.RTT.Milliseconds()),

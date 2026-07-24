@@ -1,8 +1,10 @@
+-- name: FindingsLockScope :exec
+-- Serialize one asset/check scope within the caller's transaction.
+SELECT pg_advisory_xact_lock(
+               hashtextextended(sqlc.arg(check_kind)::text, sqlc.arg(asset_id)::bigint));
+
 -- name: FindingsUpsert :one
--- Upsert a finding by its identity key, returning the row id and the status it had
--- BEFORE this call (NULL when newly inserted) so the caller can emit the right
--- lifecycle event. A previously-resolved finding is reopened: status back to open,
--- resolved_at cleared, first_seen preserved.
+-- Return the prior status for lifecycle events. Reopening preserves first_seen.
 WITH prior AS (SELECT status
                FROM findings
                WHERE tenant_id = $1
