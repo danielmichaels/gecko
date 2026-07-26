@@ -259,17 +259,14 @@ templ FindingsPanel(v FindingsView) {
 		<div class="trow-empty">no findings yet — run a scan to assess this domain</div>
 	} else {
 		<div class="f-assessed">
-			{ fmt.Sprintf("%d checks · %d critical · %d warnings · %d healthy", v.TotalCount, v.CriticalCount, v.WarningCount, v.HealthyCount) }
+			{ fmt.Sprintf("%s · %d critical · %s", pluralize(v.TotalCount, "open finding"), v.CriticalCount, pluralize(v.WarningCount, "warning")) }
 		</div>
 		<div class="find-sum">
 			if v.CriticalCount > 0 {
 				<div class="s c"><i></i> <b>{ fmt.Sprintf("%d", v.CriticalCount) }</b> critical</div>
 			}
 			if v.WarningCount > 0 {
-				<div class="s w"><i></i> <b>{ fmt.Sprintf("%d", v.WarningCount) }</b> warnings</div>
-			}
-			if v.HealthyCount > 0 {
-				<div class="s o"><i></i> <b>{ fmt.Sprintf("%d", v.HealthyCount) }</b> healthy</div>
+				<div class="s w"><i></i> <b>{ fmt.Sprintf("%d", v.WarningCount) }</b> { nounFor(v.WarningCount, "warning") }</div>
 			}
 		</div>
 		for _, f := range v.Findings {

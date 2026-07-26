@@ -404,7 +404,7 @@ body{
 .fline .ftitle{grid-area:title}
 .fline .fexp{grid-area:exp}
 .fline:hover{background:var(--panel-2)}
-.kind{font-family:var(--mono);font-size:10.5px;color:var(--txt-dim);letter-spacing:.5px}
+.kind{font-family:var(--mono);font-size:10.5px;color:var(--txt-dim);letter-spacing:.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ftitle{font-size:13px;color:var(--txt)}
 .fexp{color:var(--txt-faint);font-size:10px;transition:transform .15s;justify-self:end}
 .frow.open .fexp{transform:rotate(180deg)}

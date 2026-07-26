@@ -1260,7 +1260,6 @@ func toFindingsView(r service.FindingsResult) templates.FindingsView {
 		TotalCount:    r.TotalCount,
 		CriticalCount: r.CriticalCount,
 		WarningCount:  r.WarningCount,
-		HealthyCount:  r.HealthyCount,
 		Findings:      cards,
 	}
 }

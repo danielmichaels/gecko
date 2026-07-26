@@ -1,3 +1,6 @@
 package service
 
-var MsgErrExported = msgErr
+var (
+	MsgErrExported       = msgErr
+	FindingFixesExported = findingFixes
+)
