@@ -416,7 +416,6 @@ type FindingsView struct {
 	TotalCount    int
 	CriticalCount int
 	WarningCount  int
-	HealthyCount  int
 }
 
 // FindingsPageProps holds data for the tenant-wide Findings page.

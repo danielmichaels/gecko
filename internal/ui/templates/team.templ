@@ -227,8 +227,14 @@ func inviteCountLabel(n int) string { return pluralize(n, "invitation") }
 
 // pluralize renders "1 noun" or "N nouns".
 func pluralize(n int, noun string) string {
+	return fmt.Sprintf("%d %s", n, nounFor(n, noun))
+}
+
+// nounFor returns the noun alone, agreeing with n, for callers that render the
+// count separately (e.g. wrapped in its own element).
+func nounFor(n int, noun string) string {
 	if n == 1 {
-		return "1 " + noun
+		return noun
 	}
-	return fmt.Sprintf("%d %ss", n, noun)
+	return noun + "s"
 }

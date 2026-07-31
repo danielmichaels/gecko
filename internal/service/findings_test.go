@@ -189,8 +189,16 @@ func TestFindingsService_ListByDomain(t *testing.T) {
 	if !hasFindingKind(res.Findings, "certificate") {
 		t.Errorf("expected a certificate finding in ListByDomain, got %+v", res.Findings)
 	}
-	if res.HealthyCount != 1 {
-		t.Errorf("healthy = %d, want 1 (mta_sts info)", res.HealthyCount)
+	if !hasFindingKind(res.Findings, "mta_sts") {
+		t.Errorf("expected the info-severity mta_sts finding to be listed, got %+v", res.Findings)
+	}
+	if res.CriticalCount+res.WarningCount >= res.TotalCount {
+		t.Errorf(
+			"info findings must count toward TotalCount but not crit/warn: total=%d crit=%d warn=%d",
+			res.TotalCount,
+			res.CriticalCount,
+			res.WarningCount,
+		)
 	}
 	if len(res.Findings) == 0 || res.Findings[0].SevClass != "crit" {
 		t.Fatalf("expected worst-first ordering with a crit head, got %+v", res.Findings)

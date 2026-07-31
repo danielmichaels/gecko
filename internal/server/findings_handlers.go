@@ -97,12 +97,13 @@ type DomainFindingsOutput struct {
 	}
 }
 
-// FindingsSummary is the per-domain count strip (info/compliant collapse into healthy).
+// FindingsSummary is the per-domain count strip. Counts cover open findings
+// only; a passing check emits nothing, so there is no compliant/healthy total to
+// report until check coverage is tracked.
 type FindingsSummary struct {
 	TotalCount    int `json:"total_count"`
 	CriticalCount int `json:"critical_count"`
 	WarningCount  int `json:"warning_count"`
-	HealthyCount  int `json:"healthy_count"`
 }
 
 // handleDomainFindings serves a single domain's findings. Tenant isolation is
@@ -135,7 +136,6 @@ func (app *Server) handleDomainFindings(
 		TotalCount:    result.TotalCount,
 		CriticalCount: result.CriticalCount,
 		WarningCount:  result.WarningCount,
-		HealthyCount:  result.HealthyCount,
 	}
 	resp.Body.Findings = items
 	return resp, nil

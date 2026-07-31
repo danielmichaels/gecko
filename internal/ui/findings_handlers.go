@@ -88,41 +88,55 @@ func toTenantFindingsView(res service.TenantFindingsResult) templates.TenantFind
 }
 
 // findingKindOrder fixes the type-dropdown ordering; unknown future kinds are
-// appended alphabetically so new assessors surface automatically.
+// appended alphabetically so new detectors surface automatically. Values are
+// detect.Check* check kinds, which are also the filter values sent back on the
+// $kind signal.
 var findingKindOrder = []string{
-	"SPF",
-	"DKIM",
-	"DMARC",
-	"ZONE",
-	"CERT",
-	"DNSSEC",
-	"CAA_CONFIG",
-	"CAA_COMPLIANCE",
-	"MIN_RECORDS",
-	"EMAIL_COMPLIANCE",
-	"NS_CONFIG",
-	"NS_REDUNDANCY",
-	"NS_REACHABILITY",
-	"NS_LATENCY",
-	"NS_CONSISTENCY",
+	"email_security",
+	"zone_transfer",
+	"cname",
+	"certificate",
+	"dnssec",
+	"caa",
+	"nameserver_config",
+	"nameserver_health",
+	"minimum_record_set",
 }
 
 var findingKindLabels = map[string]string{
-	"SPF":              "SPF",
-	"DKIM":             "DKIM",
-	"DMARC":            "DMARC",
-	"ZONE":             "Zone transfer",
-	"CERT":             "Certificate",
-	"DNSSEC":           "DNSSEC",
-	"CAA_CONFIG":       "CAA configuration",
-	"CAA_COMPLIANCE":   "CAA compliance",
-	"MIN_RECORDS":      "Minimum records",
-	"EMAIL_COMPLIANCE": "Email compliance",
-	"NS_CONFIG":        "Nameserver configuration",
-	"NS_REDUNDANCY":    "Nameserver redundancy",
-	"NS_REACHABILITY":  "Nameserver reachability",
-	"NS_LATENCY":       "Nameserver latency",
-	"NS_CONSISTENCY":   "Nameserver consistency",
+	"email_security":     "Email security",
+	"zone_transfer":      "Zone transfer",
+	"cname":              "CNAME",
+	"certificate":        "Certificate",
+	"dnssec":             "DNSSEC",
+	"caa":                "CAA",
+	"nameserver_config":  "Nameserver configuration",
+	"nameserver_health":  "Nameserver health",
+	"minimum_record_set": "Minimum record set",
+}
+
+// findingKindShort is the mono code shown on a collapsed finding row, kept short
+// because .fline reserves a fixed-width track for it — a long code overruns the
+// column and collides with the title.
+var findingKindShort = map[string]string{
+	"email_security":     "EMAIL",
+	"zone_transfer":      "ZONE",
+	"cname":              "CNAME",
+	"certificate":        "CERT",
+	"dnssec":             "DNSSEC",
+	"caa":                "CAA",
+	"nameserver_config":  "NS CONFIG",
+	"nameserver_health":  "NS HEALTH",
+	"minimum_record_set": "RECORDS",
+}
+
+// shortKind renders an unmapped kind raw rather than blank, so a new detector
+// degrades to a readable row instead of an empty column.
+func shortKind(kind string) string {
+	if s, ok := findingKindShort[kind]; ok {
+		return s
+	}
+	return kind
 }
 
 // kindOptions builds the data-driven type dropdown from the faceted KindCounts.
@@ -251,7 +265,7 @@ func toFindingRowView(f service.FindingView) templates.FindingRowView {
 		DomainUID:   f.DomainUID,
 		Tier:        f.Tier,
 		Severity:    f.Severity,
-		Kind:        f.Kind,
+		Kind:        shortKind(f.Kind),
 		Icon:        f.Icon,
 		Title:       f.Title,
 		Description: f.Description,
